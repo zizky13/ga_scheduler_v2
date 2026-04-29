@@ -10,7 +10,7 @@ This is the backend computation core for a final-year thesis ("Tugas Akhir") pro
 
 Course timetabling at UPJ's Faculty of Technology and Design is a combinatorial NP-Hard problem (search space ≈ 800,000+ combinations before constraint filtering). Running a Genetic Algorithm directly on bad inputs wastes minutes of compute and can return "best" schedules that still violate hard constraints. This project addresses that with a **three-layer pipeline** that proves a solution can exist *before* searching for one:
 
-1. **Layer 1 — Pre-GA Policy Engine** (deterministic, O(n)): six per-offering checks (integrity, room capacity, temporal, facility, lecturer, policy), then entity tagging that marks each candidate as `Fixed Room` or `Flexible`.
+1. **Layer 1 — Pre-GA Policy Engine** (deterministic, O(n)): seven per-offering checks (integrity, room capacity, temporal, facility, lecturer, **competencies**, policy), then entity tagging that marks each candidate as `Fixed Room` or `Flexible`. The competency check is the primary gate that filters out lecturer assignments whose declared expertise does not cover the course's required competencies.
 2. **Layer 2 — Static Structural Analysis / SSA** (deterministic, O(E√V)): static exclusion of locked `(room, slot)` coordinates, AC-3 constraint propagation, and Hopcroft–Karp maximum bipartite matching as a global feasibility proof.
 3. **Layer 3 — GA Core** (probabilistic, O(g × p × n)): an evolutionary loop with `Fixed`/`Flexible` masked gene operators, three swappable crossover strategies (`singlePoint`, `uniform`, `pmx`), repair, mutation, tournament selection, elitism, and stagnation-based early exit.
 
@@ -60,7 +60,7 @@ GA hyperparameters (`populationSize`, `generations`, `mutationRate`, `elitismCou
 
 Edit those files to tune the run.
 
-The mock dataset (rooms, time slots, lecturers, courses, course offerings, and a small set of intentionally infeasible offerings used to exercise Layer 1 rejections) lives in `src/db/seed.ts`. Replace this file when wiring real data sources.
+The mock dataset (rooms, time slots, lecturers, courses, course offerings, and a small set of intentionally infeasible offerings used to exercise Layer 1 rejections) lives in `src/db/seed.ts`. The seed now carries competency tags: 8 lecturers with `competencies` (e.g., `algorithms`, `databases`, `ai-ml`) and 11 courses with `requiredCompetencies`. Replace this file when wiring real data sources.
 
 ---
 
@@ -98,7 +98,7 @@ ga_scheduler_v2/
     ├── db/
     │   └── seed.ts                   # Mock rooms, slots, lecturers, courses, offerings
     ├── pre-ga/                       # Layer 1
-    │   ├── checks.ts                 # 6 validation checks
+    │   ├── checks.ts                 # 7 validation checks (incl. checkCompetencies + isLecturerEligibleForCourse)
     │   ├── validator.ts              # Orchestrator + PreGACandidate construction
     │   └── entityTagger.ts           # Stamps isFixedRoom from lockedRoomMap
     ├── ssa/                          # Layer 2
@@ -114,8 +114,8 @@ ga_scheduler_v2/
         ├── crossover.ts              # singlePoint, uniform, pmx
         ├── mutation.ts               # Slot mutation (room mutation only on FLEXIBLE genes)
         ├── repair.ts                 # Post-operator chromosome repair
-        ├── fitness.ts                # Weighted fitness: 1 / (1 + W_H·hard + W_S·soft)
-        └── runGA.ts                  # Main evolutionary loop with stagnation exit
+        ├── fitness.ts                # Weighted fitness: 1 / (1 + W_H·hard + W_S·soft); includes evaluateCompetencyMismatch (defense-in-depth)
+        └── runGA.ts                  # Main evolutionary loop with stagnation exit; threads optional CompetencyEligibilityMap into fitness
 ```
 
 The `dist/` directory referenced in `tsconfig.json` is a build output target and is not produced by any of the npm scripts above (the runners execute via `tsx` directly).
@@ -130,14 +130,21 @@ seed.ts                         <-- mock input data
    ▼
 runPreGA(offerings, slots)      <-- Layer 1 (src/pre-ga/validator.ts)
    │   produces: { validation, candidates: PreGACandidate[] }
+   │   competency filtering happens here (checkCompetencies, primary gate)
    ▼
 runSSA(candidates)              <-- Layer 2 (src/ssa/index.ts)
    │   produces: SSAResult { status: 'FEASIBLE' | 'INFEASIBLE', ... }
    │   gates GA execution; returns DeadlockReport if INFEASIBLE
    ▼
-runGA(candidates, structuralMap, preferenceMap, config)   <-- Layer 3 (src/ga/runGA.ts)
+runGA(candidates, structuralMap, preferenceMap, config, competencyEligibilityMap?)
+   │                                                  <-- Layer 3 (src/ga/runGA.ts)
        produces: GAResult { bestChromosome, bestFitness, hardViolations, softPenalty, history, ... }
+       defense-in-depth: evaluateCompetencyMismatch contributes to hardViolations
 ```
+
+### Eligibility rule (competency match)
+
+A lecturer is **eligible** for a course iff the intersection of `lecturer.competencies` and `course.requiredCompetencies` contains at least one element. If `course.requiredCompetencies` is empty (`[]`), any lecturer is eligible (no restriction). The helper `isLecturerEligibleForCourse(lecturer, course)` lives in `src/pre-ga/checks.ts` and is reused by the CLI to build the `CompetencyEligibilityMap` passed to the GA.
 
 `SchedulerResponse` in `src/types.ts` is the orchestration return type intended to wrap all three layers; the CLI runners currently print directly rather than returning this struct, but the type is in place for downstream API integration.
 

@@ -74,6 +74,7 @@ The system must encode four non-negotiable UPJ academic policies as immutable co
 
 - A lecturer may not be scheduled for more than one course at the same time slot — this includes all co-lecturers of team-taught offerings.
 - Special rooms (LAB, Studio) are exclusive to courses that require them — general classrooms may never be substituted.
+- **Lecturer competency match:** Every lecturer assigned to an offering must own at least one competency listed in that offering's `course.requiredCompetencies`. If `requiredCompetencies` is empty, the course imposes no competency restriction. This is a hard constraint of the same severity tier as locked-room conflicts and timeslot collisions; violations are infeasible. See `[HC-COMPETENCY]` in §4.3 for the formal definition.
 - Structural lecturers (e.g., department heads) have a preferred maximum of 2 sessions per week — this is a soft constraint but must be tracked and penalized.
 - Parallel offerings share a `parentOfferingId` — their room assignment is locked; only the time slot may vary between Sesi A and Sesi B.
 - **Fixed Room offerings:** The `(Room, TimeSlot)` coordinate pair for a Fixed Room session locks the room permanently. The GA may only evolve the `TimeSlotID` dimension.
@@ -157,8 +158,8 @@ The core architectural decision is to **separate concerns into three sequential 
 │  Steps:                    │
 │  1. Dynamic Consolidation  │  blended < 10 → merge to regular
 │  2. Parallel Splitting     │  enrollment > 45 → Sesi A + Sesi B
-│  3. 6 Constraint Checks    │  integrity, room, temporal, facility,
-│     per offering           │  lecturer, academic policy
+│  3. 7 Constraint Checks    │  integrity, room, temporal, facility,
+│     per offering           │  lecturer, competencies, academic policy
 │  4. Entity Tagging (NEW)   │  isFixedRoom: true | false
 │                            │
 │  Output: PreGACandidate[]  │
@@ -256,8 +257,40 @@ PRD v6.0 mandates an explicit weighted formula:
 $$Fitness = \frac{1}{1 + (\sum Penalty_{Hard} \times W_H) + (\sum Penalty_{Soft} \times W_S)}$$
 
 Where:
-- **Hard Penalty:** Lecturer time conflict, room-time conflict, parallel session conflict at the same slot (Target: 0)
+- **Hard Penalty:** Lecturer time conflict, room-time conflict, parallel session conflict at the same slot, **lecturer–course competency mismatch** (Target: 0)
 - **Soft Penalty:** Lecturer time preference violations, excessive teaching gaps
+
+#### `[HC-COMPETENCY]` Lecturer–Course Competency Match
+
+| Field | Value |
+|---|---|
+| **Constraint ID** | `HC-COMPETENCY` |
+| **Name** | Lecturer–Course Competency Match |
+| **Severity** | Hard — same tier as locked-room conflicts and timeslot collisions. Violations render the schedule infeasible. |
+| **Reason Code** | `COMPETENCY_MISMATCH` (Pre-GA); `competencyMismatch` counter contributes to `hardViolations` (GA). |
+
+**Formal definition.** Let `L = lecturer.competencies` and `R = course.requiredCompetencies`, both sets of strings. A lecturer–course pairing satisfies the constraint iff:
+
+```
+( R = ∅ )  ∨  ( L ∩ R ≠ ∅ )
+```
+
+That is: a course with no declared required competencies imposes no restriction (open assignment); otherwise the lecturer must own at least one of the required competencies. For a `CourseOffering` with multiple lecturers (team teaching), the constraint must hold for **every** assigned lecturer independently.
+
+**Rationale.** Course quality assurance at UPJ requires that each instructor for an offering has demonstrable expertise in at least one core topic of the course. Without this gate, the GA can produce schedules that are structurally feasible (no resource collisions) but academically invalid — for example, assigning a lecturer with only `visual-design` competency to a `databases` course. Modelling the rule as a hard constraint propagates the academic-validity guarantee into the same dominance regime that already protects against double-booking.
+
+**Enforcement layer.**
+
+- **Primary gate (Pre-GA, Layer 1):** `checkCompetencies` in `src/pre-ga/checks.ts` rejects any `CourseOffering` whose assigned lecturer set violates the rule. The check sits between `checkLecturer` and `checkPolicy` in the sequential validator (`src/pre-ga/validator.ts`); a failure short-circuits the offering with reason code `COMPETENCY_MISMATCH` and the offering never reaches SSA or GA.
+- **Defense-in-depth (GA, Layer 3):** `evaluateCompetencyMismatch` in `src/ga/fitness.ts` consumes a `CompetencyEligibilityMap` (`Map<offeringId, Set<eligibleLecturerId>>`) built once per pipeline run from the Lecturer/Course data. Any gene whose offering has eligible lecturers and whose `candidate.lecturerIds` contains a non-eligible lecturer contributes one violation per scheduled session; the count is summed into `hardViolations`. The map is threaded through `runGA` as an optional final argument, so calling code that omits it preserves backward compatibility (no-op).
+- **SSA (Layer 2):** unchanged — SSA consumes already-filtered `PreGACandidate[]` and is therefore implicitly competency-correct by construction.
+
+**Edge cases.**
+
+- **`R = ∅` (open course):** `checkCompetencies` returns `OK` immediately; `evaluateCompetencyMismatch` records no entry in the eligibility map for that offering, which the evaluator treats as "open assignment" and skips.
+- **Team teaching (`offering.lecturers.length > 1`):** every co-lecturer is checked independently; a single non-matching co-lecturer fails the offering at Pre-GA.
+- **Empty `lecturer.competencies`:** the lecturer is eligible only for courses where `R = ∅`. For any course with a non-empty `R`, this lecturer fails the intersection test.
+- **No eligible lecturer at all:** if no lecturer in the input set satisfies the constraint for an offering, the offering is rejected at Pre-GA with `COMPETENCY_MISMATCH`. The Kaprodi must either reassign lecturers, broaden the lecturer's `competencies`, or relax the course's `requiredCompetencies` — the system does not auto-resolve this.
 
 **`[ARCH-OBS-01]`:** The weighted-sum formula, unlike the lexicographic scheme in v1.0, does not inherently guarantee that hard violations always dominate soft penalties. A perverse result — where a schedule with hard violations outranks a valid schedule due to low soft penalty — is possible if `W_H` is set too small. To prevent this while preserving the weighted formula, enforce the following minimum:
 
@@ -307,7 +340,7 @@ ga_scheduler_lab/
     │   └── middleware/            # auth, authorize, errorHandler
     │
     ├── pre-ga/                    # Layer 1: Policy Engine
-    │   ├── checks/                # integrity, room, temporal, facility, lecturer, policy
+    │   ├── checks/                # integrity, room, temporal, facility, lecturer, competencies, policy
     │   ├── validator.ts           # runPreGA() orchestrator
     │   ├── candidate.ts           # PreGACandidate type (updated: isFixedRoom)
     │   └── entityTagger.ts        ← NEW: assigns isFixedRoom from LockedRoom table
@@ -345,7 +378,7 @@ ga_scheduler_lab/
 Receives the run request, validates configuration parameters, and orchestrates the three-layer pipeline. `scheduler.service.ts` is the single point of entry for a scheduling run. It calls `runPreGA()` → `runSSA()` → `runGA()` in sequence, returning after SSA if infeasibility is detected.
 
 **Feasibility Engine (`pre-ga/`, `ssa/`)**
-The Pre-GA layer performs six sequential checks per offering plus entity tagging. The SSA layer performs three-phase global feasibility analysis. Both layers are **pure functions** with no side effects beyond logging — they take typed data in, return a typed result.
+The Pre-GA layer performs seven sequential checks per offering plus entity tagging. The SSA layer performs three-phase global feasibility analysis. Both layers are **pure functions** with no side effects beyond logging — they take typed data in, return a typed result.
 
 **Hybrid GA Core (`ga/`, `crossovers/`)**
 The evolutionary loop with clearly defined boundaries. The `runGA()` function takes `PreGACandidate[]` and a `GAConfig` object and returns a `GAResult`. It has no knowledge of Prisma or Express. This isolation is critical for testability and for the crossover comparison experiments required by the thesis.
@@ -425,6 +458,61 @@ model LockedRoom {
 }
 ```
 
+### 5.5 Competency Fields on `Lecturer` and `Course`
+
+The competency hard constraint (`[HC-COMPETENCY]`, §4.3) is data-driven: it derives entirely from two new array-valued fields on the existing domain entities. No new entity is introduced; both fields live on records already loaded by the Layer 1 fetch.
+
+```typescript
+// types.ts (mirrors Prisma schema)
+
+export interface Lecturer {
+  id: number;
+  name: string;
+  isStructural: boolean;
+  preferredTimeSlotIds: number[];
+  competencies: string[];          // NEW — declared topics of expertise.
+                                   // Cardinality: 0..N. Default: []. Free-form
+                                   // strings curated by the Kaprodi (e.g.,
+                                   // 'algorithms', 'databases', 'ai-ml').
+                                   // An empty list means the lecturer is only
+                                   // eligible for courses with no required
+                                   // competencies.
+}
+
+export interface Course {
+  id: number;
+  code: string;
+  name: string;
+  sks: number;
+  requiredFacilities: string[];
+  requiredCompetencies: string[];  // NEW — competency tags a lecturer must own
+                                   // at least one of to teach this course.
+                                   // Cardinality: 0..N. Default: []. An empty
+                                   // list disables the constraint for this
+                                   // course (open assignment). Tag vocabulary
+                                   // must align with `Lecturer.competencies`
+                                   // — string equality is the matcher.
+}
+```
+
+**Eligibility helper.** A single canonical predicate, `isLecturerEligibleForCourse(lecturer, course): boolean` in `src/pre-ga/checks.ts`, encodes the rule from §4.3 and is the **only** function permitted to compare these fields. Both Layer 1 (`checkCompetencies`) and the Layer 3 eligibility-map builder (in `src/cli/run-pipeline.ts`) consume it; downstream code must never re-implement the intersection check inline.
+
+**Required Prisma schema addition:**
+
+```prisma
+model Lecturer {
+  // ... existing fields ...
+  competencies         String[]   // Postgres native; for SQLite, store as JSON string and parse at the repository boundary.
+}
+
+model Course {
+  // ... existing fields ...
+  requiredCompetencies String[]
+}
+```
+
+**`[ARCH-OBS-05]`:** SQLite/libSQL has no native array column type. For the current Prisma target, persist these fields as `String` columns containing a JSON-encoded array and decode them at the repository boundary so the in-memory shape matches the TypeScript types above. The competency vocabulary is intentionally untyped (free-form `string`); a future enhancement could promote it to a `Competency` enum or a relational `LecturerCompetency` join table once the canonical taxonomy stabilises.
+
 ---
 
 ## 6. Runtime View
@@ -445,8 +533,9 @@ model LockedRoom {
 [pre-ga/validator.ts::runPreGA()]
           │
           │  4. Fetch all CourseOfferings + relations from DB (single query)
-          │  5. For each offering, run 6 sequential checks:
-          │     integrity → roomCapacity → temporal → facility → lecturer → policy
+          │  5. For each offering, run 7 sequential checks:
+          │     integrity → roomCapacity → temporal → facility →
+          │     lecturer → competencies → policy
           │  6. Partition into feasible[] and infeasible[]
           │  7. Fetch all TimeSlots from DB
           │  8. Build PreGACandidate[] for each feasible offering
@@ -493,6 +582,10 @@ model LockedRoom {
           │
           │  20. checkDiversity(prunedCandidates) — diagnostic, non-blocking
           │  21. Build lecturerStructuralMap from DB
+          │  21a. Build competencyEligibilityMap: for each feasible offering,
+          │       compute Set<lecturerId> via isLecturerEligibleForCourse().
+          │       Passed as the optional last argument to runGA() — used by
+          │       evaluateCompetencyMismatch as defense-in-depth (`[HC-COMPETENCY]`).
           │
           ▼
 [ga/runGA.ts::runGA()]
@@ -509,6 +602,7 @@ model LockedRoom {
           │
           │      a. evaluateFitness() for all chromosomes
           │         fitness = 1 / (1 + (hardPenalty × W_H) + (softPenalty × W_S))
+          │         hardPenalty = collisionViolations + competencyMismatch
           │         → W_H default: 100, W_S default: 1
           │
           │      b. Sort population by fitness descending
@@ -1059,29 +1153,46 @@ export interface FitnessConfig {
   softPenaltyWeight: number;   // W_S — default 1
 }
 
+// Eligibility map: offeringId → Set of lecturerIds that satisfy [HC-COMPETENCY]
+// for that offering's course. Built once per pipeline run from the
+// Lecturer/Course data (see isLecturerEligibleForCourse). Empty/missing
+// entries are interpreted as "open assignment" (no restriction).
+export type CompetencyEligibilityMap = Map<number, Set<number>>;
+
 export function evaluateFitness(
   chromosome: Chromosome,
   candidates: PreGACandidate[],
   lecturerStructuralMap: Map<number, boolean>,
-  config: FitnessConfig
+  lecturerPreferenceMap: Map<number, Set<number>>,
+  config: FitnessConfig,
+  competencyEligibilityMap?: CompetencyEligibilityMap
 ): EvaluatedChromosome {
-  const hardResult = evaluateHardFitness(chromosome, candidates);
-  const softPenalty = calculateStructuralPenalty(chromosome, candidates, lecturerStructuralMap);
+  const collisionViolations = evaluateHardFitness(chromosome, candidates);
+  const competencyMismatch = evaluateCompetencyMismatch(
+    chromosome, candidates, competencyEligibilityMap
+  );
+  const hardViolations = collisionViolations + competencyMismatch;
+
+  const structuralPenalty = calculateStructuralPenalty(chromosome, candidates, lecturerStructuralMap);
+  const preferencePenalty = calculatePreferencePenalty(chromosome, candidates, lecturerPreferenceMap);
+  const softPenalty = structuralPenalty + preferencePenalty;
 
   const fitness = 1 / (
     1 +
-    (hardResult.hardViolations * config.hardPenaltyWeight) +
+    (hardViolations * config.hardPenaltyWeight) +
     (softPenalty * config.softPenaltyWeight)
   );
 
   return {
-    chromosome,
-    fitness,
-    hardViolations: hardResult.hardViolations,
-    softPenalty,
+    chromosome, fitness, hardViolations, softPenalty,
+    structuralPenalty, preferencePenalty, competencyMismatch,
   };
 }
 ```
+
+**`evaluateCompetencyMismatch` — defense-in-depth for `[HC-COMPETENCY]`.** Although the Pre-GA gate already filters infeasible offerings before they reach the GA, the GA fitness function still re-evaluates competency eligibility per gene. This is a deliberate redundancy: it protects against (a) future code paths that bypass Pre-GA and feed candidates directly into `runGA`, and (b) refactors that introduce a mutation operator capable of swapping `lecturerIds` between genes. The function iterates each gene's `candidate.lecturerIds`; for every lecturer not present in `competencyEligibilityMap.get(offeringId)`, it adds `gene.assignedTimeSlotIds.length` to the violation count — mirroring the per-session counting cadence already used by room/lecturer collisions. If `competencyEligibilityMap` is `undefined`, the function returns `0` (no-op), preserving callers that have not yet been migrated.
+
+`EvaluatedChromosome` carries a new `competencyMismatch: number` counter alongside the existing `structuralPenalty` and `preferencePenalty` breakdowns, so the audit log can report the exact source of any non-zero `hardViolations` rather than a single opaque integer.
 
 #### Stagnation Exit (Updated Window: 100 Generations)
 
@@ -1234,7 +1345,8 @@ All API errors use a standardized envelope:
   error: {
     code: string,     // Machine-readable: 'NO_FEASIBLE_CANDIDATES',
                       // 'SSA_INFEASIBLE', 'AC3_DOMAIN_EMPTY',
-                      // 'BIPARTITE_MATCHING_INSUFFICIENT'
+                      // 'BIPARTITE_MATCHING_INSUFFICIENT',
+                      // 'COMPETENCY_MISMATCH' (Pre-GA per-offering rejection)
     message: string,  // Human-readable for React ErrorToast
     details?: SSAResult  // Present when code is SSA-related
   }
@@ -1389,6 +1501,10 @@ setRunning: () => set({ isRunning: true, ssaFailure: null, gaResult: null }),
 | Team-teaching offering (multiple lecturerIds) | Passes integrity check; all lecturerIds present in candidate |
 | Offering present in LockedRoom table | `isFixedRoom: true`, `roomId` overwritten with locked value |
 | Offering absent from LockedRoom table | `isFixedRoom: false` |
+| Lecturer competencies cover course requirements | `checkCompetencies` returns OK; offering forwarded to SSA |
+| Lecturer competencies miss course requirements | Rejected with `COMPETENCY_MISMATCH`; offering excluded from candidates |
+| Course with `requiredCompetencies = []` | `checkCompetencies` returns OK regardless of lecturer competencies (open assignment) |
+| Team-teaching with one ineligible co-lecturer | Rejected with `COMPETENCY_MISMATCH`; per-lecturer evaluation, no quorum logic |
 
 **Layer 2 (SSA) — Unit Tests:**
 
@@ -1435,7 +1551,10 @@ fitness.test.ts
 ├── W_H=100: chromosome with 1 hard violation always scores < chromosome with 0 violations
 ├── Zero hard violations: fitness range is (0.5, 1.0)
 ├── Non-zero hard violations: fitness range is (0, 0.5]
-└── Soft penalty correctly penalizes structural lecturer overload
+├── Soft penalty correctly penalizes structural lecturer overload
+├── evaluateCompetencyMismatch: undefined eligibility map → returns 0 (no-op)
+├── evaluateCompetencyMismatch: ineligible lecturer → +N where N = scheduled sessions
+└── competencyMismatch is summed into hardViolations (not softPenalty)
 
 integration.test.ts
 ├── Easy dataset (10 offerings, ample slots): hardViolations=0 within 50 generations
@@ -1456,6 +1575,8 @@ integration.test.ts
 | Parallel class | 60-student offering, 45-capacity room | requiredSessions = 2, both scheduled |
 | Team teaching | Offering with 2 lecturers | Both lecturers blocked at assigned slot |
 | Fixed Room invariant | 5 offerings, 3 locked | Locked rooms unchanged across all 70 generations |
+| Competency mismatch (Pre-GA) | Offering whose only lecturer has no overlap with `requiredCompetencies` | Pre-GA rejects with `COMPETENCY_MISMATCH`; offering does not reach SSA or GA |
+| Competency open assignment | Offering whose course has `requiredCompetencies = []` | Pre-GA passes regardless of lecturer competencies |
 | Crossover comparison | Same dataset × 3 crossover strategies | Thesis Table: fitness curves per strategy |
 
 ---
@@ -1526,7 +1647,7 @@ integration.test.ts
 | **Partial Gene Masking** | The mechanism by which mutation and crossover operators only modify `TimeSlotID` for Fixed Room genes |
 | **Hard Constraint** | A rule that, if violated, renders the schedule invalid (room double-booking, lecturer double-booking) |
 | **Soft Constraint** | A preference that incurs a weighted penalty but does not invalidate the schedule (structural lecturer overload) |
-| **Pre-GA Candidate** | A `CourseOffering` that has passed all six Layer 1 checks and been tagged with `isFixedRoom`. Ready for SSA. |
+| **Pre-GA Candidate** | A `CourseOffering` that has passed all seven Layer 1 checks and been tagged with `isFixedRoom`. Ready for SSA. |
 | **Required Sessions** | `⌈effectiveStudentCount / roomCapacity⌉` — the number of time slots this offering must occupy |
 | **Entity Tagging** | The Layer 1 step that stamps `isFixedRoom: true/false` onto each candidate based on the LockedRoom table |
 | **Static Exclusion** | SSA Phase 0 — locks Fixed Room `(Room, TimeSlot)` coordinates and removes them from Flexible candidates' domains |
@@ -1540,3 +1661,7 @@ integration.test.ts
 | **Parallel Offering** | An offering split into Sesi A and Sesi B because enrollment exceeds room capacity |
 | **Blended Student** | A karyawan student consolidated into a regular class when their cohort size is under 10 |
 | **Lamarckian GA** | A GA variant where repaired chromosomes (after greedy local search) replace their unrepaired parents |
+| **Competency** | A free-form string tag (e.g., `algorithms`, `databases`) that appears on `Lecturer.competencies` (declared expertise) and `Course.requiredCompetencies` (teaching prerequisites). String equality is the matcher. |
+| **`[HC-COMPETENCY]`** | The hard constraint requiring a non-empty intersection of `lecturer.competencies` and `course.requiredCompetencies` for every lecturer–offering pairing, unless the course's `requiredCompetencies` is empty. Enforced primarily at Pre-GA (`checkCompetencies`) and re-checked in the GA fitness function (`evaluateCompetencyMismatch`) as defense-in-depth. |
+| **`COMPETENCY_MISMATCH`** | Reason code emitted by `checkCompetencies` when a lecturer assigned to an offering owns no competency listed in the course's `requiredCompetencies`. |
+| **CompetencyEligibilityMap** | `Map<offeringId, Set<lecturerId>>` constructed once per pipeline run from the Lecturer/Course data and threaded into `runGA` so that `evaluateCompetencyMismatch` can flag any chromosome whose gene assigns a non-eligible lecturer. |
