@@ -70,8 +70,9 @@ export interface PreGACandidate {
   lecturerIds: number[];
   requiredSessions: number;    // ⌈effectiveStudentCount / roomCapacity⌉
   possibleTimeSlotIds: number[];
-  isFixedRoom: boolean;        // set by entityTagger — locks roomId for entire GA run
-  possibleRoomIds?: number[];  // for flexible room optimization (ARCH-OBS-04)
+  isFixedRoom: boolean; // <-- FIXED
+  fixedTimeSlotIds?: number[];
+  parentOfferingId?: number; // <-- FIXED
 }
 
 // ─── Layer 2: SSA Types ──────────────────────────────────────────
@@ -126,21 +127,11 @@ export interface SSAResult {
 
 // ─── Layer 3: GA Types ───────────────────────────────────────────
 
-export interface FixedRoomGene {
-  kind: 'FIXED';
+export interface Gene {
   offeringId: number;
-  roomId: number;              // IMMUTABLE — never written by GA operators
-  assignedTimeSlotIds: number[];
+  assignedTimeSlotIds: number[]; // length === requiredSessions
 }
 
-export interface FlexibleGene {
-  kind: 'FLEXIBLE';
-  offeringId: number;
-  roomId: number;              // Mutable by mutation operator
-  assignedTimeSlotIds: number[];
-}
-
-export type Gene = FixedRoomGene | FlexibleGene;
 export type Chromosome = Gene[];
 
 export interface EvaluatedChromosome {
@@ -160,8 +151,6 @@ export interface GAConfig {
   tournamentSize: number;
   crossoverType: 'singlePoint' | 'uniform' | 'pmx';
   noiseRate: number;
-  hardPenaltyWeight: number;   // W_H — default 100
-  softPenaltyWeight: number;   // W_S — default 1
 }
 
 export interface GAResult {
