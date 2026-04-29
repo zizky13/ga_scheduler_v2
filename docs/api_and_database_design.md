@@ -3,11 +3,17 @@
 
 | Field | Value |
 |---|---|
-| **Version** | 1.0 |
-| **Status** | Design — pending implementation |
-| **Companion Documents** | `techspec_upj_scheduler_v2.md` (arc42 v2.0), `src/types.ts`, `src/db/seed.ts` |
+| **Version** | 2.0 — aligned with techspec v2.0 / PRD v6.0 |
+| **Status** | Design — pending implementation (algorithmic core only in repo, per README) |
+| **Companion Documents** | `techspec_upj_scheduler_v2.md` (arc42 v2.0), `README.md`, `src/types.ts`, `src/db/seed.ts` |
 | **Audience** | Backend implementer, thesis examiner |
 | **Author Role** | Backend Architect |
+
+### Changelog
+
+| From → To | Summary |
+|---|---|
+| 1.0 → 2.0 | Aligned the doc to techspec v2.0 / PRD v6.0. Specifically: added `[HC-COMPETENCY]` data fields (`Lecturer.competencies`, `Course.requiredCompetencies`) to §3 with the dual-target SQLite/Postgres encoding rule from `[ARCH-OBS-05]`; added the `COMPETENCY_MISMATCH` 422 `DomainError` code (§5.2, §6) as a Pre-GA per-offering rejection; added the `competencyMismatch` audit counter on `ScheduleRun` and `FitnessHistory` (§3.2, §5.3.8, §8); added a new runtime subsection (§7.x) describing `CompetencyEligibilityMap` construction via `isLecturerEligibleForCourse`; updated the §4.5 / §4.6 permission matrix to cover the two new fields; updated CRUD bodies in §5.3.5 / §5.3.6; added Zod validation rules for the two arrays in §6; opened OQ-9 in §9. |
 
 ---
 
@@ -34,7 +40,9 @@ This document specifies the HTTP API surface, persistence schema (Prisma), and a
 
 ### 1.3 Alignment with the techspec
 
-This design extends the data model already implied by `src/types.ts` and the Prisma fragments in techspec §5.4 (`LockedRoom`) and §8.2 (`GARun`). It does **not** introduce a parallel data model. The techspec's compile-time `Gene` discriminated union (`FixedRoomGene | FlexibleGene`) remains an in-memory construct only — chromosomes are persisted as serialized JSON in the audit record (techspec §7.2 Redis schema, §8.2 `GARun.historyJson`). The DB stores the *result* of a run (assignments + history), not the live chromosome.
+This design extends the data model already implied by `src/types.ts` and the Prisma fragments in techspec v2.0 §5.4 (`LockedRoom`), §5.5 (competency fields on `Lecturer` / `Course`), and §8.2 (`GARun`). It does **not** introduce a parallel data model. The techspec's compile-time `Gene` discriminated union (`FixedRoomGene | FlexibleGene`) remains an in-memory construct only — chromosomes are persisted as serialized JSON in the audit record (techspec §7.2 Redis schema, §8.2 `GARun.historyJson`). The DB stores the *result* of a run (assignments + history), not the live chromosome.
+
+Per the repository `README.md`, the implementation under `src/` is **algorithmic-only** at the time of writing — there is no Express API, Prisma client, Redis instance, or React UI in the codebase yet. Inputs come from `src/db/seed.ts` and outputs are printed by the CLI runners under `src/cli/`. This document therefore remains a forward-looking blueprint for the API/persistence/queue layers; the techspec sections cited here are authoritative for the algorithmic semantics that the future API surface must respect.
 
 ### 1.4 Roles at a glance
 
@@ -102,8 +110,8 @@ The API is a thin transport layer over the existing pure-function pipeline under
 |---|---|---|
 | `Room` | `Room` | `facilities: string[]` → `Facility[]` join table (normalized for indexing) — see migration note 3.5. |
 | `TimeSlot` | `TimeSlot` | 1:1; `day` becomes a `Weekday` enum. |
-| `Lecturer` | `Lecturer` | `preferredTimeSlotIds: number[]` → `LecturerPreferredSlot` join table. |
-| `Course` | `Course` | `requiredFacilities: string[]` → join with `Facility`. |
+| `Lecturer` | `Lecturer` | `preferredTimeSlotIds: number[]` → `LecturerPreferredSlot` join table. `competencies: string[]` is a scalar array column per techspec §5.5 (`[HC-COMPETENCY]`); see §3.5 for the dual-target encoding rule (`[ARCH-OBS-05]`). |
+| `Course` | `Course` | `requiredFacilities: string[]` → join with `Facility`. `requiredCompetencies: string[]` is a scalar array column per techspec §5.5 (no join table — see §3.4 note); same dual-target encoding as `Lecturer.competencies`. |
 | `CourseOffering` | `CourseOffering` | `lecturers: Lecturer[]` → `CourseOfferingLecturer` join (team teaching). `isFixed` and `fixedTimeSlotIds` retained for **techspec-mandated** Fixed Room semantics — they shadow the `LockedRoom` table (see 3.5). |
 | `PreGACandidate` | *not persisted* | In-memory only; rebuilt at run-time inside `runPreGA()`. |
 | `SSAResult` | `ScheduleRun.ssaResultJson` | Serialized; matches techspec §8.2. |
@@ -269,6 +277,10 @@ model Lecturer {
   semesterId      Int
   name            String
   isStructural    Boolean  @default(false)        // techspec §2.2 — soft constraint
+  // [HC-COMPETENCY] (techspec §5.5): declared topics of expertise. Postgres
+  // uses String[]; for the SQLite target, store as JSON-encoded String and
+  // decode at the repository boundary — see [ARCH-OBS-05] in §3.5.
+  competencies    String                          // JSON-encoded string[]; "[]" by default
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   createdById     Int?                             // who entered this record (audit)
@@ -299,6 +311,10 @@ model Course {
   code         String                            // e.g., 'IF101'
   name         String
   sks          Int                               // credit hours
+  // [HC-COMPETENCY] (techspec §5.5): tags a lecturer must own at least one of.
+  // "[]" disables the constraint (open assignment). Postgres uses String[];
+  // for the SQLite target, store as JSON-encoded String — see [ARCH-OBS-05].
+  requiredCompetencies String                    // JSON-encoded string[]; "[]" by default
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   createdById  Int?
@@ -424,6 +440,11 @@ model ScheduleRun {
   bestFitness       Float      @default(0)
   hardViolations    Int        @default(0)
   softPenalty       Int        @default(0)
+  // Audit-friendly breakdown of the hard-violation total — see techspec §4.3
+  // and `EvaluatedChromosome.competencyMismatch` in src/types.ts. Persists
+  // the per-run aggregate so the audit log can attribute hard violations to
+  // [HC-COMPETENCY] specifically rather than a single opaque integer.
+  competencyMismatch Int       @default(0)
   stagnatedEarly    Boolean    @default(false)
 
   // Raw history retained for techspec §8.2 compatibility; also normalized below.
@@ -500,6 +521,10 @@ model FitnessHistory {
   avgFitness      Float
   hardViolations  Int
   softPenalty     Int
+  // Per-generation breakdown of `hardViolations` attributable to [HC-COMPETENCY]
+  // (techspec §4.3). Lets the chart UI overlay competency violations on top of
+  // the global hardViolations curve for traceability.
+  competencyMismatch Int
   recordedAt      DateTime @default(now())
 
   run             ScheduleRun @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -543,8 +568,8 @@ Each entry below: purpose · key fields · relationships · indexes · TS-type m
 | `Facility` | Normalized facility tag (`LAB`, `PROJECTOR`, `STUDIO`). | `Room.facilities[]`, `Course.requiredFacilities[]`. |
 | `Room` | Physical room with capacity and facilities. | `src/types.ts:Room`. |
 | `TimeSlot` | A weekly recurring slot within a semester. | `src/types.ts:TimeSlot`. |
-| `Lecturer` | Person who teaches; flagged structural for soft-constraint penalty. | `src/types.ts:Lecturer`. |
-| `Course` | Curriculum entry with credit and facility requirements. | `src/types.ts:Course`. |
+| `Lecturer` | Person who teaches; flagged structural for soft-constraint penalty; carries `competencies` (techspec §5.5 / `[HC-COMPETENCY]`). | `src/types.ts:Lecturer`. |
+| `Course` | Curriculum entry with credit, facility, and competency (`requiredCompetencies`, techspec §5.5) requirements. | `src/types.ts:Course`. |
 | `CourseOffering` | A scheduled instance of a course in a semester. | `src/types.ts:CourseOffering`. |
 | `CourseOfferingLecturer` | Team-teaching join (techspec §1.3 #4). | `CourseOffering.lecturers[]`. |
 | `CourseOfferingFixedSlot` | Slots locked when `isFixed=true`. | `CourseOffering.fixedTimeSlotIds[]`. |
@@ -602,14 +627,18 @@ erDiagram
     CourseOffering ||--o{ CourseOffering : parentOf
 ```
 
+> **Note on `[HC-COMPETENCY]`.** Per techspec §5.5, the lecturer–course competency match is a **data-driven** hard constraint: it derives entirely from two scalar array fields — `Lecturer.competencies` and `Course.requiredCompetencies` — without introducing a new entity or join table. The ER diagram above is therefore unchanged. String equality is the matcher; the canonical predicate `isLecturerEligibleForCourse` (`src/pre-ga/checks.ts`) is the only allowed comparison site (see §7.x).
+
 ### 3.5 Migration notes
 
 | Existing artifact | Status | Action |
 |---|---|---|
 | `src/types.ts:Room` | 1:1, except `facilities: string[]` | Migrate string array to `Facility` + `RoomFacility`. Keep a TS adapter `roomToType(room)` that returns `facilities: string[]` for the GA core, which expects a flat array. |
 | `src/types.ts:TimeSlot` | 1:1 | `day: string` becomes `Weekday` enum at the DB layer; the API DTO continues to expose the string form for the GA. |
-| `src/types.ts:Lecturer` | 1:1 | `preferredTimeSlotIds: number[]` → `LecturerPreferredSlot`. |
-| `src/types.ts:Course` | 1:1 | `requiredFacilities: string[]` → `CourseRequiredFacility`. |
+| `src/types.ts:Lecturer` | 1:1 | `preferredTimeSlotIds: number[]` → `LecturerPreferredSlot`. `competencies: string[]` is added per techspec §5.5 as a scalar array column (no join table) — see `[ARCH-OBS-05]` row below. |
+| `src/types.ts:Course` | 1:1 | `requiredFacilities: string[]` → `CourseRequiredFacility`. `requiredCompetencies: string[]` is added per techspec §5.5 as a scalar array column (no join table) — see `[ARCH-OBS-05]` row below. |
+| `[ARCH-OBS-05]` SQLite vs Postgres array encoding | Spec-mandated dual-target | For Postgres, declare `competencies String[]` and `requiredCompetencies String[]` natively. For SQLite/libSQL, persist both fields as a single `String` column containing a JSON-encoded `string[]` (default `"[]"`); decode at the repository boundary so the in-memory shape matches `src/types.ts:Lecturer.competencies` and `src/types.ts:Course.requiredCompetencies` exactly. The Prisma schema in §3.2 uses the SQLite-compatible `String` form to keep the schema portable; flip to `String[]` for Postgres. This is the same dual-target approach already used implicitly for the `historyJson` and `avgHistoryJson` fields. |
+| Seed data (`src/db/seed.ts`) — competencies | New | Per `README.md` §3, the seed now carries competency tags on **8 lecturers** (e.g., `algorithms`, `databases`, `ai-ml`) and **11 courses** (`requiredCompetencies`). The Prisma seed script must populate `Lecturer.competencies` and `Course.requiredCompetencies` from these in-memory values; otherwise every offering will fail Pre-GA with `COMPETENCY_MISMATCH` against a non-empty `requiredCompetencies` set. |
 | `src/types.ts:CourseOffering` | Mostly 1:1, **conflict** | The TS type carries `isFixed` and `fixedTimeSlotIds`, while techspec §5.4 introduces a separate `LockedRoom` table populated by FR-01. **Resolution**: keep both. `CourseOffering.isFixed/fixedSlots` represents *intrinsic* fixedness asserted at data-entry time (e.g., a course administratively pinned for the whole semester), while `LockedRoom` represents an FR-01 *manual* lock applied by the Kaprodi prior to a specific run. The Pre-GA `entityTagger` already merges both signals (techspec §5.4) — the resulting `PreGACandidate.isFixedRoom` is the single source of truth for the GA. |
 | `src/db/seed.ts` | In-memory only | Convert to a Prisma seed script that upserts a single `Semester` (`2025-GANJIL`) and inserts the same six rooms, fifteen time slots, eight lecturers, eleven courses, and fifteen offerings. The `infeasibleOfferings` set should be guarded behind a `--with-infeasible` flag — useful for integration tests, harmful in production. |
 | GA core under `src/ga/`, `src/pre-ga/`, `src/ssa/` | No change | These modules consume plain TS types and remain Prisma-unaware (techspec §5.2). The API service layer adapts Prisma rows → TS types before invoking `runPreGA`, `runSSA`, `runGA`. |
@@ -720,8 +749,10 @@ Justification: Pairing a short-lived header-based access token with a cookie-bas
 | `GET /health`, `GET /ready` | ✅ | ✅ | ✅ |
 
 **Field-level rule for `user` editing `Lecturer` / `Course`** (referenced in row "PATCH /lecturers/:id"):
-- `user` may set: `name`, `preferredTimeSlotIds`, `course.code`, `course.name`, `course.sks`, `course.requiredFacilities`.
+- `user` may set: `name`, `preferredTimeSlotIds`, `Lecturer.competencies`, `course.code`, `course.name`, `course.sks`, `course.requiredFacilities`, `course.requiredCompetencies`.
 - `user` may **not** set: `Lecturer.isStructural` (academic policy attribute), `Lecturer.semesterId`/`Course.semesterId` (only admin chooses semester), or any field on `Room`/`TimeSlot`/`LockedRoom`/`Semester`/`User`.
+
+**Note on competency fields.** Both `Lecturer.competencies` and `Course.requiredCompetencies` (techspec §5.5) follow the same role rule as `name` / `preferredTimeSlotIds` and `requiredFacilities` respectively — both `admin` and `user` (Kaprodi) may edit them. Justification: per techspec §1.3 the Kaprodi is the curator of teaching expertise and curriculum prerequisites, so locking the new fields behind admin-only would block their primary workflow. The `allowFields` middleware lists in §4.6 already accept the existing field-level rules; no separate allow-list rule is required for the competency fields — they follow the existing pattern (admit when present, validate via Zod in §6).
 
 ### 4.6 Middleware design
 
@@ -776,7 +807,9 @@ rateLimitAuth, rateLimitRun
 | 403 | Authenticated but not authorized |
 | 404 | Resource not found, or `user` querying someone else's run |
 | 409 | Idempotency conflict, unique constraint violation, illegal state transition (e.g., cancel a COMPLETED run) |
-| 422 | Domain rejection: `NO_FEASIBLE_CANDIDATES`, `SSA_INFEASIBLE`, `AC3_DOMAIN_EMPTY`, `BIPARTITE_MATCHING_INSUFFICIENT` (techspec §8.3) |
+| 422 | Domain rejection: `NO_FEASIBLE_CANDIDATES`, `SSA_INFEASIBLE`, `AC3_DOMAIN_EMPTY`, `BIPARTITE_MATCHING_INSUFFICIENT`, `COMPETENCY_MISMATCH` (techspec §4.3 `[HC-COMPETENCY]`, §8.3) |
+
+**`COMPETENCY_MISMATCH` is per-offering, not per-run.** Unlike `SSA_INFEASIBLE`, `AC3_DOMAIN_EMPTY`, or `BIPARTITE_MATCHING_INSUFFICIENT`, the `COMPETENCY_MISMATCH` code is emitted by Pre-GA's `checkCompetencies` (techspec §4.3) against an individual `CourseOffering` and appears inside the `preGASummary.infeasible[]` list returned with the run, not as a top-level run failure. A run only escalates to a top-level `422 NO_FEASIBLE_CANDIDATES` when the **entire** feasible list is empty after Pre-GA — i.e., every offering was rejected (whether for `COMPETENCY_MISMATCH` or any other Layer 1 reason). A run with some competency-rejected offerings and some feasible offerings still proceeds through SSA → GA on the feasible subset.
 | 429 | Rate limit exceeded |
 | 500 | Unhandled internal error |
 | 503 | Worker queue unavailable, DB unreachable |
@@ -856,15 +889,17 @@ Standard CRUD. Bodies match the Prisma fields directly.
 |---|---|---|---|
 | GET | `/lecturers` | both | – |
 | GET | `/lecturers/:id` | both | – |
-| POST | `/lecturers` | both | `{ semesterId, name, isStructural?, preferredTimeSlotIds?: number[] }` — `user` cannot set `isStructural` (server forces `false`). |
-| PATCH | `/lecturers/:id` | both | Same fields; `user` cannot change `isStructural`. |
+| POST | `/lecturers` | both | `{ semesterId, name, isStructural?, preferredTimeSlotIds?: number[], competencies?: string[] }` — `user` cannot set `isStructural` (server forces `false`); `competencies` defaults to `[]` if omitted (techspec §5.5). |
+| PATCH | `/lecturers/:id` | both | Same fields; `user` cannot change `isStructural`. `competencies` is fully editable by both roles. |
 | DELETE | `/lecturers/:id` | admin | 409 if referenced by any `CourseOfferingLecturer`. |
 
 The `allowFields` middleware drops `isStructural` from a `user` request body before Prisma sees it. This is asserted with a 400 + warning when the field is present and the caller is a user (so the client can correct the UI).
 
 #### 5.3.6 Courses (admin + user)
 
-Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[] }`. Both roles may create and update; only admin may delete (parallels Lecturer).
+Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[], requiredCompetencies?: string[] }`. Both roles may create and update; only admin may delete (parallels Lecturer). `requiredCompetencies` defaults to `[]` (open assignment — techspec §5.5).
+
+**Competency vocabulary alignment.** Per techspec §5.5, the strings in `Lecturer.competencies` and `Course.requiredCompetencies` are intentionally **free-form** (e.g., `'algorithms'`, `'databases'`, `'ai-ml'`) and **string equality** is the matcher. There is no enum, no central vocabulary table, and no normalization beyond the trim/dedupe rules in §6. The Kaprodi is responsible for spelling and casing consistency; the API does not coerce. See OQ-9 in §9 for the future option of promoting this to an enum / relational `Competency` table once the canonical taxonomy stabilizes.
 
 #### 5.3.7 CourseOfferings (admin + user, with field restrictions)
 
@@ -901,6 +936,8 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
   }
   ```
   The `config` object is exactly `GAConfig` from `src/types.ts` plus the `hardPenaltyWeight` / `softPenaltyWeight` fields the techspec §4.3 mandates (`[ARCH-OBS-01]`).
+
+  **GAConfig truth-table note.** As of this revision, the in-code `GAConfig` interface in `src/types.ts:149-157` does **not yet** carry `hardPenaltyWeight` / `softPenaltyWeight` — only the seven hyperparameters `populationSize` / `generations` / `mutationRate` / `elitismCount` / `tournamentSize` / `crossoverType` / `noiseRate`. The techspec §4.3 (`[ARCH-OBS-01]`) mandates the two additional weights with defaults `100` / `1`. The **API contract above is the authoritative shape** for `GAConfig` going forward; `src/types.ts` is expected to converge by adding the two fields. Until that convergence, the worker reads the weights from the persisted `configJson` even if the in-memory type does not yet declare them. Do not assume the in-code type already includes them.
 - Response 202:
   ```json
   {
@@ -930,6 +967,7 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
       "bestFitness": 0.972,
       "hardViolations": 0,
       "softPenalty": 28,
+      "competencyMismatch": 0,
       "stagnatedEarly": false,
       "generationsRun": 142,
       "history": [0.41, 0.55, ...],
@@ -989,9 +1027,18 @@ The endpoint terminates the stream on COMPLETED, FAILED, CANCELLED, SSA_INFEASIB
   - `AuthzError` → 403 `FORBIDDEN`.
   - `NotFoundError` → 404 `NOT_FOUND`.
   - `ConflictError` → 409 with concrete code.
-  - `DomainError` → 422 with concrete code; the techspec §8.3 codes (`NO_FEASIBLE_CANDIDATES`, `SSA_INFEASIBLE`, `AC3_DOMAIN_EMPTY`, `BIPARTITE_MATCHING_INSUFFICIENT`) live here.
+  - `DomainError` → 422 with concrete code; the techspec §8.3 codes (`NO_FEASIBLE_CANDIDATES`, `SSA_INFEASIBLE`, `AC3_DOMAIN_EMPTY`, `BIPARTITE_MATCHING_INSUFFICIENT`, `COMPETENCY_MISMATCH`) live here. Note: `COMPETENCY_MISMATCH` is a per-offering Pre-GA rejection that surfaces inside `preGASummary.infeasible[]` rather than as the top-level run error — see §5.2 for the escalation rule.
   - Unknown → 500 `INTERNAL_ERROR`; full stack trace logged with the request ID, never returned to the client.
 - **Request ID propagation:** `requestId` middleware reads `X-Request-Id` (or generates a UUID v4), attaches to `req.id`, mirrors back as a response header, threads into pino logger context, and is included in `AuditLog.metadata`.
+- **Competency array validation (Zod).** Both `Lecturer.competencies` and `Course.requiredCompetencies` (techspec §5.5) are validated by the same shared Zod schema applied in `POST /lecturers`, `PATCH /lecturers/:id`, `POST /courses`, and `PATCH /courses/:id`:
+  ```ts
+  const competencyTagSchema = z.string().trim().min(1, 'empty competency tag');
+  const competencyArraySchema = z
+    .array(competencyTagSchema)
+    .max(32, 'too many competency tags (max 32)')
+    .transform((arr) => Array.from(new Set(arr))); // dedupe with Set semantics
+  ```
+  Each element must be a non-empty trimmed string; the validator deduplicates the array (Set semantics) at the boundary so downstream code never sees duplicates; the array is capped at 32 entries to prevent abuse. Casing is preserved as-entered — string equality is the matcher per techspec §5.5, so the Kaprodi is responsible for spelling consistency. Empty arrays are valid and have the techspec-defined "open assignment" semantics.
 
 ---
 
@@ -1013,6 +1060,20 @@ The endpoint terminates the stream on COMPLETED, FAILED, CANCELLED, SSA_INFEASIB
 - **Concurrency cap:** the queue is configured with `concurrency: 1` per Redis instance for the prototype — running two GAs simultaneously on the same machine would slow both. For multi-instance deployment, set concurrency to the number of CPU cores on the worker host.
 - **Why not a worker thread?** A queue gives us per-run persistence, retry, cancellation, and horizontal scaling for the same engineering effort, and it is the path the techspec §7.1 `[ARCH-OBS-02]` already recommends. A `worker_threads` implementation would need a separate cancellation channel, a separate progress-streaming channel, and would still block on a single process.
 
+### 7.1 Competency eligibility map construction (`[HC-COMPETENCY]` runtime)
+
+Per techspec §6.1 step 21a and §4.3, the worker constructs a `CompetencyEligibilityMap` once per pipeline run, between the SSA `FEASIBLE` decision and the call into `runGA`. The shape is fixed by the techspec:
+
+```ts
+type CompetencyEligibilityMap = Map<offeringId: number, Set<eligibleLecturerId: number>>;
+```
+
+**Construction.** Iterate the feasible `PreGACandidate[]` from Pre-GA. For each candidate, look up the corresponding `Lecturer[]` and `Course` rows from the just-loaded data and call the canonical helper `isLecturerEligibleForCourse(lecturer, course)` from `src/pre-ga/checks.ts` — the **only** function permitted to compare `Lecturer.competencies` against `Course.requiredCompetencies` per techspec §5.5. Emit one map entry per offering: the set of `lecturerId`s for which the helper returns `true`. The map is then threaded into `runGA(...)` as the optional final argument; `runGA` forwards it to `evaluateCompetencyMismatch` in the fitness function.
+
+**Persistence.** The map is **not persisted**. It is rebuilt per run from the current `Lecturer.competencies` and `Course.requiredCompetencies` rows, so a competency edit by the Kaprodi between two runs takes effect on the next run without any cache-invalidation step.
+
+**Defense-in-depth, not the primary gate.** Pre-GA's `checkCompetencies` is the **primary** gate (techspec §4.3): an offering whose lecturers fail the competency match is rejected with `COMPETENCY_MISMATCH` before SSA or GA see it. The GA's `evaluateCompetencyMismatch` is **defense in depth** — it ensures any chromosome whose gene happens to assign a non-eligible lecturer (e.g., through a future mutation that swaps lecturers) contributes to `hardViolations` and therefore loses dominance. In the current architecture the GA does not reassign lecturers, so this is a guard rail rather than a frequently-triggered code path; it exists so that any future GA operator that touches the lecturer dimension cannot silently violate `[HC-COMPETENCY]`.
+
 ---
 
 ## 8. Audit & Traceability
@@ -1030,7 +1091,7 @@ Every state-changing endpoint writes one `AuditLog` row. The `actorId` is `req.u
 | `schedule_run.create` | admin or user | `{ semesterId, config }` |
 | `schedule_run.cancel` / `schedule_run.delete` | admin or user | `{ status }` |
 | `schedule_run.assignment_override` | admin or user (own run only) | `{ runId, assignmentId, before, after }` — **mandatory** for thesis empirical validation (techspec §3.2 calls this out as in-scope). |
-| `schedule_run.completed` | system | `{ runId, durationMs, hardViolations, softPenalty }` |
+| `schedule_run.completed` | system | `{ runId, durationMs, hardViolations, softPenalty, competencyMismatch }` — `competencyMismatch` is included so the audit log can attribute hard violations to `[HC-COMPETENCY]` (techspec §4.3) specifically, not a single opaque integer. Sourced from `EvaluatedChromosome.competencyMismatch` (`src/types.ts:139-147`). |
 
 Audit logs are append-only. Only `admin` can read `/audit-logs`. The table is indexed on `(entityType, entityId)` and `createdAt` so the frontend can show "history of changes for this offering / this run" cheaply.
 
@@ -1048,5 +1109,6 @@ Audit logs are append-only. Only `admin` can read `/audit-logs`. The table is in
 | **OQ-6** | **Token TTLs.** Access 15 min / refresh 7 days are sensible defaults, but the Kaprodi may run a single long session during exam-period scheduling. Adjust? | 15m / 7d. |
 | **OQ-7** | **Soft-delete vs hard-delete for `User` and `ScheduleRun`.** I have specified soft-deactivate for users (preserves audit) and hard delete for schedule runs (with cascade). Confirm the run-deletion behaviour — for thesis empirical validation, you may prefer soft-delete on runs too. | User soft, run hard. |
 | **OQ-8** | **`isFixed` vs `LockedRoom` redundancy.** Section 3.5 keeps both because the techspec keeps both, but it is a real source of confusion. Should we deprecate `CourseOffering.isFixed` post-migration and treat `LockedRoom` as the single source of truth? | Keep both, document the merge in `entityTagger`. |
+| **OQ-9** | **Competency vocabulary type promotion.** Should the competency vocabulary on `Lecturer.competencies` and `Course.requiredCompetencies` (techspec §5.5) be promoted from free-form `string[]` to a Prisma `enum Competency` or a relational `Competency` / `LecturerCompetency` table once the canonical taxonomy stabilizes? Pros of promotion: integrity (no typos / case drift), referential constraints, ability to attach metadata (e.g., a label, a parent area). Cons: schema migration each time the Kaprodi adds a tag, harder for the curator to iterate quickly. Per techspec `[ARCH-OBS-05]` the current target is intentionally untyped strings. | Keep as `string[]` for the thesis build; revisit after a semester of real usage. |
 
 ---
