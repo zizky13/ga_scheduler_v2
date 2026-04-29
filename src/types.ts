@@ -72,6 +72,7 @@ export interface PreGACandidate {
   lecturerIds: number[];
   requiredSessions: number;    // ⌈effectiveStudentCount / roomCapacity⌉
   possibleTimeSlotIds: number[];
+  possibleRoomIds?: number[];  // techspec §6.3 / [ARCH-OBS-04] — for FLEXIBLE offerings
   isFixedRoom: boolean; // <-- FIXED
   fixedTimeSlotIds?: number[];
   parentOfferingId?: number; // <-- FIXED
@@ -129,10 +130,21 @@ export interface SSAResult {
 
 // ─── Layer 3: GA Types ───────────────────────────────────────────
 
-export interface Gene {
+export interface FixedRoomGene {
+  kind: 'FIXED';
   offeringId: number;
+  roomId: number;            // immutable
   assignedTimeSlotIds: number[]; // length === requiredSessions
 }
+
+export interface FlexibleGene {
+  kind: 'FLEXIBLE';
+  offeringId: number;
+  roomId: number;            // mutable
+  assignedTimeSlotIds: number[]; // length === requiredSessions
+}
+
+export type Gene = FixedRoomGene | FlexibleGene;
 
 export type Chromosome = Gene[];
 

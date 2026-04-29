@@ -16,14 +16,43 @@
 import type { Chromosome, Gene } from '../types.js';
 
 /** Runtime masking invariant check (non-production only) */
-export function assertMaskingInvariant(parent: Gene, child: Gene, locus: number): void {
+export function assertMaskingInvariant(parent: Gene, child: Gene, locus: number): void;
+export function assertMaskingInvariant(parent: Chromosome, child: Chromosome): void;
+export function assertMaskingInvariant(
+  parent: Gene | Chromosome,
+  child: Gene | Chromosome,
+  locus?: number
+): void {
+  // Chromosome-level overload: walk locus-by-locus and delegate.
+  if (Array.isArray(parent) && Array.isArray(child)) {
+    if (parent.length !== child.length) {
+      throw new Error(
+        `MASKING VIOLATION: parent length ${parent.length} !== child length ${child.length}`
+      );
+    }
+    for (let i = 0; i < parent.length; i++) {
+      const p = parent[i]!;
+      const c = child[i]!;
+      if (p.offeringId !== c.offeringId) {
+        throw new Error(
+          `MASKING VIOLATION at locus ${i}: offeringId changed from ${p.offeringId} to ${c.offeringId}`
+        );
+      }
+      assertMaskingInvariant(p, c, i);
+    }
+    return;
+  }
+
+  // Per-locus overload (original body, behavior unchanged).
+  const parentGene = parent as Gene;
+  const childGene = child as Gene;
   if (process.env.NODE_ENV !== 'production') {
-    if (parent.kind === 'FIXED') {
-      if (child.kind !== 'FIXED' || parent.roomId !== child.roomId) {
+    if (parentGene.kind === 'FIXED') {
+      if (childGene.kind !== 'FIXED' || parentGene.roomId !== childGene.roomId) {
         throw new Error(
           `MASKING VIOLATION at locus ${locus}: ` +
-          `Fixed gene roomId changed from ${parent.roomId} to ${
-            child.kind === 'FIXED' ? child.roomId : 'FLEXIBLE(kind changed)'
+          `Fixed gene roomId changed from ${parentGene.roomId} to ${
+            childGene.kind === 'FIXED' ? childGene.roomId : 'FLEXIBLE(kind changed)'
           }`
         );
       }

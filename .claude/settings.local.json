@@ -4,7 +4,12 @@
       "Bash(npx tsc *)",
       "Bash(npm run *)",
       "Bash(sed -n '149,160p' src/types.ts)",
-      "Bash(sed -n '184p' README.md)"
+      "Bash(sed -n '184p' README.md)",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(npm test *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo \"---TSC EXIT $?---\")"
     ]
   }
 }
