@@ -10,7 +10,20 @@
  * 6. policy        — UPJ-specific academic rules
  */
 
-import type { CourseOffering, CheckResult } from '../types.js';
+import type { CourseOffering, CheckResult, Lecturer, Course } from '../types.js';
+
+// ─── Eligibility Helper ─────────────────────────────────────────
+// A lecturer is eligible for a course iff:
+//   - the course has no requiredCompetencies (open assignment), OR
+//   - the lecturer's competencies intersect requiredCompetencies (≥ 1 match).
+export function isLecturerEligibleForCourse(lecturer: Lecturer, course: Course): boolean {
+  if (course.requiredCompetencies.length === 0) return true;
+  const owned = new Set(lecturer.competencies);
+  for (const req of course.requiredCompetencies) {
+    if (owned.has(req)) return true;
+  }
+  return false;
+}
 
 // ─── Check 1: Data Integrity ────────────────────────────────────
 export function checkIntegrity(offering: CourseOffering): CheckResult {
@@ -92,7 +105,29 @@ export function checkLecturer(offering: CourseOffering): CheckResult {
   return { passed: true, code: 'OK', message: '' };
 }
 
-// ─── Check 6: Academic Policy ───────────────────────────────────
+// ─── Check 6: Lecturer Competency ───────────────────────────────
+// Every assigned lecturer must own ≥ 1 competency required by the course.
+// If the course has no requiredCompetencies, this check is a no-op.
+export function checkCompetencies(offering: CourseOffering): CheckResult {
+  const required = offering.course.requiredCompetencies;
+  if (!required || required.length === 0) {
+    return { passed: true, code: 'OK', message: '' };
+  }
+  for (const lecturer of offering.lecturers) {
+    if (!isLecturerEligibleForCourse(lecturer, offering.course)) {
+      return {
+        passed: false, code: 'COMPETENCY_MISMATCH',
+        message:
+          `Offering ${offering.id} (${offering.course.name}) requires competencies ` +
+          `[${required.join(', ')}] but lecturer ${lecturer.name} only has ` +
+          `[${lecturer.competencies.join(', ')}].`,
+      };
+    }
+  }
+  return { passed: true, code: 'OK', message: '' };
+}
+
+// ─── Check 7: Academic Policy ───────────────────────────────────
 export function checkPolicy(offering: CourseOffering): CheckResult {
   // Fixed offerings must have fixedTimeSlotIds specified
   if (offering.isFixed && (!offering.fixedTimeSlotIds || offering.fixedTimeSlotIds.length === 0)) {

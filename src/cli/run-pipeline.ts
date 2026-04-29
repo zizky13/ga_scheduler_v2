@@ -7,6 +7,7 @@
 import type { GAConfig } from '../types.js';
 import { courseOfferings, infeasibleOfferings, timeSlots, lecturers, rooms } from '../db/seed.js';
 import { runPreGA } from '../pre-ga/validator.js';
+import { isLecturerEligibleForCourse } from '../pre-ga/checks.js';
 import { runSSA } from '../ssa/index.js';
 import { runStaticExclusion } from '../ssa/staticExclusion.js';
 import { runGA } from '../ga/runGA.js';
@@ -119,6 +120,16 @@ const lecturerStructuralMap = new Map<number, boolean>(
   lecturers.map(l => [l.id, l.isStructural])
 );
 
+// Build competency eligibility map: offeringId → eligible lecturerIds
+const competencyEligibilityMap = new Map<number, Set<number>>(
+  validation.feasible.map(o => [
+    o.id,
+    new Set(
+      lecturers.filter(l => isLecturerEligibleForCourse(l, o.course)).map(l => l.id)
+    ),
+  ])
+);
+
 // Build lecturer preference map
 const lecturerPreferenceMap = new Map<number, Set<number>>(
   lecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
@@ -160,7 +171,7 @@ for (const crossoverType of crossoverTypes) {
   };
 
   const l3Start = performance.now();
-  const gaResult = runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+  const gaResult = runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config, competencyEligibilityMap);
   const l3Duration = Math.round(performance.now() - l3Start);
 
   console.log(`\n  Results:`);

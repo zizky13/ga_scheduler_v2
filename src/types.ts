@@ -24,6 +24,7 @@ export interface Lecturer {
   name: string;
   isStructural: boolean;         // e.g., department head — soft constraint
   preferredTimeSlotIds: number[]; // slots the lecturer prefers (soft constraint)
+  competencies: string[];        // e.g., ['algorithms', 'databases']
 }
 
 export interface Course {
@@ -32,6 +33,7 @@ export interface Course {
   name: string;
   sks: number;       // credit hours
   requiredFacilities: string[]; // e.g., ['LAB']
+  requiredCompetencies: string[]; // e.g., ['ai-ml']; empty = no restriction
 }
 
 export interface CourseOffering {
@@ -141,6 +143,7 @@ export interface EvaluatedChromosome {
   softPenalty: number;
   structuralPenalty: number;
   preferencePenalty: number;
+  competencyMismatch: number;
 }
 
 export interface GAConfig {

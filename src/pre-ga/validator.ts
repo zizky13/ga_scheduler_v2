@@ -6,7 +6,7 @@
  */
 
 import type { CourseOffering, PreGACandidate, PreGAValidationResult, TimeSlot } from '../types.js';
-import { checkIntegrity, checkRoomCapacity, checkTemporal, checkFacility, checkLecturer, checkPolicy } from './checks.js';
+import { checkIntegrity, checkRoomCapacity, checkTemporal, checkFacility, checkLecturer, checkCompetencies, checkPolicy } from './checks.js';
 import { tagEntities } from './entityTagger.js';
 
 /**
@@ -28,6 +28,7 @@ export function runPreGA(
     (o: CourseOffering) => checkTemporal(o, totalSlots),
     (o: CourseOffering) => checkFacility(o),
     (o: CourseOffering) => checkLecturer(o),
+    (o: CourseOffering) => checkCompetencies(o),
     (o: CourseOffering) => checkPolicy(o),
   ];
 

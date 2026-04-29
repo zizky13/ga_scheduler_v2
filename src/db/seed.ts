@@ -62,50 +62,58 @@ export const lecturers: Lecturer[] = [
   {
     id: 1, name: 'Dr. Andi Suryadi', isStructural: true,
     preferredTimeSlotIds: [1, 2, 4, 5],            // Mon & Tue mornings (dept head)
+    competencies: ['ai-ml', 'networks', 'algorithms'],
   },
   {
     id: 2, name: 'Budi Hartono, M.Kom', isStructural: false,
     preferredTimeSlotIds: [1, 2, 3, 4, 5, 6],      // Mon & Tue (any slot)
+    competencies: ['algorithms', 'networks', 'software-engineering'],
   },
   {
     id: 3, name: 'Citra Lestari, M.T.', isStructural: false,
     preferredTimeSlotIds: [7, 8, 9, 10, 11, 12],   // Wed & Thu only
+    competencies: ['algorithms', 'visual-design'],
   },
   {
     id: 4, name: 'Dewi Anggraeni, Ph.D.', isStructural: false,
     preferredTimeSlotIds: [4, 5, 6, 7, 8, 9],      // Tue & Wed
+    competencies: ['databases', 'software-engineering'],
   },
   {
     id: 5, name: 'Eko Prasetyo, M.Sc.', isStructural: true,
     preferredTimeSlotIds: [1, 4, 7, 10, 13],        // Morning only (08:00–10:00)
+    competencies: ['software-engineering', 'cloud', 'ai-ml'],
   },
   {
     id: 6, name: 'Fani Rahayu, M.Kom', isStructural: false,
     preferredTimeSlotIds: [3, 6, 9, 12, 15],        // Afternoon only (13:00–15:00)
+    competencies: ['security', 'software-engineering'],
   },
   {
     id: 7, name: 'Gunawan Wibowo, M.T.', isStructural: false,
     preferredTimeSlotIds: [10, 11, 12, 13, 14, 15], // Thu & Fri only
+    competencies: ['os', 'algorithms', 'networks'],
   },
   {
     id: 8, name: 'Hesti Kusuma, Ph.D.', isStructural: false,
     preferredTimeSlotIds: [],                        // No preference (fully flexible)
+    competencies: ['ai-ml', 'algorithms', 'math'],
   },
 ];
 
 // ─── Courses ─────────────────────────────────────────────────────
 export const courses: Course[] = [
-  { id: 1,  code: 'IF101', name: 'Algoritma & Pemrograman', sks: 3, requiredFacilities: ['LAB'] },
-  { id: 2,  code: 'IF102', name: 'Struktur Data',           sks: 3, requiredFacilities: [] },
-  { id: 3,  code: 'IF201', name: 'Basis Data',              sks: 3, requiredFacilities: ['LAB'] },
-  { id: 4,  code: 'IF202', name: 'Jaringan Komputer',       sks: 3, requiredFacilities: [] },
-  { id: 5,  code: 'IF301', name: 'Rekayasa Perangkat Lunak', sks: 3, requiredFacilities: [] },
-  { id: 6,  code: 'IF302', name: 'Kecerdasan Buatan',       sks: 3, requiredFacilities: [] },
-  { id: 7,  code: 'DK101', name: 'Desain Visual',           sks: 2, requiredFacilities: ['STUDIO'] },
-  { id: 8,  code: 'IF401', name: 'Tugas Akhir Seminar',     sks: 2, requiredFacilities: [] },
-  { id: 9,  code: 'IF203', name: 'Sistem Operasi',          sks: 3, requiredFacilities: ['LAB'] },
-  { id: 10, code: 'IF303', name: 'Keamanan Informasi',      sks: 3, requiredFacilities: [] },
-  { id: 11, code: 'IF304', name: 'Komputasi Awan',          sks: 3, requiredFacilities: [] },
+  { id: 1,  code: 'IF101', name: 'Algoritma & Pemrograman', sks: 3, requiredFacilities: ['LAB'],     requiredCompetencies: ['algorithms'] },
+  { id: 2,  code: 'IF102', name: 'Struktur Data',           sks: 3, requiredFacilities: [],          requiredCompetencies: ['algorithms'] },
+  { id: 3,  code: 'IF201', name: 'Basis Data',              sks: 3, requiredFacilities: ['LAB'],     requiredCompetencies: ['databases'] },
+  { id: 4,  code: 'IF202', name: 'Jaringan Komputer',       sks: 3, requiredFacilities: [],          requiredCompetencies: ['networks'] },
+  { id: 5,  code: 'IF301', name: 'Rekayasa Perangkat Lunak', sks: 3, requiredFacilities: [],         requiredCompetencies: ['software-engineering'] },
+  { id: 6,  code: 'IF302', name: 'Kecerdasan Buatan',       sks: 3, requiredFacilities: [],          requiredCompetencies: ['ai-ml'] },
+  { id: 7,  code: 'DK101', name: 'Desain Visual',           sks: 2, requiredFacilities: ['STUDIO'],  requiredCompetencies: ['visual-design'] },
+  { id: 8,  code: 'IF401', name: 'Tugas Akhir Seminar',     sks: 2, requiredFacilities: [],          requiredCompetencies: [] },
+  { id: 9,  code: 'IF203', name: 'Sistem Operasi',          sks: 3, requiredFacilities: ['LAB'],     requiredCompetencies: ['os'] },
+  { id: 10, code: 'IF303', name: 'Keamanan Informasi',      sks: 3, requiredFacilities: [],          requiredCompetencies: ['security'] },
+  { id: 11, code: 'IF304', name: 'Komputasi Awan',          sks: 3, requiredFacilities: [],          requiredCompetencies: ['cloud'] },
 ];
 
 // ═══════════════════════════════════════════════════════════════════

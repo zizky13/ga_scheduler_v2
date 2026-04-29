@@ -8,7 +8,7 @@
 
 import type { Chromosome, Gene, PreGACandidate, EvaluatedChromosome, GAConfig, GAResult } from '../types.js';
 import { generateInitialPopulation } from './population.js';
-import { evaluateFitness } from './fitness.js';
+import { evaluateFitness, type CompetencyEligibilityMap } from './fitness.js';
 import { tournamentSelection } from './selection.js';
 import { getCrossoverFn } from './crossover.js';
 import { mutateChromosome } from './mutation.js';
@@ -21,7 +21,8 @@ export function runGA(
   candidates: PreGACandidate[],
   lecturerStructuralMap: Map<number, boolean>,
   lecturerPreferenceMap: Map<number, Set<number>>,
-  config: GAConfig
+  config: GAConfig,
+  competencyEligibilityMap?: CompetencyEligibilityMap
 ): GAResult {
   const crossover = getCrossoverFn(config.crossoverType);
 
@@ -54,7 +55,7 @@ export function runGA(
       softPenaltyWeight: config.softPenaltyWeight,
     };
     const evaluated: EvaluatedChromosome[] = population.map(ch =>
-      evaluateFitness(ch, candidates, lecturerStructuralMap, lecturerPreferenceMap, fitnessConfig)
+      evaluateFitness(ch, candidates, lecturerStructuralMap, lecturerPreferenceMap, fitnessConfig, competencyEligibilityMap)
     );
 
     // Sort by fitness descending

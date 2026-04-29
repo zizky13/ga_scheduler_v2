@@ -21,6 +21,14 @@ export interface FitnessConfig {
 }
 
 /**
+ * Eligibility map: offeringId → Set of lecturerIds that are competency-eligible
+ * for that offering's course. Built once per pipeline run from Lecturer/Course data
+ * (see isLecturerEligibleForCourse). Empty Set means "no eligible lecturer";
+ * any non-eligible lecturer assigned in a gene counts as a hard violation.
+ */
+export type CompetencyEligibilityMap = Map<number, Set<number>>;
+
+/**
  * Evaluate hard constraint violations.
  * Uses gene.roomId (may differ from candidate.roomId for FLEXIBLE genes
  * when possibleRoomIds are in play).
@@ -50,6 +58,37 @@ export function evaluateHardFitness(
         const lecCount = (lecturerTimeMap.get(lecKey) ?? 0) + 1;
         lecturerTimeMap.set(lecKey, lecCount);
         if (lecCount > 1) violations++;
+      }
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * Competency mismatch — hard violation count.
+ * For each gene, every assigned lecturer not in the eligibility set contributes
+ * one violation per scheduled session (mirrors room/lecturer collision counting).
+ * If no eligibility map is supplied, treat all assignments as eligible (no-op).
+ */
+export function evaluateCompetencyMismatch(
+  chromosome: Chromosome,
+  candidates: PreGACandidate[],
+  eligibilityMap?: CompetencyEligibilityMap
+): number {
+  if (!eligibilityMap) return 0;
+  const candidateMap = new Map(candidates.map(c => [c.offeringId, c]));
+  let violations = 0;
+
+  for (const gene of chromosome) {
+    const candidate = candidateMap.get(gene.offeringId);
+    if (!candidate) continue;
+    const eligible = eligibilityMap.get(gene.offeringId);
+    if (!eligible) continue; // no entry = open assignment
+
+    for (const lecturerId of candidate.lecturerIds) {
+      if (!eligible.has(lecturerId)) {
+        violations += gene.assignedTimeSlotIds.length;
       }
     }
   }
@@ -124,9 +163,12 @@ export function evaluateFitness(
   candidates: PreGACandidate[],
   lecturerStructuralMap: Map<number, boolean>,
   lecturerPreferenceMap: Map<number, Set<number>>,
-  config: FitnessConfig = { hardPenaltyWeight: 100, softPenaltyWeight: 1 }
+  config: FitnessConfig = { hardPenaltyWeight: 100, softPenaltyWeight: 1 },
+  competencyEligibilityMap?: CompetencyEligibilityMap
 ): EvaluatedChromosome {
-  const hardViolations = evaluateHardFitness(chromosome, candidates);
+  const collisionViolations = evaluateHardFitness(chromosome, candidates);
+  const competencyMismatch = evaluateCompetencyMismatch(chromosome, candidates, competencyEligibilityMap);
+  const hardViolations = collisionViolations + competencyMismatch;
   const structuralPenalty = calculateStructuralPenalty(chromosome, candidates, lecturerStructuralMap);
   const preferencePenalty = calculatePreferencePenalty(chromosome, candidates, lecturerPreferenceMap);
   const softPenalty = structuralPenalty + preferencePenalty;
@@ -137,5 +179,5 @@ export function evaluateFitness(
     (softPenalty * config.softPenaltyWeight)
   );
 
-  return { chromosome, fitness, hardViolations, softPenalty, structuralPenalty, preferencePenalty };
+  return { chromosome, fitness, hardViolations, softPenalty, structuralPenalty, preferencePenalty, competencyMismatch };
 }
