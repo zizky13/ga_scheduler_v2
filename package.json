@@ -1,0 +1,22 @@
+{
+  "name": "ga_scheduler_v2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "layer1": "npx tsx src/cli/run-layer1.ts",
+    "layer2": "npx tsx src/cli/run-layer2.ts",
+    "layer3": "npx tsx src/cli/run-layer3.ts",
+    "pipeline": "npx tsx src/cli/run-pipeline.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  }
+}
