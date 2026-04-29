@@ -8,7 +8,7 @@ This is the backend computation core for a final-year thesis ("Tugas Akhir") pro
 
 ## Why This Exists
 
-Course timetabling at UPJ's Faculty of Technology and Design is a combinatorial NP-Hard problem (search space ≈ 800,000+ combinations before constraint filtering). Running a Genetic Algorithm directly on bad inputs wastes minutes of compute and can return "best" schedules that still violate hard constraints. This project addresses that with a **three-layer pipeline** that proves a solution can exist *before* searching for one:
+Course timetabling at UPJ's Faculty of Technology and Design is a combinatorial NP-Hard problem (search space ≈ 800,000+ combinations before constraint filtering). Running a Genetic Algorithm directly on bad inputs wastes minutes of compute and can return "best" schedules that still violate hard constraints. This project addresses that with a **three-layer pipeline** that proves a solution can exist _before_ searching for one:
 
 1. **Layer 1 — Pre-GA Policy Engine** (deterministic, O(n)): seven per-offering checks (integrity, room capacity, temporal, facility, lecturer, **competencies**, policy), then entity tagging that marks each candidate as `Fixed Room` or `Flexible`. The competency check is the primary gate that filters out lecturer assignments whose declared expertise does not cover the course's required competencies.
 2. **Layer 2 — Static Structural Analysis / SSA** (deterministic, O(E√V)): static exclusion of locked `(room, slot)` coordinates, AC-3 constraint propagation, and Hopcroft–Karp maximum bipartite matching as a global feasibility proof.
@@ -68,13 +68,13 @@ The mock dataset (rooms, time slots, lecturers, courses, course offerings, and a
 
 Defined in `package.json`:
 
-| Script | Command | What it does |
-|---|---|---|
-| `layer1` | `npm run layer1` | Runs the Pre-GA validator end-to-end on the mock seed (feasible + infeasible offerings) and prints validation results, candidates, and the entity tagger summary. |
-| `layer2` | `npm run layer2` | Runs the SSA layer in isolation across five test scenarios: a feasible dataset, Phase 0 static exclusion verification, a forced Hopcroft–Karp infeasibility, an AC-3 forced conflict, and a Phase 0 + AC-3 elimination. |
-| `layer3` | `npm run layer3` | Runs Layer 1 → Layer 2 → Layer 3 (single GA run) and prints the best chromosome, fitness history, and validation status. |
-| `pipeline` | `npm run pipeline` | Full three-layer orchestrator. Runs the GA across all three crossover strategies (`singlePoint`, `uniform`, `pmx`) against the same inputs and prints a comparative summary plus the final schedule from the PMX run. |
-| `test` | `npm test` | **Not implemented** — the script is a placeholder that exits with an error. (`TODO`: wire up a real test runner.) |
+| Script     | Command            | What it does                                                                                                                                                                                                            |
+| ---------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `layer1`   | `npm run layer1`   | Runs the Pre-GA validator end-to-end on the mock seed (feasible + infeasible offerings) and prints validation results, candidates, and the entity tagger summary.                                                       |
+| `layer2`   | `npm run layer2`   | Runs the SSA layer in isolation across five test scenarios: a feasible dataset, Phase 0 static exclusion verification, a forced Hopcroft–Karp infeasibility, an AC-3 forced conflict, and a Phase 0 + AC-3 elimination. |
+| `layer3`   | `npm run layer3`   | Runs Layer 1 → Layer 2 → Layer 3 (single GA run) and prints the best chromosome, fitness history, and validation status.                                                                                                |
+| `pipeline` | `npm run pipeline` | Full three-layer orchestrator. Runs the GA across all three crossover strategies (`singlePoint`, `uniform`, `pmx`) against the same inputs and prints a comparative summary plus the final schedule from the PMX run.   |
+| `test`     | `npm test`         | **Not implemented** — the script is a placeholder that exits with an error. (`TODO`: wire up a real test runner.)                                                                                                       |
 
 Each script is just `npx tsx src/cli/<file>.ts`, so you can also run them directly with `npx tsx ...` if you prefer.
 
@@ -166,7 +166,7 @@ These cover topics that are intentionally **not** repeated in this README, inclu
 - Stagnation detection (`STAGNATION_WINDOW = 100`) and early-exit semantics
 - The intended Prisma schema, Redis state model, and Express API surface (not yet implemented in this repo)
 
-The spec docs are written primarily in English with some Indonesian terminology (e.g., *Kaprodi*, *Sesi A/B*, *Semester Ganjil*) where it reflects UPJ's institutional vocabulary.
+The spec docs are written primarily in English with some Indonesian terminology (e.g., _Kaprodi_, _Sesi A/B_, _Semester Ganjil_) where it reflects UPJ's institutional vocabulary.
 
 ---
 
@@ -178,10 +178,10 @@ The spec docs are written primarily in English with some Indonesian terminology 
 
 No new infrastructure. Everything below can ship against the current `tsx`-only repo and the in-memory seed.
 
-- [ ] `[P0/S]` Bump `STAGNATION_WINDOW` from 15 to 100 in `src/ga/runGA.ts` to match PRD v6.0 (techspec §12 MEDIUM, §4.2, ADR-05).
-- [ ] `[P0/S]` Replace any biased `Array.sort(() => Math.random() - 0.5)` shuffle with a `fisherYatesShuffle` helper across `src/ga/mutation.ts`, `src/ga/crossover.ts`, and `src/ga/population.ts` (techspec §12 MEDIUM, `[ARCH-OBS-03]`).
-- [ ] `[P0/S]` Add `competencyMismatch: number` to `EvaluatedChromosome` and `GAResult` in `src/types.ts`; thread it through `src/ga/fitness.ts` and `src/ga/runGA.ts` so the audit counter is exposed end-to-end (api_design §3.2, §5.3.8, §8).
-- [ ] `[P0/S]` Add `hardPenaltyWeight` and `softPenaltyWeight` (defaults `100` / `1`) to `GAConfig` in `src/types.ts` and consume them in `src/ga/fitness.ts` instead of inline constants (techspec §4.3 `[ARCH-OBS-01]`, api_design §5.3.8 GAConfig truth-table note).
+- [x] `[P0/S]` Bump `STAGNATION_WINDOW` from 15 to 100 in `src/ga/runGA.ts` to match PRD v6.0 (techspec §12 MEDIUM, §4.2, ADR-05).
+- [x] `[P0/S]` Replace any biased `Array.sort(() => Math.random() - 0.5)` shuffle with a `fisherYatesShuffle` helper across `src/ga/mutation.ts`, `src/ga/crossover.ts`, and `src/ga/population.ts` (techspec §12 MEDIUM, `[ARCH-OBS-03]`).
+- [x] `[P0/S]` Add `competencyMismatch: number` to `EvaluatedChromosome` and `GAResult` in `src/types.ts`; thread it through `src/ga/fitness.ts` and `src/ga/runGA.ts` so the audit counter is exposed end-to-end (api_design §3.2, §5.3.8, §8).
+- [x] `[P0/S]` Add `hardPenaltyWeight` and `softPenaltyWeight` (defaults `100` / `1`) to `GAConfig` in `src/types.ts` and consume them in `src/ga/fitness.ts` instead of inline constants (techspec §4.3 `[ARCH-OBS-01]`, api_design §5.3.8 GAConfig truth-table note).
 - [ ] `[P0/M]` Wire up a real test runner (`vitest` or `node --test`) and replace the stubbed `npm test` script in `package.json`. Carry over the existing `TODO` for tests.
 - [ ] `[P0/M]` Implement `assertMaskingInvariant(parent, child)` and call it from every crossover unit test in `tests/ga/crossover.test.ts` (techspec §10, §12 LOW, FR-03).
 - [ ] `[P1/M]` Add Layer 1 unit tests covering all eight `checkCompetencies` scenarios in techspec §10.1 (eligible, ineligible, empty `requiredCompetencies`, team-teaching with one ineligible co-lecturer, etc.).

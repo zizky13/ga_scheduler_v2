@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx tsc *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(sed -n '149,160p' src/types.ts)",
+      "Bash(sed -n '184p' README.md)"
     ]
   }
 }

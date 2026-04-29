@@ -154,6 +154,8 @@ export interface GAConfig {
   tournamentSize: number;
   crossoverType: 'singlePoint' | 'uniform' | 'pmx';
   noiseRate: number;
+  hardPenaltyWeight: number;   // W_H — techspec §4.3 default 100
+  softPenaltyWeight: number;   // W_S — techspec §4.3 default 1
 }
 
 export interface GAResult {
