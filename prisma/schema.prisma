@@ -155,10 +155,11 @@ model Lecturer {
   semesterId   Int
   name         String
   isStructural Boolean  @default(false) // techspec §2.2 — soft constraint
-  // [HC-COMPETENCY] (techspec §5.5): declared topics of expertise. Postgres
-  // uses String[]; for the SQLite target, store as JSON-encoded String and
-  // decode at the repository boundary — see [ARCH-OBS-05] in §3.5.
-  competencies String // JSON-encoded string[]; "[]" by default
+  // [HC-COMPETENCY] (techspec §5.5) / [ARCH-OBS-05] (api_design §3.5):
+  // Postgres uses native String[]. For the SQLite target, change this column
+  // to `String` and store a JSON-encoded array; the repository codec in
+  // `src/repo/competencyCodec.ts` decodes both forms transparently.
+  competencies String[] @default([])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   createdById  Int? // who entered this record (audit)
@@ -189,10 +190,12 @@ model Course {
   code                 String // e.g., 'IF101'
   name                 String
   sks                  Int // credit hours
-  // [HC-COMPETENCY] (techspec §5.5): tags a lecturer must own at least one of.
-  // "[]" disables the constraint (open assignment). Postgres uses String[];
-  // for the SQLite target, store as JSON-encoded String — see [ARCH-OBS-05].
-  requiredCompetencies String // JSON-encoded string[]; "[]" by default
+  // [HC-COMPETENCY] (techspec §5.5) / [ARCH-OBS-05] (api_design §3.5):
+  // tags a lecturer must own at least one of; empty = open assignment.
+  // Postgres uses native String[]. For the SQLite target, change this column
+  // to `String` and store a JSON-encoded array; the repository codec in
+  // `src/repo/competencyCodec.ts` decodes both forms transparently.
+  requiredCompetencies String[] @default([])
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   createdById          Int?
