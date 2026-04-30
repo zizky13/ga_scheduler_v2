@@ -14,11 +14,11 @@ No new infrastructure. Everything below can ship against the current `tsx`-only 
 6. [x] `[P0/M]` Implement `assertMaskingInvariant(parent, child)` and call it from every crossover unit test in `tests/ga/crossover.test.ts` (techspec §10, §12 LOW, FR-03).
 7. [x] `[P1/M]` Add Layer 1 unit tests covering all eight `checkCompetencies` scenarios in techspec §10.1 (eligible, ineligible, empty `requiredCompetencies`, team-teaching with one ineligible co-lecturer, etc.).
 8. [x] `[P1/M]` Add Layer 2 unit tests for `staticExclusion`, `ac3`, and `hopcroftKarp` matching the test outline in techspec §10.1.
-9. [ ] `[P1/M]` Add Layer 3 integration tests: easy-dataset convergence, stagnation exit, Fixed Room invariant across generations, elitism monotonicity (techspec §10.1).
+9. [x] `[P1/M]` Add Layer 3 integration tests: easy-dataset convergence, stagnation exit, Fixed Room invariant across generations, elitism monotonicity (techspec §10.1).
 10. [x] `[P1/S]` Verify `possibleRoomIds[]` is populated on every `PreGACandidate` for Flexible offerings; if missing, extend `src/pre-ga/validator.ts` (techspec §12 HIGH, `[ARCH-OBS-04]`).
 11. [ ] `[P1/S]` Add a `LICENSE` file at the repo root matching `package.json`'s `ISC` field (or change the field). Carries over the existing README `TODO`.
 12. [ ] `[P2/S]` Fill in `author`, `description`, `keywords`, and `repository` in `package.json`. Carries over the existing README `TODO`.
-13. [ ] `[P2/M]` Refactor `src/cli/run-pipeline.ts` and `src/cli/run-layer3.ts` to return a `SchedulerResponse` instead of printing inline, so the CLIs share the type the future API will return.
+13. [x] `[P2/M]` Refactor `src/cli/run-pipeline.ts` and `src/cli/run-layer3.ts` to return a `SchedulerResponse` instead of printing inline, so the CLIs share the type the future API will return.
 
 ### Phase 1 — Persistence Layer
 

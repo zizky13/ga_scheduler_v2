@@ -10,7 +10,9 @@
       "Bash(npm test *)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(echo \"---TSC EXIT $?---\")",
-      "Bash(npx tsx -e ' *)"
+      "Bash(npx tsx -e ' *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(echo \"===EXIT=$?===\")"
     ]
   }
 }

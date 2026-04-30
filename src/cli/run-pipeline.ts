@@ -2,15 +2,16 @@
  * CLI Runner — Full Pipeline Orchestrator
  * Demonstrates the complete three-layer pipeline end-to-end
  * matching the runtime view in Section 6.1 of the technical spec.
+ *
+ * Orchestration logic lives in src/orchestrator.ts. This file is a thin
+ * presentation wrapper that consumes the SchedulerResponse envelope and
+ * pretty-prints it for humans. The same orchestrator powers the future API.
  */
 
 import type { GAConfig } from '../types.js';
 import { courseOfferings, infeasibleOfferings, timeSlots, lecturers, rooms } from '../db/seed.js';
-import { runPreGA } from '../pre-ga/validator.js';
-import { isLecturerEligibleForCourse } from '../pre-ga/checks.js';
-import { runSSA } from '../ssa/index.js';
 import { runStaticExclusion } from '../ssa/staticExclusion.js';
-import { runGA } from '../ga/runGA.js';
+import { runPipeline } from '../orchestrator.js';
 
 const DIVIDER = '═'.repeat(60);
 const SDIVIDER = '─'.repeat(60);
@@ -23,21 +24,51 @@ console.log();
 
 const pipelineStart = performance.now();
 
+const allOfferings = [...courseOfferings, ...infeasibleOfferings];
+const crossoverTypes = ['singlePoint', 'uniform', 'pmx'] as const;
+
+function buildConfig(crossoverType: GAConfig['crossoverType']): GAConfig {
+  return {
+    populationSize: 80,
+    generations: 200,
+    mutationRate: 0.1,
+    elitismCount: 3,
+    tournamentSize: 4,
+    crossoverType,
+    noiseRate: 0.15,
+    hardPenaltyWeight: 100,
+    softPenaltyWeight: 1,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════
-// LAYER 1: Pre-GA Policy Engine
+// LAYER 1: Pre-GA Policy Engine (presentation comes from first run)
 // ═══════════════════════════════════════════════════════════════
 console.log('┌─────────────────────────────────────────────────┐');
 console.log('│  LAYER 1: Pre-GA Policy Engine                  │');
 console.log('│  Deterministic. O(n) complexity.                │');
 console.log('└─────────────────────────────────────────────────┘\n');
 
-// Include ALL infeasible offerings
-const allOfferings = [...courseOfferings, ...infeasibleOfferings];
 console.log(`  Input: ${allOfferings.length} offerings, ${timeSlots.length} time slots`);
 
-const l1Start = performance.now();
-const { validation, candidates } = runPreGA(allOfferings, timeSlots, rooms);
-const l1Duration = Math.round(performance.now() - l1Start);
+// First run captures the pre-GA / SSA results we use for the Layer 1 and
+// Layer 2 sections. The GA's per-generation progress logs are muted here
+// so they don't leak into the Layer 1 presentation; they print live for
+// each crossover variant in the loop below.
+const realLog = console.log;
+const realWarn = console.warn;
+console.log = () => {};
+console.warn = () => {};
+const firstRun = runPipeline({
+  offerings: allOfferings,
+  timeSlots,
+  rooms,
+  lecturers,
+  config: buildConfig(crossoverTypes[0]),
+});
+console.log = realLog;
+console.warn = realWarn;
+const { validation, candidates } = firstRun.context;
 
 console.log(`  Feasible:   ${validation.feasible.length}`);
 console.log(`  Infeasible: ${validation.infeasible.length}`);
@@ -45,7 +76,6 @@ for (const { offering, failedCheck } of validation.infeasible) {
   console.log(`    ❌ ID=${offering.id} "${offering.course.name}" → [${failedCheck.code}]`);
 }
 
-// Show entity tagger results
 const fixedCount = candidates.filter(c => c.isFixedRoom).length;
 console.log(`  Candidates: ${candidates.length} (${fixedCount} fixed, ${candidates.length - fixedCount} flexible)`);
 for (const c of candidates) {
@@ -55,9 +85,8 @@ for (const c of candidates) {
     `fixedRoom=${c.isFixedRoom}`
   );
 }
-console.log(`  Duration: ${l1Duration}ms`);
 
-if (candidates.length === 0) {
+if (firstRun.response.status === 'NO_FEASIBLE_CANDIDATES') {
   console.log('\n  🛑 NO_FEASIBLE_CANDIDATES — Pipeline aborted.');
   process.exit(1);
 }
@@ -72,7 +101,6 @@ console.log('│  LAYER 2: Static Structural Analysis (SSA)      │');
 console.log('│  Deterministic. O(E√V) complexity.              │');
 console.log('└─────────────────────────────────────────────────┘\n');
 
-// Show Phase 0 Static Exclusion details
 const { lockedCoordinates } = runStaticExclusion(candidates);
 if (lockedCoordinates.size > 0) {
   console.log(`  Phase 0 — Static Exclusion:`);
@@ -88,16 +116,12 @@ if (lockedCoordinates.size > 0) {
   console.log();
 }
 
-const l2Start = performance.now();
-const ssaResult = runSSA(candidates);
-const l2Duration = Math.round(performance.now() - l2Start);
-
+const ssaResult = firstRun.response.ssaResult!;
 console.log(`  Status:            ${ssaResult.status}`);
 console.log(`  Total Sessions:    ${ssaResult.totalSessionsRequired}`);
 console.log(`  Max Matchable:     ${ssaResult.maximumAchievableMatching}`);
-console.log(`  Duration:          ${l2Duration}ms`);
 
-if (ssaResult.status === 'INFEASIBLE') {
+if (firstRun.response.status === 'INFEASIBLE') {
   console.log(`\n  🛑 STRUCTURAL_INFEASIBILITY — GA blocked.`);
   console.log(`  Code: ${ssaResult.deadlockReport?.code}`);
   console.log(`  Message: ${ssaResult.deadlockReport?.message}`);
@@ -115,25 +139,7 @@ console.log('│  LAYER 3: GA Core (Evolutionary Optimization)   │');
 console.log('│  Probabilistic. O(g × p × n) complexity.        │');
 console.log('└─────────────────────────────────────────────────┘\n');
 
-// Build lecturer structural map
-const lecturerStructuralMap = new Map<number, boolean>(
-  lecturers.map(l => [l.id, l.isStructural])
-);
-
-// Build competency eligibility map: offeringId → eligible lecturerIds
-const competencyEligibilityMap = new Map<number, Set<number>>(
-  validation.feasible.map(o => [
-    o.id,
-    new Set(
-      lecturers.filter(l => isLecturerEligibleForCourse(l, o.course)).map(l => l.id)
-    ),
-  ])
-);
-
-// Build lecturer preference map
-const lecturerPreferenceMap = new Map<number, Set<number>>(
-  lecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
-);
+const { lecturerPreferenceMap } = firstRun.context;
 
 console.log('  Lecturer Preferences:');
 for (const l of lecturers) {
@@ -150,29 +156,20 @@ for (const l of lecturers) {
   console.log(`      Preferred: ${prefSlots}`);
 }
 
-// Run all three crossover strategies
-const crossoverTypes = ['singlePoint', 'uniform', 'pmx'] as const;
-
 for (const crossoverType of crossoverTypes) {
   console.log(`\n  ${SDIVIDER}`);
   console.log(`  Crossover: ${crossoverType.toUpperCase()}`);
   console.log(`  ${SDIVIDER}`);
 
-  const config: GAConfig = {
-    populationSize: 80,
-    generations: 200,
-    mutationRate: 0.1,
-    elitismCount: 3,
-    tournamentSize: 4,
-    crossoverType,
-    noiseRate: 0.15,
-    hardPenaltyWeight: 100,
-    softPenaltyWeight: 1,
-  };
+  const run = runPipeline({
+    offerings: allOfferings,
+    timeSlots,
+    rooms,
+    lecturers,
+    config: buildConfig(crossoverType),
+  });
 
-  const l3Start = performance.now();
-  const gaResult = runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config, competencyEligibilityMap);
-  const l3Duration = Math.round(performance.now() - l3Start);
+  const gaResult = run.response.gaResult!;
 
   console.log(`\n  Results:`);
   console.log(`    Best Fitness:      ${gaResult.bestFitness.toFixed(4)}`);
@@ -180,14 +177,12 @@ for (const crossoverType of crossoverTypes) {
   console.log(`    Soft Penalty:      ${gaResult.softPenalty}`);
   console.log(`    Generations:       ${gaResult.generationsRun}`);
   console.log(`    Stagnated:         ${gaResult.stagnatedEarly}`);
-  console.log(`    Duration:          ${l3Duration}ms`);
+  console.log(`    Duration:          ${run.response.durationMs}ms`);
   console.log(`    Status:            ${gaResult.hardViolations === 0 ? '✅ VALID' : '⚠️  CONFLICTS'}`);
 
-  // Show the schedule for the last crossover run
   if (crossoverType === 'pmx') {
     console.log(`\n  📅 Best Schedule (PMX):`);
 
-    // Verify FIXED gene invariant
     const fixedGenes = gaResult.bestChromosome.filter(g => g.kind === 'FIXED');
     const fixedInvariantOk = fixedGenes.every(g => {
       const c = candidates.find(c => c.offeringId === g.offeringId);
@@ -204,7 +199,7 @@ for (const crossoverType of crossoverTypes) {
       });
       const prefCheck = offering.lecturers.map(l => {
         const pref = lecturerPreferenceMap.get(l.id);
-        if (!pref || pref.size === 0) return '🔵'; // no pref
+        if (!pref || pref.size === 0) return '🔵';
         return gene.assignedTimeSlotIds.every(s => pref.has(s)) ? '🟢' : '🟡';
       }).join('');
       const kindTag = gene.kind === 'FIXED' ? ' 🔒' : '';
@@ -215,7 +210,6 @@ for (const crossoverType of crossoverTypes) {
     }
     console.log(`\n  Legend: 🟢=preferred 🟡=non-preferred 🔵=no preference 🔒=fixed room`);
 
-    // Fixed Gene Masking Invariant check
     console.log(`\n  🔒 Fixed Gene Masking Invariant: ${fixedInvariantOk ? '✅ PASS' : '❌ FAIL'}`);
     for (const fg of fixedGenes) {
       const offering = courseOfferings.find(o => o.id === fg.offeringId);
@@ -227,16 +221,11 @@ for (const crossoverType of crossoverTypes) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// PIPELINE COMPLETE
-// ═══════════════════════════════════════════════════════════════
 const totalDuration = Math.round(performance.now() - pipelineStart);
 
 console.log(`\n${DIVIDER}`);
 console.log('  PIPELINE COMPLETE');
 console.log(DIVIDER);
 console.log(`  Total Duration:    ${totalDuration}ms`);
-console.log(`  Layer 1 (Pre-GA):  ${l1Duration}ms`);
-console.log(`  Layer 2 (SSA):     ${l2Duration}ms`);
 console.log(`  Layer 3 (GA):      3 crossover runs above`);
 console.log(`\n  Architecture: All 3 layers operational. ✅\n`);

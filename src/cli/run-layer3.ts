@@ -1,44 +1,19 @@
 /**
  * CLI Runner — Layer 3: GA Core
  * Proves that the GA evolutionary loop works end-to-end.
+ *
+ * Orchestration logic lives in src/orchestrator.ts. This CLI is a thin
+ * presentation wrapper around the SchedulerResponse envelope.
  */
 
 import type { GAConfig } from '../types.js';
 import { courseOfferings, timeSlots, lecturers, rooms } from '../db/seed.js';
-import { runPreGA } from '../pre-ga/validator.js';
-import { runSSA } from '../ssa/index.js';
-import { runGA } from '../ga/runGA.js';
+import { runPipeline } from '../orchestrator.js';
 
 console.log('═══════════════════════════════════════════════════');
 console.log('  LAYER 3: GA Core — Backbone Test');
 console.log('═══════════════════════════════════════════════════\n');
 
-// ─── Step 1: Run Layer 1 ────────────────────────────────────────
-console.log('── Step 1: Pre-GA Validation ──────────────────────');
-const { validation, candidates } = runPreGA(courseOfferings, timeSlots, rooms);
-console.log(`  Feasible: ${validation.feasible.length} | Infeasible: ${validation.infeasible.length}\n`);
-
-// ─── Step 2: Run Layer 2 ────────────────────────────────────────
-console.log('── Step 2: SSA Feasibility Gate ───────────────────');
-const ssaResult = runSSA(candidates);
-console.log(`  Status: ${ssaResult.status} | Sessions: ${ssaResult.totalSessionsRequired} | Matchable: ${ssaResult.maximumAchievableMatching}`);
-
-if (ssaResult.status === 'INFEASIBLE') {
-  console.log(`  ❌ SSA blocked GA — ${ssaResult.deadlockReport?.message}`);
-  process.exit(1);
-}
-console.log('  ✅ SSA passed — proceeding to GA.\n');
-
-// ─── Step 3: Build lecturer maps ────────────────────────────
-const lecturerStructuralMap = new Map<number, boolean>(
-  lecturers.map(l => [l.id, l.isStructural])
-);
-const lecturerPreferenceMap = new Map<number, Set<number>>(
-  lecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
-);
-
-// ─── Step 4: Run GA ─────────────────────────────────────────────
-console.log('── Step 3: GA Execution ───────────────────────────');
 const config: GAConfig = {
   populationSize: 50,
   generations: 100,
@@ -51,22 +26,49 @@ const config: GAConfig = {
   softPenaltyWeight: 1,
 };
 
+console.log('── Step 3: GA Execution ───────────────────────────');
 console.log(`  Config: pop=${config.populationSize} gens=${config.generations} ` +
   `mut=${config.mutationRate} elite=${config.elitismCount} ` +
   `crossover=${config.crossoverType}\n`);
 
-const startTime = performance.now();
-const gaResult = runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
-const durationMs = Math.round(performance.now() - startTime);
+const { response } = runPipeline({
+  offerings: courseOfferings,
+  timeSlots,
+  rooms,
+  lecturers,
+  config,
+});
 
-// ─── Step 5: Print Results ──────────────────────────────────────
+// ─── Step 1: Pre-GA summary ─────────────────────────────────────
+console.log('── Step 1: Pre-GA Validation ──────────────────────');
+console.log(`  Feasible: ${response.preGASummary.feasible} | Infeasible: ${response.preGASummary.infeasible}\n`);
+
+if (response.status === 'NO_FEASIBLE_CANDIDATES') {
+  console.log('  ❌ No feasible candidates — pipeline aborted.\n');
+  process.exit(1);
+}
+
+// ─── Step 2: SSA summary ────────────────────────────────────────
+console.log('── Step 2: SSA Feasibility Gate ───────────────────');
+const ssaResult = response.ssaResult!;
+console.log(`  Status: ${ssaResult.status} | Sessions: ${ssaResult.totalSessionsRequired} | Matchable: ${ssaResult.maximumAchievableMatching}`);
+
+if (response.status === 'INFEASIBLE') {
+  console.log(`  ❌ SSA blocked GA — ${ssaResult.deadlockReport?.message}`);
+  process.exit(1);
+}
+console.log('  ✅ SSA passed — proceeding to GA.\n');
+
+// ─── Step 3: GA Results ─────────────────────────────────────────
+const gaResult = response.gaResult!;
+
 console.log('\n── GA Results ─────────────────────────────────────');
 console.log(`  Best Fitness:     ${gaResult.bestFitness.toFixed(4)}`);
 console.log(`  Hard Violations:  ${gaResult.hardViolations}`);
 console.log(`  Soft Penalty:     ${gaResult.softPenalty}`);
 console.log(`  Generations Run:  ${gaResult.generationsRun}`);
 console.log(`  Stagnated Early:  ${gaResult.stagnatedEarly}`);
-console.log(`  Duration:         ${durationMs}ms`);
+console.log(`  Duration:         ${response.durationMs}ms`);
 
 console.log('\n── Best Chromosome (Schedule) ──────────────────────');
 for (const gene of gaResult.bestChromosome) {
