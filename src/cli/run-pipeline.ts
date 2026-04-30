@@ -36,7 +36,7 @@ const allOfferings = [...courseOfferings, ...infeasibleOfferings];
 console.log(`  Input: ${allOfferings.length} offerings, ${timeSlots.length} time slots`);
 
 const l1Start = performance.now();
-const { validation, candidates } = runPreGA(allOfferings, timeSlots);
+const { validation, candidates } = runPreGA(allOfferings, timeSlots, rooms);
 const l1Duration = Math.round(performance.now() - l1Start);
 
 console.log(`  Feasible:   ${validation.feasible.length}`);

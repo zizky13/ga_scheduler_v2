@@ -4,7 +4,7 @@
  */
 
 import type { PreGACandidate } from '../types.js';
-import { courseOfferings, timeSlots } from '../db/seed.js';
+import { courseOfferings, timeSlots, rooms } from '../db/seed.js';
 import { runPreGA } from '../pre-ga/validator.js';
 import { runSSA } from '../ssa/index.js';
 import { runStaticExclusion } from '../ssa/staticExclusion.js';
@@ -15,7 +15,7 @@ console.log('══════════════════════�
 
 // ─── Test 1: Normal feasible dataset ────────────────────────────
 console.log('── Test 1: Feasible Dataset (from Layer 1) ────────');
-const { candidates } = runPreGA(courseOfferings, timeSlots);
+const { candidates } = runPreGA(courseOfferings, timeSlots, rooms);
 
 const ssaResult = runSSA(candidates);
 console.log(`  Status:             ${ssaResult.status}`);

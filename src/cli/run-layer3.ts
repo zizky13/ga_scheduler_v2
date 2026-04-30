@@ -4,7 +4,7 @@
  */
 
 import type { GAConfig } from '../types.js';
-import { courseOfferings, timeSlots, lecturers } from '../db/seed.js';
+import { courseOfferings, timeSlots, lecturers, rooms } from '../db/seed.js';
 import { runPreGA } from '../pre-ga/validator.js';
 import { runSSA } from '../ssa/index.js';
 import { runGA } from '../ga/runGA.js';
@@ -15,7 +15,7 @@ console.log('══════════════════════�
 
 // ─── Step 1: Run Layer 1 ────────────────────────────────────────
 console.log('── Step 1: Pre-GA Validation ──────────────────────');
-const { validation, candidates } = runPreGA(courseOfferings, timeSlots);
+const { validation, candidates } = runPreGA(courseOfferings, timeSlots, rooms);
 console.log(`  Feasible: ${validation.feasible.length} | Infeasible: ${validation.infeasible.length}\n`);
 
 // ─── Step 2: Run Layer 2 ────────────────────────────────────────

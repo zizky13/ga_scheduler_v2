@@ -3,7 +3,7 @@
  * Tests all 6 checks + entity tagging with both feasible and infeasible offerings.
  */
 
-import { courseOfferings, infeasibleOfferings, timeSlots } from '../db/seed.js';
+import { courseOfferings, infeasibleOfferings, timeSlots, rooms } from '../db/seed.js';
 import { runPreGA } from '../pre-ga/validator.js';
 
 console.log('═══════════════════════════════════════════════════');
@@ -15,7 +15,7 @@ const allOfferings = [...courseOfferings, ...infeasibleOfferings];
 
 console.log(`Input: ${allOfferings.length} offerings, ${timeSlots.length} time slots\n`);
 
-const { validation, candidates } = runPreGA(allOfferings, timeSlots);
+const { validation, candidates } = runPreGA(allOfferings, timeSlots, rooms);
 
 // ─── Print Results ───────────────────────────────────────────────
 console.log('── Feasible Offerings ──────────────────────────────');

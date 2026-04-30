@@ -5,17 +5,23 @@
  * then builds PreGACandidate[] for feasible offerings.
  */
 
-import type { CourseOffering, PreGACandidate, PreGAValidationResult, TimeSlot } from '../types.js';
+import type { CourseOffering, PreGACandidate, PreGAValidationResult, Room, TimeSlot } from '../types.js';
 import { checkIntegrity, checkRoomCapacity, checkTemporal, checkFacility, checkLecturer, checkCompetencies, checkPolicy } from './checks.js';
 import { tagEntities } from './entityTagger.js';
 
 /**
  * Run the complete Pre-GA validation pipeline.
  * Pure function — takes data in, returns results, no side effects.
+ *
+ * When `allRooms` is provided, populates `possibleRoomIds[]` on every
+ * Flexible PreGACandidate (techspec §6.3 / [ARCH-OBS-04]). A room qualifies
+ * iff it has adequate capacity and contains every requiredFacility. Flexible
+ * offerings with zero qualifying rooms are rejected as infeasible.
  */
 export function runPreGA(
   offerings: CourseOffering[],
-  allTimeSlots: TimeSlot[]
+  allTimeSlots: TimeSlot[],
+  allRooms?: Room[]
 ): { validation: PreGAValidationResult; candidates: PreGACandidate[] } {
 
   const feasible: CourseOffering[] = [];
@@ -47,6 +53,46 @@ export function runPreGA(
     }
   }
 
+  // Compute possibleRoomIds[] for Flexible offerings ([ARCH-OBS-04]).
+  // A room qualifies iff capacity >= effectiveStudentCount AND all required
+  // facilities are present. Flexible offerings with no qualifying rooms are
+  // rejected as infeasible (NO_ROOMS_QUALIFY).
+  const possibleRoomIdsByOffering = new Map<number, number[]>();
+  if (allRooms) {
+    const stillFeasible: CourseOffering[] = [];
+    for (const offering of feasible) {
+      if (offering.isFixed) {
+        stillFeasible.push(offering);
+        continue;
+      }
+      const required = offering.course.requiredFacilities;
+      const qualifying = allRooms
+        .filter(r =>
+          r.capacity >= offering.effectiveStudentCount &&
+          required.every(f => r.facilities.includes(f))
+        )
+        .map(r => r.id);
+      if (qualifying.length === 0) {
+        infeasible.push({
+          offering,
+          failedCheck: {
+            passed: false,
+            code: 'NO_ROOMS_QUALIFY',
+            message:
+              `Offering ${offering.id} (${offering.course.name}) is Flexible but ` +
+              `no room satisfies capacity >= ${offering.effectiveStudentCount} ` +
+              `with facilities [${required.join(', ')}].`,
+          },
+        });
+        continue;
+      }
+      possibleRoomIdsByOffering.set(offering.id, qualifying);
+      stillFeasible.push(offering);
+    }
+    feasible.length = 0;
+    feasible.push(...stillFeasible);
+  }
+
   // Build PreGACandidate[] for feasible offerings
   const rawCandidates: PreGACandidate[] = feasible.map(offering => {
     const requiredSessions = Math.ceil(
@@ -59,7 +105,7 @@ export function runPreGA(
       ? [...offering.fixedTimeSlotIds]
       : allTimeSlots.map(ts => ts.id);
 
-    return {
+    const candidate: PreGACandidate = {
       offeringId: offering.id,
       courseId: offering.courseId,
       roomId: offering.roomId,
@@ -68,6 +114,9 @@ export function runPreGA(
       possibleTimeSlotIds,
       isFixedRoom: false, // will be stamped by tagEntities below
     };
+    const possibleRoomIds = possibleRoomIdsByOffering.get(offering.id);
+    if (possibleRoomIds) candidate.possibleRoomIds = possibleRoomIds;
+    return candidate;
   });
 
   // Build lockedRoomMap from CourseOffering.isFixed
