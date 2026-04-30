@@ -18,7 +18,10 @@
       "Bash(npm view *)",
       "Bash(DATABASE_URL=\"postgresql://placeholder\" npx prisma validate --schema=prisma/.tmp/init-schema.prisma)",
       "Bash(echo \"---EXITCODE:$?---\")",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(DATABASE_URL=\"postgresql://localhost:5432/dummy\" npx prisma validate)",
+      "Bash(cat prisma/migrations/20260430120000_init/migration.sql prisma/migrations/20260430120100_add_locked_rooms/migration.sql prisma/migrations/20260430120200_add_schedule_runs/migration.sql)",
+      "Bash(DATABASE_URL=\"postgresql://localhost:5432/dummy\" npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script)"
     ]
   }
 }
