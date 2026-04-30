@@ -15,7 +15,10 @@
       "Bash(echo \"===EXIT=$?===\")",
       "Bash(npx prisma *)",
       "Bash(DATABASE_URL=\"postgresql://placeholder\" npx prisma validate --schema=prisma/schema.prisma)",
-      "Bash(npm view *)"
+      "Bash(npm view *)",
+      "Bash(DATABASE_URL=\"postgresql://placeholder\" npx prisma validate --schema=prisma/.tmp/init-schema.prisma)",
+      "Bash(echo \"---EXITCODE:$?---\")",
+      "Read(//tmp/**)"
     ]
   }
 }
