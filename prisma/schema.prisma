@@ -1,0 +1,434 @@
+// prisma/schema.prisma
+//
+// Aligned to techspec_upj_scheduler_v2.md §5.4, §8.2, and src/types.ts.
+// Database: PostgreSQL recommended (see design doc §2 / OQ-3).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // Swap to "sqlite" for the thesis-defense build.
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String
+  fullName     String
+  role         Role      @default(USER)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastLoginAt  DateTime?
+
+  refreshTokens RefreshToken[]
+  scheduleRuns  ScheduleRun[]
+  lockedRooms   LockedRoom[]
+  auditLogs     AuditLog[]
+
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    Int
+  tokenHash String    @unique // SHA-256 of the opaque token; never store the raw token
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ─── Facility / Calendar configuration ────────────────────────────
+
+model Semester {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique // e.g., "2025-GANJIL"
+  label     String // e.g., "Semester Ganjil 2025/2026"
+  startsOn  DateTime
+  endsOn    DateTime
+  isActive  Boolean  @default(false) // Exactly one row should be active.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rooms        Room[]
+  timeSlots    TimeSlot[]
+  lecturers    Lecturer[]
+  courses      Course[]
+  offerings    CourseOffering[]
+  lockedRooms  LockedRoom[]
+  scheduleRuns ScheduleRun[]
+
+  @@index([isActive])
+  @@map("semesters")
+}
+
+model Facility {
+  id    Int    @id @default(autoincrement())
+  code  String @unique // 'LAB', 'PROJECTOR', 'STUDIO' (matches src/db/seed.ts)
+  label String
+
+  rooms   RoomFacility[]
+  courses CourseRequiredFacility[]
+
+  @@map("facilities")
+}
+
+model Room {
+  id         Int      @id @default(autoincrement())
+  semesterId Int
+  name       String
+  capacity   Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  semester    Semester         @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  facilities  RoomFacility[]
+  offerings   CourseOffering[]
+  lockedRooms LockedRoom[]
+
+  @@unique([semesterId, name])
+  @@index([semesterId])
+  @@map("rooms")
+}
+
+model RoomFacility {
+  roomId     Int
+  facilityId Int
+
+  room     Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+
+  @@id([roomId, facilityId])
+  @@map("room_facilities")
+}
+
+enum Weekday {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+model TimeSlot {
+  id         Int     @id @default(autoincrement())
+  semesterId Int
+  day        Weekday
+  startTime  String // 'HH:MM' — kept as string to match src/types.ts:TimeSlot.startTime
+  endTime    String
+
+  semester                 Semester                  @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  preferredBy              LecturerPreferredSlot[]
+  assignments              ScheduleAssignmentSlot[]
+  courseOfferingFixedSlots CourseOfferingFixedSlot[]
+
+  @@unique([semesterId, day, startTime, endTime])
+  @@index([semesterId])
+  @@map("time_slots")
+}
+
+// ─── People & curriculum ──────────────────────────────────────────
+
+model Lecturer {
+  id           Int      @id @default(autoincrement())
+  semesterId   Int
+  name         String
+  isStructural Boolean  @default(false) // techspec §2.2 — soft constraint
+  // [HC-COMPETENCY] (techspec §5.5): declared topics of expertise. Postgres
+  // uses String[]; for the SQLite target, store as JSON-encoded String and
+  // decode at the repository boundary — see [ARCH-OBS-05] in §3.5.
+  competencies String // JSON-encoded string[]; "[]" by default
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdById  Int? // who entered this record (audit)
+
+  semester       Semester                 @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  preferredSlots LecturerPreferredSlot[]
+  offerings      CourseOfferingLecturer[]
+
+  @@index([semesterId])
+  @@index([isStructural])
+  @@map("lecturers")
+}
+
+model LecturerPreferredSlot {
+  lecturerId Int
+  timeSlotId Int
+
+  lecturer Lecturer @relation(fields: [lecturerId], references: [id], onDelete: Cascade)
+  timeSlot TimeSlot @relation(fields: [timeSlotId], references: [id], onDelete: Cascade)
+
+  @@id([lecturerId, timeSlotId])
+  @@map("lecturer_preferred_slots")
+}
+
+model Course {
+  id                   Int      @id @default(autoincrement())
+  semesterId           Int
+  code                 String // e.g., 'IF101'
+  name                 String
+  sks                  Int // credit hours
+  // [HC-COMPETENCY] (techspec §5.5): tags a lecturer must own at least one of.
+  // "[]" disables the constraint (open assignment). Postgres uses String[];
+  // for the SQLite target, store as JSON-encoded String — see [ARCH-OBS-05].
+  requiredCompetencies String // JSON-encoded string[]; "[]" by default
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  createdById          Int?
+
+  semester           Semester                 @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  requiredFacilities CourseRequiredFacility[]
+  offerings          CourseOffering[]
+
+  @@unique([semesterId, code])
+  @@index([semesterId])
+  @@map("courses")
+}
+
+model CourseRequiredFacility {
+  courseId   Int
+  facilityId Int
+
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+
+  @@id([courseId, facilityId])
+  @@map("course_required_facilities")
+}
+
+model CourseOffering {
+  id                    Int      @id @default(autoincrement())
+  semesterId            Int
+  courseId              Int
+  roomId                Int // proposed default; may be overridden by LockedRoom
+  effectiveStudentCount Int // techspec §1.3 — used to derive requiredSessions
+  isFixed               Boolean  @default(false) // mirrors src/types.ts CourseOffering.isFixed
+  parentOfferingId      Int? // for parallel-split (Sesi A / Sesi B)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  createdById           Int?
+
+  semester    Semester                  @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  course      Course                    @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  room        Room                      @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  parent      CourseOffering?           @relation("ParallelSplit", fields: [parentOfferingId], references: [id])
+  children    CourseOffering[]          @relation("ParallelSplit")
+  lecturers   CourseOfferingLecturer[]
+  fixedSlots  CourseOfferingFixedSlot[]
+  lockedRoom  LockedRoom?
+  assignments ScheduleAssignment[]
+
+  @@index([semesterId])
+  @@index([courseId])
+  @@index([roomId])
+  @@index([parentOfferingId])
+  @@map("course_offerings")
+}
+
+model CourseOfferingLecturer {
+  offeringId Int
+  lecturerId Int
+
+  offering CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  lecturer Lecturer       @relation(fields: [lecturerId], references: [id], onDelete: Restrict)
+
+  @@id([offeringId, lecturerId])
+  @@map("course_offering_lecturers")
+}
+
+// CourseOffering.fixedTimeSlotIds[] in src/types.ts → join table
+model CourseOfferingFixedSlot {
+  offeringId Int
+  timeSlotId Int
+
+  offering CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  timeSlot TimeSlot       @relation(fields: [timeSlotId], references: [id], onDelete: Cascade)
+
+  @@id([offeringId, timeSlotId])
+  @@map("course_offering_fixed_slots")
+}
+
+// ─── Lock Room (techspec §5.4 / FR-01) ────────────────────────────
+
+model LockedRoom {
+  id         Int      @id @default(autoincrement())
+  semesterId Int
+  offeringId Int      @unique // one offering ↔ one lock
+  roomId     Int
+  lockedById Int
+  lockedAt   DateTime @default(now())
+  reason     String?
+
+  semester Semester       @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  offering CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  room     Room           @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  lockedBy User           @relation(fields: [lockedById], references: [id], onDelete: Restrict)
+
+  @@index([semesterId])
+  @@index([roomId])
+  @@map("locked_rooms")
+}
+
+// ─── Scheduling runs (extends techspec §8.2 GARun) ────────────────
+
+enum RunStatus {
+  QUEUED // accepted by API, waiting for worker
+  RUNNING // pipeline executing
+  COMPLETED // GA finished; assignments persisted
+  STAGNATED // exited early per techspec §6.3 stagnation rule
+  SSA_INFEASIBLE // SSA rejected the dataset
+  PRE_GA_EMPTY // techspec §6.1 step 9 — NO_FEASIBLE_CANDIDATES
+  CANCELLED // explicit cancel by user
+  FAILED // unhandled error
+}
+
+model ScheduleRun {
+  id               String    @id @default(cuid())
+  semesterId       Int
+  createdById      Int
+  status           RunStatus @default(QUEUED)
+  configJson       String // serialized GAConfig (src/types.ts) — single source of truth
+  ssaResultJson    String? // serialized SSAResult; null until SSA runs
+  preGASummaryJson String? // {feasible: number, infeasible: [...]}; matches SchedulerResponse.preGASummary
+
+  // Live progress (mirrors GAResult from src/types.ts)
+  currentGeneration  Int     @default(0)
+  generationsRun     Int     @default(0)
+  bestFitness        Float   @default(0)
+  hardViolations     Int     @default(0)
+  softPenalty        Int     @default(0)
+  // Audit-friendly breakdown of the hard-violation total — see techspec §4.3
+  // and `EvaluatedChromosome.competencyMismatch` in src/types.ts. Persists
+  // the per-run aggregate so the audit log can attribute hard violations to
+  // [HC-COMPETENCY] specifically rather than a single opaque integer.
+  competencyMismatch Int     @default(0)
+  stagnatedEarly     Boolean @default(false)
+
+  // Raw history retained for techspec §8.2 compatibility; also normalized below.
+  historyJson    String @default("[]")
+  avgHistoryJson String @default("[]")
+
+  durationMs   Int?
+  errorCode    String? // 'AC3_DOMAIN_EMPTY' | 'BIPARTITE_MATCHING_INSUFFICIENT' | ...
+  errorMessage String?
+
+  startedAt   DateTime? // null while QUEUED
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Idempotency for run creation (see §7).
+  idempotencyKey String? @unique
+
+  semester    Semester             @relation(fields: [semesterId], references: [id], onDelete: Restrict)
+  createdBy   User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  assignments ScheduleAssignment[]
+  fitness     FitnessHistory[]
+
+  @@index([semesterId])
+  @@index([createdById])
+  @@index([status])
+  @@index([startedAt])
+  @@map("schedule_runs")
+}
+
+// One row per CourseOffering in the winning chromosome.
+// Each ScheduleAssignment then points to >= 1 TimeSlot via the join below
+// (because requiredSessions = ⌈effectiveStudentCount / roomCapacity⌉ may be > 1).
+model ScheduleAssignment {
+  id             Int       @id @default(autoincrement())
+  runId          String
+  offeringId     Int
+  roomId         Int // resolved room (locked or evolved)
+  isFixedRoom    Boolean // gene.kind === 'FIXED'
+  manualOverride Boolean   @default(false) // true if a Kaprodi/admin edited it post-run
+  overriddenById Int?
+  overriddenAt   DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  run      ScheduleRun              @relation(fields: [runId], references: [id], onDelete: Cascade)
+  offering CourseOffering           @relation(fields: [offeringId], references: [id], onDelete: Restrict)
+  slots    ScheduleAssignmentSlot[]
+
+  @@unique([runId, offeringId])
+  @@index([runId])
+  @@map("schedule_assignments")
+}
+
+model ScheduleAssignmentSlot {
+  assignmentId Int
+  timeSlotId   Int
+
+  assignment ScheduleAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  timeSlot   TimeSlot           @relation(fields: [timeSlotId], references: [id], onDelete: Restrict)
+
+  @@id([assignmentId, timeSlotId])
+  @@map("schedule_assignment_slots")
+}
+
+// Normalized fitness history — one row per generation.
+// Matches GAResult.history and GAResult.avgHistory in src/types.ts.
+model FitnessHistory {
+  id                 Int      @id @default(autoincrement())
+  runId              String
+  generation         Int
+  bestFitness        Float
+  avgFitness         Float
+  hardViolations     Int
+  softPenalty        Int
+  // Per-generation breakdown of `hardViolations` attributable to [HC-COMPETENCY]
+  // (techspec §4.3). Lets the chart UI overlay competency violations on top of
+  // the global hardViolations curve for traceability.
+  competencyMismatch Int
+  recordedAt         DateTime @default(now())
+
+  run ScheduleRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, generation])
+  @@index([runId])
+  @@map("fitness_history")
+}
+
+// ─── Audit log ────────────────────────────────────────────────────
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  actorId    Int? // null for system events
+  action     String // e.g., 'user.create', 'schedule_run.cancel'
+  entityType String // e.g., 'User', 'ScheduleRun', 'LockedRoom'
+  entityId   String // stringified id (covers both Int and String IDs)
+  metadata   String? // JSON-serialized diff or context
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

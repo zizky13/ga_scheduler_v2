@@ -24,7 +24,7 @@ No new infrastructure. Everything below can ship against the current `tsx`-only 
 
 Introduce Prisma. The GA core stays Prisma-unaware; a new repository boundary adapts rows to the plain TS types in `src/types.ts` (api_design §3.5).
 
-1. [ ] `[P0/M]` Add `prisma`, `@prisma/client`, and `bcrypt` dependencies; initialize `prisma/schema.prisma` from the schema in api_design §3.2.
+1. [x] `[P0/M]` Add `prisma`, `@prisma/client`, and `bcrypt` dependencies; initialize `prisma/schema.prisma` from the schema in api_design §3.2.
 2. [ ] `[P0/M]` Generate the initial migration covering `User`, `RefreshToken`, `Semester`, `Facility`, `Room`, `RoomFacility`, `TimeSlot`, `Lecturer`, `LecturerPreferredSlot`, `Course`, `CourseRequiredFacility`, `CourseOffering`, `CourseOfferingLecturer`, `CourseOfferingFixedSlot` (api_design §3.2).
 3. [ ] `[P0/M]` Add the `LockedRoom` table migration and its indexes (techspec §5.4, §12 HIGH, FR-01; api_design §3.2).
 4. [ ] `[P0/M]` Add the `ScheduleRun`, `ScheduleAssignment`, `ScheduleAssignmentSlot`, `FitnessHistory`, `AuditLog` tables — including the `competencyMismatch` audit column on both `ScheduleRun` and `FitnessHistory` (techspec §8.2, §12 MEDIUM; api_design §3.2).

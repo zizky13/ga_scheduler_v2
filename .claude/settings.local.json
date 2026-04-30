@@ -12,7 +12,10 @@
       "Bash(echo \"---TSC EXIT $?---\")",
       "Bash(npx tsx -e ' *)",
       "Bash(echo \"exit=$?\")",
-      "Bash(echo \"===EXIT=$?===\")"
+      "Bash(echo \"===EXIT=$?===\")",
+      "Bash(npx prisma *)",
+      "Bash(DATABASE_URL=\"postgresql://placeholder\" npx prisma validate --schema=prisma/schema.prisma)",
+      "Bash(npm view *)"
     ]
   }
 }
