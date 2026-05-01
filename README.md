@@ -62,6 +62,8 @@ Edit those files to tune the run.
 
 The mock dataset (rooms, time slots, lecturers, courses, course offerings, and a small set of intentionally infeasible offerings used to exercise Layer 1 rejections) lives in `src/db/seed.ts`. The seed now carries competency tags: 8 lecturers with `competencies` (e.g., `algorithms`, `databases`, `ai-ml`) and 11 courses with `requiredCompetencies`. Replace this file when wiring real data sources.
 
+For the Prisma-backed path, `npm run db:seed` runs `prisma/seed.ts` against `DATABASE_URL` and idempotently upserts the same fixture (1 semester `2025-GANJIL`, 6 rooms, 15 time slots, 8 lecturers, 11 courses, 15 feasible offerings) plus all join rows. Add `-- --with-infeasible` (i.e. `npm run db:seed -- --with-infeasible`) to also load the 4 intentionally infeasible offerings used by integration tests. The legacy `src/db/seed.ts` stays in place — the CLI runners under `src/cli/` still consume it as an in-memory fixture.
+
 ---
 
 ## Available Scripts
@@ -74,6 +76,7 @@ Defined in `package.json`:
 | `layer2`   | `npm run layer2`   | Runs the SSA layer in isolation across five test scenarios: a feasible dataset, Phase 0 static exclusion verification, a forced Hopcroft–Karp infeasibility, an AC-3 forced conflict, and a Phase 0 + AC-3 elimination. |
 | `layer3`   | `npm run layer3`   | Runs Layer 1 → Layer 2 → Layer 3 (single GA run) and prints the best chromosome, fitness history, and validation status.                                                                                                |
 | `pipeline` | `npm run pipeline` | Full three-layer orchestrator. Runs the GA across all three crossover strategies (`singlePoint`, `uniform`, `pmx`) against the same inputs and prints a comparative summary plus the final schedule from the PMX run.   |
+| `db:seed`  | `npm run db:seed`  | Runs `prisma/seed.ts` against `DATABASE_URL` and idempotently upserts the canonical semester / rooms / slots / lecturers / courses / offerings. Append `-- --with-infeasible` to also load the 4 infeasible offerings.  |
 | `test`     | `npm test`         | Runs the [Vitest](https://vitest.dev/) suite once (`vitest run`) against `tests/**/*.test.ts` and exits non-zero on failure. Currently only a smoke test is wired up; Layer 1/2/3 suites land in Phase 0 tasks 6–9.    |
 | `test:watch` | `npm run test:watch` | Vitest in watch mode — re-runs the suite as `tests/**/*.test.ts` or imported `src/` files change. Useful while authoring the upcoming Layer 1/2/3 suites.                                                          |
 

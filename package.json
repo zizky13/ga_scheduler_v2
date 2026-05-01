@@ -8,8 +8,12 @@
     "layer2": "npx tsx src/cli/run-layer2.ts",
     "layer3": "npx tsx src/cli/run-layer3.ts",
     "pipeline": "npx tsx src/cli/run-pipeline.ts",
+    "db:seed": "tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "keywords": [],
   "author": "",
