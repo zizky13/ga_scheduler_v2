@@ -37,9 +37,9 @@ export type CompetencyTarget = 'postgres' | 'sqlite';
  * current `prisma/schema.prisma` `datasource.provider = "postgresql"`.
  *
  * Override via `DATABASE_PROVIDER=sqlite` (or `postgres`) when the
- * SQLite-portable schema variant is in use. OQ-3 is still open per
- * `backlog.md` "Decisions Needed" §3 — this helper exists so the codec can
- * support whichever target the deployment picks without rebuilding.
+ * SQLite-portable schema variant is in use. OQ-3 is resolved (Postgres
+ * pinned). This helper still exists so the codec can support the SQLite
+ * thesis-defense fallback via `DATABASE_PROVIDER=sqlite` without rebuilding.
  */
 export function getCompetencyTarget(): CompetencyTarget {
   const raw = (process.env.DATABASE_PROVIDER ?? '').trim().toLowerCase();

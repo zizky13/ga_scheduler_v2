@@ -31,7 +31,7 @@ Introduce Prisma. The GA core stays Prisma-unaware; a new repository boundary ad
 5. [x] `[P0/M]` Implement the dual-target encoding rule for `Lecturer.competencies` and `Course.requiredCompetencies`: native `String[]` on Postgres, JSON-encoded `String` on SQLite, decoded at the repository boundary (techspec `[ARCH-OBS-05]`; api_design §3.5).
 6. [x] `[P1/M]` Port `src/db/seed.ts` to a Prisma seed script that upserts a single `Semester` (`2025-GANJIL`) plus the existing rooms / slots / lecturers / courses / offerings; gate `infeasibleOfferings` behind `--with-infeasible` (api_design §3.5). Carries over the existing README `TODO` about the production data source.
 7. [x] `[P1/M]` Build a thin repository layer (`src/repo/*.ts`) that returns `Room`, `Lecturer`, `Course`, `CourseOffering`, `LockedRoom` shaped exactly like `src/types.ts` so `runPreGA`, `runSSA`, `runGA` continue to consume plain TS types.
-8. [ ] `[P1/S]` Document `OQ-3` (Postgres vs SQLite) decision and pin the Prisma `provider` accordingly; update `prisma/schema.prisma` and the README config section.
+8. [x] `[P1/S]` Document `OQ-3` (Postgres vs SQLite) decision and pin the Prisma `provider` accordingly; update `prisma/schema.prisma` and the README config section.
 
 ### Phase 2 — API & Auth
 
@@ -87,7 +87,7 @@ The following open questions from `docs/api_and_database_design.md` §9 block on
 
 1. [ ] **OQ-1** Self-registration vs admin-invite for `/auth/register` (default: admin-only). Affects Phase 2 auth scope.
 2. [ ] **OQ-2** Whether email change is required (default: email immutable). Affects `PATCH /users/:id`.
-3. [ ] **OQ-3** Postgres vs SQLite/libSQL as the foregrounded target (default: Postgres + multi-process worker; SQLite single-process as defense fallback). Pins the Prisma `provider` and the deployment story for Phase 1 / Phase 3.
+3. [x] **OQ-3** Postgres vs SQLite/libSQL as the foregrounded target (default: Postgres + multi-process worker; SQLite single-process as defense fallback). Pins the Prisma `provider` and the deployment story for Phase 1 / Phase 3. — **Resolved: Postgres pinned**; SQLite remains a thesis-defense fallback via `DATABASE_PROVIDER=sqlite` + manual migration regen.
 4. [ ] **OQ-4** SSE vs WebSocket for live progress (default: SSE). Affects `GET /schedule-runs/:id/stream` and the frontend transport.
 5. [ ] **OQ-5** Manual override permission for `user` on completed runs (default: owner-or-admin while COMPLETED). Affects `PUT /schedule-runs/:id/assignments/:aid`.
 6. [ ] **OQ-6** Access / refresh token TTLs (default: 15 min / 7 days).

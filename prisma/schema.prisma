@@ -1,14 +1,31 @@
 // prisma/schema.prisma
 //
 // Aligned to techspec_upj_scheduler_v2.md §5.4, §8.2, and src/types.ts.
-// Database: PostgreSQL recommended (see design doc §2 / OQ-3).
+//
+// Provider pinned: PostgreSQL (OQ-3 resolved).
+//   - Spec source: docs/api_and_database_design.md §9 OQ-3.
+//   - Backlog reference: backlog.md "Decisions Needed" §3.
+//   - Justification: Phase 3 introduces a BullMQ worker that must run
+//     multi-process for scaling and reliability. File-locked SQLite is
+//     fragile under multi-process writers, so Postgres is the foregrounded
+//     deployment target.
+//
+// SQLite/libSQL is a documented thesis-defense fallback only — not the
+// default and not what migrations target. The runtime codec at
+// src/repo/competencyCodec.ts already handles the dual-target encoding for
+// the competency arrays per techspec [ARCH-OBS-05] and switches behavior on
+// DATABASE_PROVIDER=sqlite. However, migrations under prisma/migrations/
+// use Postgres-specific features (e.g., `TEXT[]` for the competency columns
+// added in 20260430120300_add_competency_arrays). Switching providers is
+// NOT a casual flip: a SQLite target requires regenerating migrations from
+// scratch and converting the competency columns to JSON-encoded `String`.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql" // Swap to "sqlite" for the thesis-defense build.
+  provider = "postgresql" // Pinned per OQ-3. SQLite is a documented fallback only — see header note.
   url      = env("DATABASE_URL")
 }
 

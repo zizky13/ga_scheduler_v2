@@ -26,7 +26,7 @@ A core design rule (encoded as a TypeScript discriminated union in `src/types.ts
 - **Dev dependencies:** `tsx`, `typescript`, `@types/node`
 - **Runtime dependencies:** none — the algorithmic core is pure, dependency-free TypeScript
 
-> The full system described in the tech spec also targets Prisma (SQLite/libSQL), Redis, Express, and React — none of those are wired into this repository yet.
+> Prisma + PostgreSQL are now wired up (schema, migrations, seed, and a thin repository layer under `src/repo/`). Redis, Express, and React remain pending — they land in Phases 2–4 of the backlog.
 
 ---
 
@@ -63,6 +63,14 @@ Edit those files to tune the run.
 The mock dataset (rooms, time slots, lecturers, courses, course offerings, and a small set of intentionally infeasible offerings used to exercise Layer 1 rejections) lives in `src/db/seed.ts`. The seed now carries competency tags: 8 lecturers with `competencies` (e.g., `algorithms`, `databases`, `ai-ml`) and 11 courses with `requiredCompetencies`. Replace this file when wiring real data sources.
 
 For the Prisma-backed path, `npm run db:seed` runs `prisma/seed.ts` against `DATABASE_URL` and idempotently upserts the same fixture (1 semester `2025-GANJIL`, 6 rooms, 15 time slots, 8 lecturers, 11 courses, 15 feasible offerings) plus all join rows. Add `-- --with-infeasible` (i.e. `npm run db:seed -- --with-infeasible`) to also load the 4 intentionally infeasible offerings used by integration tests. The legacy `src/db/seed.ts` stays in place — the CLI runners under `src/cli/` still consume it as an in-memory fixture.
+
+### Database (OQ-3 resolved)
+
+- **Provider:** PostgreSQL (pinned). Set `DATABASE_URL=postgresql://user:pass@host:5432/dbname` in your environment to run `npm run db:seed` and the repository layer under `src/repo/`.
+- **Why:** the BullMQ worker in Phase 3 needs multi-process safety; file-locked SQLite is fragile under multiple writer processes.
+- **SQLite/libSQL fallback:** supported only as a thesis-defense build. The codec at `src/repo/competencyCodec.ts` already handles the dual-target encoding via `DATABASE_PROVIDER=sqlite`, but you must regenerate migrations and flip the competency columns to JSON-encoded `String` first (the current Postgres migrations use `TEXT[]`). Not the default; not what CI runs.
+- **Loading:** `DATABASE_URL` is read from the process environment. A minimal `.env.example` is checked in at the repo root with a commented-out Postgres URL — copy it to `.env` and edit. No `.env` file is committed.
+- **Background:** see `docs/api_and_database_design.md` §9 OQ-3 for the full rationale.
 
 ---
 
