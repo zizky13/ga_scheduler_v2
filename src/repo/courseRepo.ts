@@ -1,33 +1,34 @@
 /**
- * Course repository adapter — minimal slice for Phase 1 task 5.
+ * Course repository adapter.
  *
- * Today this module only demonstrates the codec boundary: it decodes the
- * `requiredCompetencies` column into the `string[]` shape required by
- * `src/types.ts:Course.requiredCompetencies`. The full row→domain mapping
- * (including `requiredFacilities` and audit columns) lands in Phase 1
- * task 7 per `backlog.md`.
+ * Phase 1 task 7: full row→domain mapping now lives in
+ * `./mappers/courseMapper.ts`. This file keeps the original
+ * `toCourse(row, extras)` shape exported for backward compatibility but
+ * delegates the canonical work to `mapCourseRow`.
  *
- * Prisma-import-free by design — see `lecturerRepo.ts` for the rationale.
+ * Prisma-import-free at runtime — see `./mappers/courseMapper.ts`.
  */
 
 import type { Course } from '../types';
 import { decodeCompetencies } from './competencyCodec';
 import type { CourseRow } from './types';
+import { mapCourseRow } from './mappers/courseMapper';
 
 /**
- * Extras the caller is expected to resolve from related tables. Phase 1
- * task 7 will absorb this work into the repository.
+ * Extras the caller is expected to resolve from related tables before
+ * calling the legacy `toCourse` adapter.
+ *
+ * @deprecated Prefer `mapCourseRow` from `./mappers/courseMapper.ts`.
  */
 export type CourseRowExtras = {
   requiredFacilities: string[];
 };
 
 /**
- * Adapts a Prisma `courses` row (plus its extras) to the in-memory `Course`
- * domain type used by the GA core. Decodes `requiredCompetencies` via the
- * dual-target codec.
+ * Adapts a minimal Prisma `courses` row (plus its extras) to the in-memory
+ * `Course` domain type used by the GA core.
  *
- * @see Phase 1 task 7 in `backlog.md` for the full row-fetch implementation.
+ * @deprecated Prefer `mapCourseRow` from `./mappers/courseMapper.ts`.
  */
 export function toCourse(row: CourseRow, extras: CourseRowExtras): Course {
   return {
@@ -39,3 +40,5 @@ export function toCourse(row: CourseRow, extras: CourseRowExtras): Course {
     requiredCompetencies: decodeCompetencies(row.requiredCompetencies),
   };
 }
+
+export { mapCourseRow };

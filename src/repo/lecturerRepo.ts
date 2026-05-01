@@ -1,37 +1,39 @@
 /**
- * Lecturer repository adapter — minimal slice for Phase 1 task 5.
+ * Lecturer repository adapter.
  *
- * Today this module only demonstrates the codec boundary: it decodes the
- * `competencies` column into the `string[]` shape required by
- * `src/types.ts:Lecturer.competencies`. The full row→domain mapping
- * (including the `preferredTimeSlotIds` join, `semesterId`, audit columns,
- * etc.) lands in Phase 1 task 7 per `backlog.md`.
+ * Phase 1 task 7: full row→domain mapping now lives in
+ * `./mappers/lecturerMapper.ts`. This file keeps the original
+ * `toLecturer(row, extras)` shape exported for backward compatibility with
+ * existing callers / tests but delegates the heavy lifting to the canonical
+ * mapper.
  *
- * This file is intentionally Prisma-import-free — it operates on plain row
- * shapes (see `./types.ts`) so the GA core in `src/ga/`, `src/pre-ga/`, and
- * `src/ssa/` stays Prisma-unaware (techspec §5.2 / api_design §3.5).
+ * Prisma-import-free at runtime; operates on plain row shapes only.
  */
 
 import type { Lecturer } from '../types';
 import { decodeCompetencies } from './competencyCodec';
 import type { LecturerRow } from './types';
+import { mapLecturerRow } from './mappers/lecturerMapper';
 
 /**
- * Extra fields the caller is expected to resolve from related tables and
- * pass in alongside the raw `LecturerRow`. Phase 1 task 7 will move this
- * resolution inside the repository layer; for now the adapter just accepts
- * pre-computed values so callers can wire it up incrementally.
+ * Extras the caller is expected to resolve from related tables before
+ * calling the legacy `toLecturer` adapter. Phase 1 task 7's `mapLecturerRow`
+ * absorbs this resolution into the mapper signature.
+ *
+ * @deprecated Prefer `mapLecturerRow` from `./mappers/lecturerMapper.ts`,
+ * which accepts the included Prisma row directly.
  */
 export type LecturerRowExtras = {
   preferredTimeSlotIds: number[];
 };
 
 /**
- * Adapts a Prisma `lecturers` row (plus its extras) to the in-memory
- * `Lecturer` domain type used by the GA core. The only non-trivial work is
- * decoding `competencies` via the dual-target codec.
+ * Adapts a minimal Prisma `lecturers` row (plus its extras) to the in-memory
+ * `Lecturer` domain type used by the GA core. Decodes `competencies` via the
+ * dual-target codec.
  *
- * @see Phase 1 task 7 in `backlog.md` for the full row-fetch implementation.
+ * @deprecated Prefer `mapLecturerRow` from `./mappers/lecturerMapper.ts`,
+ * which works directly off the included row shape returned by Prisma.
  */
 export function toLecturer(
   row: LecturerRow,
@@ -45,3 +47,5 @@ export function toLecturer(
     competencies: decodeCompetencies(row.competencies),
   };
 }
+
+export { mapLecturerRow };

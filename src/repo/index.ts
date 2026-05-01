@@ -1,10 +1,15 @@
 /**
  * Public surface of the repository layer.
  *
- * Phase 1 task 5 only ships the competency codec primitive plus minimal
- * lecturer/course adapters that demonstrate the dual-target boundary. The
- * full repository (Room, CourseOffering, LockedRoom, etc.) lands in Phase 1
- * task 7 per `backlog.md`.
+ * Phase 1 task 7 lands the full row→domain mapping for `Room`, `TimeSlot`,
+ * `Lecturer`, `Course`, `CourseOffering`, and `LockedRoom`, plus the
+ * `loadScheduleInputs` facade the worker will call before invoking the GA
+ * pipeline. The pure mappers under `./mappers/` are Prisma-import-free; only
+ * `./scheduleRepo.ts` touches the runtime Prisma client (api_design §3.5).
+ *
+ * Note: this module intentionally does NOT re-export `PrismaClient`. Callers
+ * that need it should import from `@prisma/client` directly so the dependency
+ * stays explicit at the boundary.
  */
 
 export {
@@ -14,7 +19,36 @@ export {
   type CompetencyTarget,
 } from './competencyCodec';
 
+// Legacy adapters retained for backward compatibility (Phase 1 task 5).
 export { toLecturer, type LecturerRowExtras } from './lecturerRepo';
 export { toCourse, type CourseRowExtras } from './courseRepo';
 
 export type { LecturerRow, CourseRow } from './types';
+
+// Phase 1 task 7 — pure row→domain mappers.
+export { mapRoomRow, type RoomRow } from './mappers/roomMapper';
+export {
+  mapTimeSlotRow,
+  weekdayToString,
+  type TimeSlotRow,
+} from './mappers/timeSlotMapper';
+export {
+  mapLecturerRow,
+  type LecturerRowFull,
+} from './mappers/lecturerMapper';
+export { mapCourseRow, type CourseRowFull } from './mappers/courseMapper';
+export {
+  mapCourseOfferingRow,
+  type CourseOfferingRowFull,
+} from './mappers/courseOfferingMapper';
+export {
+  mapLockedRoomRow,
+  type LockedRoomRow,
+} from './mappers/lockedRoomMapper';
+
+// Phase 1 task 7 — Prisma-aware facade (worker entry point).
+export {
+  loadScheduleInputs,
+  getActiveSemesterId,
+  type ScheduleRepoInputs,
+} from './scheduleRepo';

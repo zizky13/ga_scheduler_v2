@@ -49,6 +49,26 @@ export interface CourseOffering {
   parentOfferingId?: number;   // for parallel split offerings
 }
 
+/**
+ * Manual room-lock applied by the Kaprodi prior to a run (techspec §5.4 / FR-01).
+ *
+ * Independent of `CourseOffering.isFixed` / `CourseOffering.fixedTimeSlotIds`,
+ * which capture *intrinsic* fixedness asserted at data-entry time. Per
+ * api_design §3.5, the Pre-GA `entityTagger` (`src/pre-ga/entityTagger.ts`)
+ * merges both signals into the final `PreGACandidate.isFixedRoom` — the single
+ * source of truth consumed by the GA core. The two sources stay separate at
+ * the persistence layer; do not collapse them.
+ */
+export interface LockedRoom {
+  id: number;
+  semesterId: number;
+  offeringId: number;
+  roomId: number;
+  lockedById: number;
+  lockedAt: Date;
+  reason: string | null;
+}
+
 // ─── Layer 1: Pre-GA Types ───────────────────────────────────────
 
 export interface CheckResult {
