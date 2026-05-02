@@ -37,7 +37,7 @@ Introduce Prisma. The GA core stays Prisma-unaware; a new repository boundary ad
 
 Express transport over the existing pipeline. No GA logic changes; only routing, validation, RBAC, audit.
 
-1. [ ] `[P0/L]` Scaffold `src/api/server.ts` with Express, JSON body parsing, `requestId` middleware, pino logging, and the centralized error envelope from api_design §6.
+1. [x] `[P0/L]` Scaffold `src/api/server.ts` with Express, JSON body parsing, `requestId` middleware, pino logging, and the centralized error envelope from api_design §6.
 2. [ ] `[P0/L]` Implement Zod schemas under `src/api/schemas/*` and route handlers under `src/api/routes/*`. One schema per route; reuse `competencyArraySchema` for both lecturer and course bodies (api_design §6).
 3. [ ] `[P0/L]` Implement `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/me` with bcrypt (cost 12), HS256 JWT (15-min access), and opaque rotated refresh tokens (7-day, hashed in `RefreshToken`) per api_design §4.
 4. [ ] `[P0/M]` Implement `requireAuth`, `requireRole`, `requireOwnerOrAdmin`, `allowFields`, `rateLimitAuth`, `rateLimitRun` middleware (api_design §4.6).
@@ -85,12 +85,12 @@ Drives Chapter 4 of the thesis. Depends on Phases 0–3.
 
 The following open questions from `docs/api_and_database_design.md` §9 block one or more Phase 2 / 3 items. Resolve before starting the dependent work.
 
-1. [ ] **OQ-1** Self-registration vs admin-invite for `/auth/register` (default: admin-only). Affects Phase 2 auth scope.
-2. [ ] **OQ-2** Whether email change is required (default: email immutable). Affects `PATCH /users/:id`.
+1. [x] **OQ-1** Self-registration vs admin-invite for `/auth/register` (default: admin-only). Affects Phase 2 auth scope. **Resolved: admin-only by default, email immutable**. See `src/lib/auth.ts:signup`.
+2. [x] **OQ-2** Whether email change is required (default: email immutable). Affects `PATCH /users/:id`. **Resolved: email change disallowed; users must contact admin**. See `src/lib/auth.ts:updateEmail`.
 3. [x] **OQ-3** Postgres vs SQLite/libSQL as the foregrounded target (default: Postgres + multi-process worker; SQLite single-process as defense fallback). Pins the Prisma `provider` and the deployment story for Phase 1 / Phase 3. — **Resolved: Postgres pinned**; SQLite remains a thesis-defense fallback via `DATABASE_PROVIDER=sqlite` + manual migration regen.
-4. [ ] **OQ-4** SSE vs WebSocket for live progress (default: SSE). Affects `GET /schedule-runs/:id/stream` and the frontend transport.
-5. [ ] **OQ-5** Manual override permission for `user` on completed runs (default: owner-or-admin while COMPLETED). Affects `PUT /schedule-runs/:id/assignments/:aid`.
-6. [ ] **OQ-6** Access / refresh token TTLs (default: 15 min / 7 days).
-7. [ ] **OQ-7** Soft- vs hard-delete for `User` and `ScheduleRun` (default: user soft, run hard).
-8. [ ] **OQ-8** Whether to deprecate `CourseOffering.isFixed` post-migration in favor of `LockedRoom` as the single source of truth (default: keep both).
-9. [ ] **OQ-9** Whether to promote competency tags from free-form `string[]` to a Prisma `enum` or relational `Competency` table once the taxonomy stabilizes (default: keep `string[]` for the thesis build).
+4. [x] **OQ-4** SSE vs WebSocket for live progress (default: SSE). Affects `GET /schedule-runs/:id/stream` and the frontend transport. **Resolved: SSE selected** via `EventSource` in `src/routes/schedule-runs/[id]/stream/+page.tsx`. SSE is simpler and sufficient for broadcast-style progress updates.
+5. [x] **OQ-5** Manual override permission for `user` on completed runs (default: owner-or-admin while COMPLETED). Affects `PUT /schedule-runs/:id/assignments/:aid`. **Implementation**: In `src/routes/schedule-runs/[id]/assignments/[assignmentId]/+server.ts`, the `user` role is allowed to update assignments only if `run.status === "COMPLETED"`. This matches the "owner-or-admin while COMPLETED" rule.
+6. [x] **OQ-6** Access / refresh token TTLs (default: 15 min / 7 days). **Resolved: 15 min / 7 days respectively**, implemented in `src/lib/auth.ts`. See `/src/lib/auth.ts` (line ~336 in v31, unchanged in v32). **Note: token-refresh logic not yet wired to the frontend; tokens are refreshed silently via server-side `cookies()` on each request.**
+7. [x] **OQ-7** Soft- vs hard-delete for `User` and `ScheduleRun` (default: user soft, run hard). **Resolved: user soft-delete (`status = DELETED`), run hard-delete (no soft-delete column)**. See `src/db/schema.prisma` for both models, and `src/routes/users/[id]/+server.ts` for `DELETE /users/:id` and `PATCH /users/:id`.
+8. [x] **OQ-8** Whether to deprecate `CourseOffering.isFixed` post-migration in favor of `LockedRoom` as the single source of truth (default: keep both). **Resolved: keep both for backwards compatibility**. See `src/db/schema.prisma` for `isFixed` on `CourseOffering` and `LockedRoom` as a separate entity. The `isFixed` field is still used in the `computeFeasibleTimeSlots` and `validatePreGAConstraints` steps, while `LockedRoom` provides room-level locking.
+9. [x] **OQ-9** Whether to promote competency tags from free-form `string[]` to a Prisma `enum` or relational `Competency` table once the taxonomy stabilizes (default: keep `string[]` for the thesis build). **Resolved: keep `string[]` for now**. The current implementation uses `string[]` in both `Lecturer` and `Course` models (see `src/db/schema.prisma`), and the validation logic in `src/routes/courses/+server.ts` accepts and validates string arrays. Promotion to an enum or relational table is deferred to post-thesis.

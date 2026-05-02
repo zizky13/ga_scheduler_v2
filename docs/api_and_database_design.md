@@ -1,18 +1,19 @@
 # API and Database Design Document
+
 ## UPJ GA Scheduler v2 — Backend Service
 
-| Field | Value |
-|---|---|
-| **Version** | 2.0 — aligned with techspec v2.0 / PRD v6.0 |
-| **Status** | Design — pending implementation (algorithmic core only in repo, per README) |
+| Field                   | Value                                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| **Version**             | 2.0 — aligned with techspec v2.0 / PRD v6.0                                                |
+| **Status**              | Design — pending implementation (algorithmic core only in repo, per README)                |
 | **Companion Documents** | `techspec_upj_scheduler_v2.md` (arc42 v2.0), `README.md`, `src/types.ts`, `src/db/seed.ts` |
-| **Audience** | Backend implementer, thesis examiner |
-| **Author Role** | Backend Architect |
+| **Audience**            | Backend implementer, thesis examiner                                                       |
+| **Author Role**         | Backend Architect                                                                          |
 
 ### Changelog
 
-| From → To | Summary |
-|---|---|
+| From → To | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1.0 → 2.0 | Aligned the doc to techspec v2.0 / PRD v6.0. Specifically: added `[HC-COMPETENCY]` data fields (`Lecturer.competencies`, `Course.requiredCompetencies`) to §3 with the dual-target SQLite/Postgres encoding rule from `[ARCH-OBS-05]`; added the `COMPETENCY_MISMATCH` 422 `DomainError` code (§5.2, §6) as a Pre-GA per-offering rejection; added the `competencyMismatch` audit counter on `ScheduleRun` and `FitnessHistory` (§3.2, §5.3.8, §8); added a new runtime subsection (§7.x) describing `CompetencyEligibilityMap` construction via `isLecturerEligibleForCourse`; updated the §4.5 / §4.6 permission matrix to cover the two new fields; updated CRUD bodies in §5.3.5 / §5.3.6; added Zod validation rules for the two arrays in §6; opened OQ-9 in §9. |
 
 ---
@@ -26,6 +27,7 @@ This document specifies the HTTP API surface, persistence schema (Prisma), and a
 ### 1.2 Scope
 
 **In scope:**
+
 - Prisma schema covering every entity referenced by the techspec and `src/types.ts`.
 - REST API for all CRUD entities, scheduler orchestration, auth, and run inspection.
 - Two-role auth (admin / user) with a complete permission matrix.
@@ -33,6 +35,7 @@ This document specifies the HTTP API surface, persistence schema (Prisma), and a
 - Live progress streaming for in-progress GA runs.
 
 **Out of scope:**
+
 - Frontend implementation, including the `LockRoomModal` and `SSAFailurePanel` UI (techspec §9).
 - Multi-faculty federation (techspec §2.3).
 - Integration with SIAK or other UPJ academic systems (techspec §3.2).
@@ -40,16 +43,16 @@ This document specifies the HTTP API surface, persistence schema (Prisma), and a
 
 ### 1.3 Alignment with the techspec
 
-This design extends the data model already implied by `src/types.ts` and the Prisma fragments in techspec v2.0 §5.4 (`LockedRoom`), §5.5 (competency fields on `Lecturer` / `Course`), and §8.2 (`GARun`). It does **not** introduce a parallel data model. The techspec's compile-time `Gene` discriminated union (`FixedRoomGene | FlexibleGene`) remains an in-memory construct only — chromosomes are persisted as serialized JSON in the audit record (techspec §7.2 Redis schema, §8.2 `GARun.historyJson`). The DB stores the *result* of a run (assignments + history), not the live chromosome.
+This design extends the data model already implied by `src/types.ts` and the Prisma fragments in techspec v2.0 §5.4 (`LockedRoom`), §5.5 (competency fields on `Lecturer` / `Course`), and §8.2 (`GARun`). It does **not** introduce a parallel data model. The techspec's compile-time `Gene` discriminated union (`FixedRoomGene | FlexibleGene`) remains an in-memory construct only — chromosomes are persisted as serialized JSON in the audit record (techspec §7.2 Redis schema, §8.2 `GARun.historyJson`). The DB stores the _result_ of a run (assignments + history), not the live chromosome.
 
 Per the repository `README.md`, the implementation under `src/` is **algorithmic-only** at the time of writing — there is no Express API, Prisma client, Redis instance, or React UI in the codebase yet. Inputs come from `src/db/seed.ts` and outputs are printed by the CLI runners under `src/cli/`. This document therefore remains a forward-looking blueprint for the API/persistence/queue layers; the techspec sections cited here are authoritative for the algorithmic semantics that the future API surface must respect.
 
 ### 1.4 Roles at a glance
 
-| Role | Maps to techspec §8.1 | Purpose |
-|---|---|---|
-| `admin` | `ADMIN` | Full control: facility/timeslot management, user administration, locked rooms, scheduling, manual overrides. |
-| `user` | `HEAD_OF_PROGRAM_STUDY` (Kaprodi) | Curates teaching data (lecturers, courses, offerings, student counts) and runs the GA on their own scheduling jobs. |
+| Role    | Maps to techspec §8.1             | Purpose                                                                                                             |
+| ------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `admin` | `ADMIN`                           | Full control: facility/timeslot management, user administration, locked rooms, scheduling, manual overrides.        |
+| `user`  | `HEAD_OF_PROGRAM_STUDY` (Kaprodi) | Curates teaching data (lecturers, courses, offerings, student counts) and runs the GA on their own scheduling jobs. |
 
 ---
 
@@ -106,17 +109,17 @@ The API is a thin transport layer over the existing pure-function pipeline under
 
 ### 3.1 Mapping summary: `src/types.ts` → Prisma
 
-| TS type (src/types.ts) | Prisma model | Notes |
-|---|---|---|
-| `Room` | `Room` | `facilities: string[]` → `Facility[]` join table (normalized for indexing) — see migration note 3.5. |
-| `TimeSlot` | `TimeSlot` | 1:1; `day` becomes a `Weekday` enum. |
-| `Lecturer` | `Lecturer` | `preferredTimeSlotIds: number[]` → `LecturerPreferredSlot` join table. `competencies: string[]` is a scalar array column per techspec §5.5 (`[HC-COMPETENCY]`); see §3.5 for the dual-target encoding rule (`[ARCH-OBS-05]`). |
-| `Course` | `Course` | `requiredFacilities: string[]` → join with `Facility`. `requiredCompetencies: string[]` is a scalar array column per techspec §5.5 (no join table — see §3.4 note); same dual-target encoding as `Lecturer.competencies`. |
-| `CourseOffering` | `CourseOffering` | `lecturers: Lecturer[]` → `CourseOfferingLecturer` join (team teaching). `isFixed` and `fixedTimeSlotIds` retained for **techspec-mandated** Fixed Room semantics — they shadow the `LockedRoom` table (see 3.5). |
-| `PreGACandidate` | *not persisted* | In-memory only; rebuilt at run-time inside `runPreGA()`. |
-| `SSAResult` | `ScheduleRun.ssaResultJson` | Serialized; matches techspec §8.2. |
-| `GAResult` | `ScheduleRun.*` + `FitnessHistory[]` + `ScheduleAssignment[]` | `history[]` and `avgHistory[]` are normalized to a child table for query-friendly charts; the raw JSON is also retained per techspec §8.2 for compatibility. |
-| `SchedulerResponse` | DTO, not persisted | Composed on read from `ScheduleRun`. |
+| TS type (src/types.ts) | Prisma model                                                  | Notes                                                                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Room`                 | `Room`                                                        | `facilities: string[]` → `Facility[]` join table (normalized for indexing) — see migration note 3.5.                                                                                                                          |
+| `TimeSlot`             | `TimeSlot`                                                    | 1:1; `day` becomes a `Weekday` enum.                                                                                                                                                                                          |
+| `Lecturer`             | `Lecturer`                                                    | `preferredTimeSlotIds: number[]` → `LecturerPreferredSlot` join table. `competencies: string[]` is a scalar array column per techspec §5.5 (`[HC-COMPETENCY]`); see §3.5 for the dual-target encoding rule (`[ARCH-OBS-05]`). |
+| `Course`               | `Course`                                                      | `requiredFacilities: string[]` → join with `Facility`. `requiredCompetencies: string[]` is a scalar array column per techspec §5.5 (no join table — see §3.4 note); same dual-target encoding as `Lecturer.competencies`.     |
+| `CourseOffering`       | `CourseOffering`                                              | `lecturers: Lecturer[]` → `CourseOfferingLecturer` join (team teaching). `isFixed` and `fixedTimeSlotIds` retained for **techspec-mandated** Fixed Room semantics — they shadow the `LockedRoom` table (see 3.5).             |
+| `PreGACandidate`       | _not persisted_                                               | In-memory only; rebuilt at run-time inside `runPreGA()`.                                                                                                                                                                      |
+| `SSAResult`            | `ScheduleRun.ssaResultJson`                                   | Serialized; matches techspec §8.2.                                                                                                                                                                                            |
+| `GAResult`             | `ScheduleRun.*` + `FitnessHistory[]` + `ScheduleAssignment[]` | `history[]` and `avgHistory[]` are normalized to a child table for query-friendly charts; the raw JSON is also retained per techspec §8.2 for compatibility.                                                                  |
+| `SchedulerResponse`    | DTO, not persisted                                            | Composed on read from `ScheduleRun`.                                                                                                                                                                                          |
 
 ### 3.2 Full Prisma schema
 
@@ -560,25 +563,25 @@ model AuditLog {
 
 Each entry below: purpose · key fields · relationships · indexes · TS-type mapping.
 
-| Model | Purpose | Maps to |
-|---|---|---|
-| `User` | Authenticated principal. Either `ADMIN` or `USER`. | New entity. |
-| `RefreshToken` | Server-side record of issued refresh tokens (rotation + revocation). | New entity. |
-| `Semester` | Tenant boundary for all scheduling data; the active semester scopes the GA run. | Implicit in techspec §1.3 (one active semester at a time). |
-| `Facility` | Normalized facility tag (`LAB`, `PROJECTOR`, `STUDIO`). | `Room.facilities[]`, `Course.requiredFacilities[]`. |
-| `Room` | Physical room with capacity and facilities. | `src/types.ts:Room`. |
-| `TimeSlot` | A weekly recurring slot within a semester. | `src/types.ts:TimeSlot`. |
-| `Lecturer` | Person who teaches; flagged structural for soft-constraint penalty; carries `competencies` (techspec §5.5 / `[HC-COMPETENCY]`). | `src/types.ts:Lecturer`. |
-| `Course` | Curriculum entry with credit, facility, and competency (`requiredCompetencies`, techspec §5.5) requirements. | `src/types.ts:Course`. |
-| `CourseOffering` | A scheduled instance of a course in a semester. | `src/types.ts:CourseOffering`. |
-| `CourseOfferingLecturer` | Team-teaching join (techspec §1.3 #4). | `CourseOffering.lecturers[]`. |
-| `CourseOfferingFixedSlot` | Slots locked when `isFixed=true`. | `CourseOffering.fixedTimeSlotIds[]`. |
-| `LockedRoom` | Kaprodi-pinned `(offering, room)` lock from FR-01. | techspec §5.4 — extended with `semesterId`, `reason`. |
-| `ScheduleRun` | One execution of the Pre-GA → SSA → GA pipeline. | techspec §8.2 `GARun`, plus `SchedulerResponse` and `GAResult`. |
-| `ScheduleAssignment` | Final placement of one offering in the winning chromosome. | `Gene` (post-run, persisted form). |
-| `ScheduleAssignmentSlot` | The 1+ time slots that an assignment occupies. | `Gene.assignedTimeSlotIds[]`. |
-| `FitnessHistory` | Per-generation row for chart queries. | `GAResult.history[]` + `GAResult.avgHistory[]`. |
-| `AuditLog` | Tamper-evident trail of admin and user actions. | New entity (techspec §3.2 calls for a thesis audit log). |
+| Model                     | Purpose                                                                                                                         | Maps to                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `User`                    | Authenticated principal. Either `ADMIN` or `USER`.                                                                              | New entity.                                                     |
+| `RefreshToken`            | Server-side record of issued refresh tokens (rotation + revocation).                                                            | New entity.                                                     |
+| `Semester`                | Tenant boundary for all scheduling data; the active semester scopes the GA run.                                                 | Implicit in techspec §1.3 (one active semester at a time).      |
+| `Facility`                | Normalized facility tag (`LAB`, `PROJECTOR`, `STUDIO`).                                                                         | `Room.facilities[]`, `Course.requiredFacilities[]`.             |
+| `Room`                    | Physical room with capacity and facilities.                                                                                     | `src/types.ts:Room`.                                            |
+| `TimeSlot`                | A weekly recurring slot within a semester.                                                                                      | `src/types.ts:TimeSlot`.                                        |
+| `Lecturer`                | Person who teaches; flagged structural for soft-constraint penalty; carries `competencies` (techspec §5.5 / `[HC-COMPETENCY]`). | `src/types.ts:Lecturer`.                                        |
+| `Course`                  | Curriculum entry with credit, facility, and competency (`requiredCompetencies`, techspec §5.5) requirements.                    | `src/types.ts:Course`.                                          |
+| `CourseOffering`          | A scheduled instance of a course in a semester.                                                                                 | `src/types.ts:CourseOffering`.                                  |
+| `CourseOfferingLecturer`  | Team-teaching join (techspec §1.3 #4).                                                                                          | `CourseOffering.lecturers[]`.                                   |
+| `CourseOfferingFixedSlot` | Slots locked when `isFixed=true`.                                                                                               | `CourseOffering.fixedTimeSlotIds[]`.                            |
+| `LockedRoom`              | Kaprodi-pinned `(offering, room)` lock from FR-01.                                                                              | techspec §5.4 — extended with `semesterId`, `reason`.           |
+| `ScheduleRun`             | One execution of the Pre-GA → SSA → GA pipeline.                                                                                | techspec §8.2 `GARun`, plus `SchedulerResponse` and `GAResult`. |
+| `ScheduleAssignment`      | Final placement of one offering in the winning chromosome.                                                                      | `Gene` (post-run, persisted form).                              |
+| `ScheduleAssignmentSlot`  | The 1+ time slots that an assignment occupies.                                                                                  | `Gene.assignedTimeSlotIds[]`.                                   |
+| `FitnessHistory`          | Per-generation row for chart queries.                                                                                           | `GAResult.history[]` + `GAResult.avgHistory[]`.                 |
+| `AuditLog`                | Tamper-evident trail of admin and user actions.                                                                                 | New entity (techspec §3.2 calls for a thesis audit log).        |
 
 ### 3.4 ER diagram
 
@@ -631,18 +634,18 @@ erDiagram
 
 ### 3.5 Migration notes
 
-| Existing artifact | Status | Action |
-|---|---|---|
-| `src/types.ts:Room` | 1:1, except `facilities: string[]` | Migrate string array to `Facility` + `RoomFacility`. Keep a TS adapter `roomToType(room)` that returns `facilities: string[]` for the GA core, which expects a flat array. |
-| `src/types.ts:TimeSlot` | 1:1 | `day: string` becomes `Weekday` enum at the DB layer; the API DTO continues to expose the string form for the GA. |
-| `src/types.ts:Lecturer` | 1:1 | `preferredTimeSlotIds: number[]` → `LecturerPreferredSlot`. `competencies: string[]` is added per techspec §5.5 as a scalar array column (no join table) — see `[ARCH-OBS-05]` row below. |
-| `src/types.ts:Course` | 1:1 | `requiredFacilities: string[]` → `CourseRequiredFacility`. `requiredCompetencies: string[]` is added per techspec §5.5 as a scalar array column (no join table) — see `[ARCH-OBS-05]` row below. |
-| `[ARCH-OBS-05]` SQLite vs Postgres array encoding | Spec-mandated dual-target | For Postgres, declare `competencies String[]` and `requiredCompetencies String[]` natively. For SQLite/libSQL, persist both fields as a single `String` column containing a JSON-encoded `string[]` (default `"[]"`); decode at the repository boundary so the in-memory shape matches `src/types.ts:Lecturer.competencies` and `src/types.ts:Course.requiredCompetencies` exactly. The Prisma schema in §3.2 uses the SQLite-compatible `String` form to keep the schema portable; flip to `String[]` for Postgres. This is the same dual-target approach already used implicitly for the `historyJson` and `avgHistoryJson` fields. |
-| Seed data (`src/db/seed.ts`) — competencies | New | Per `README.md` §3, the seed now carries competency tags on **8 lecturers** (e.g., `algorithms`, `databases`, `ai-ml`) and **11 courses** (`requiredCompetencies`). The Prisma seed script must populate `Lecturer.competencies` and `Course.requiredCompetencies` from these in-memory values; otherwise every offering will fail Pre-GA with `COMPETENCY_MISMATCH` against a non-empty `requiredCompetencies` set. |
-| `src/types.ts:CourseOffering` | Mostly 1:1, **conflict** | The TS type carries `isFixed` and `fixedTimeSlotIds`, while techspec §5.4 introduces a separate `LockedRoom` table populated by FR-01. **Resolution**: keep both. `CourseOffering.isFixed/fixedSlots` represents *intrinsic* fixedness asserted at data-entry time (e.g., a course administratively pinned for the whole semester), while `LockedRoom` represents an FR-01 *manual* lock applied by the Kaprodi prior to a specific run. The Pre-GA `entityTagger` already merges both signals (techspec §5.4) — the resulting `PreGACandidate.isFixedRoom` is the single source of truth for the GA. |
-| `src/db/seed.ts` | In-memory only | Convert to a Prisma seed script that upserts a single `Semester` (`2025-GANJIL`) and inserts the same six rooms, fifteen time slots, eight lecturers, eleven courses, and fifteen offerings. The `infeasibleOfferings` set should be guarded behind a `--with-infeasible` flag — useful for integration tests, harmful in production. |
-| GA core under `src/ga/`, `src/pre-ga/`, `src/ssa/` | No change | These modules consume plain TS types and remain Prisma-unaware (techspec §5.2). The API service layer adapts Prisma rows → TS types before invoking `runPreGA`, `runSSA`, `runGA`. |
-| Redis checkpoint schema (techspec §7.2) | No change | Already specified verbatim in the techspec; only its *trigger* changes — the worker writes checkpoints, not an HTTP handler. |
+| Existing artifact                                  | Status                             | Action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/types.ts:Room`                                | 1:1, except `facilities: string[]` | Migrate string array to `Facility` + `RoomFacility`. Keep a TS adapter `roomToType(room)` that returns `facilities: string[]` for the GA core, which expects a flat array.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `src/types.ts:TimeSlot`                            | 1:1                                | `day: string` becomes `Weekday` enum at the DB layer; the API DTO continues to expose the string form for the GA.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `src/types.ts:Lecturer`                            | 1:1                                | `preferredTimeSlotIds: number[]` → `LecturerPreferredSlot`. `competencies: string[]` is added per techspec §5.5 as a scalar array column (no join table) — see `[ARCH-OBS-05]` row below.                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `src/types.ts:Course`                              | 1:1                                | `requiredFacilities: string[]` → `CourseRequiredFacility`. `requiredCompetencies: string[]` is added per techspec §5.5 as a scalar array column (no join table) — see `[ARCH-OBS-05]` row below.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `[ARCH-OBS-05]` SQLite vs Postgres array encoding  | Spec-mandated dual-target          | For Postgres, declare `competencies String[]` and `requiredCompetencies String[]` natively. For SQLite/libSQL, persist both fields as a single `String` column containing a JSON-encoded `string[]` (default `"[]"`); decode at the repository boundary so the in-memory shape matches `src/types.ts:Lecturer.competencies` and `src/types.ts:Course.requiredCompetencies` exactly. The Prisma schema in §3.2 uses the SQLite-compatible `String` form to keep the schema portable; flip to `String[]` for Postgres. This is the same dual-target approach already used implicitly for the `historyJson` and `avgHistoryJson` fields. |
+| Seed data (`src/db/seed.ts`) — competencies        | New                                | Per `README.md` §3, the seed now carries competency tags on **8 lecturers** (e.g., `algorithms`, `databases`, `ai-ml`) and **11 courses** (`requiredCompetencies`). The Prisma seed script must populate `Lecturer.competencies` and `Course.requiredCompetencies` from these in-memory values; otherwise every offering will fail Pre-GA with `COMPETENCY_MISMATCH` against a non-empty `requiredCompetencies` set.                                                                                                                                                                                                                  |
+| `src/types.ts:CourseOffering`                      | Mostly 1:1, **conflict**           | The TS type carries `isFixed` and `fixedTimeSlotIds`, while techspec §5.4 introduces a separate `LockedRoom` table populated by FR-01. **Resolution**: keep both. `CourseOffering.isFixed/fixedSlots` represents _intrinsic_ fixedness asserted at data-entry time (e.g., a course administratively pinned for the whole semester), while `LockedRoom` represents an FR-01 _manual_ lock applied by the Kaprodi prior to a specific run. The Pre-GA `entityTagger` already merges both signals (techspec §5.4) — the resulting `PreGACandidate.isFixedRoom` is the single source of truth for the GA.                                 |
+| `src/db/seed.ts`                                   | In-memory only                     | Convert to a Prisma seed script that upserts a single `Semester` (`2025-GANJIL`) and inserts the same six rooms, fifteen time slots, eight lecturers, eleven courses, and fifteen offerings. The `infeasibleOfferings` set should be guarded behind a `--with-infeasible` flag — useful for integration tests, harmful in production.                                                                                                                                                                                                                                                                                                 |
+| GA core under `src/ga/`, `src/pre-ga/`, `src/ssa/` | No change                          | These modules consume plain TS types and remain Prisma-unaware (techspec §5.2). The API service layer adapts Prisma rows → TS types before invoking `runPreGA`, `runSSA`, `runGA`.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Redis checkpoint schema (techspec §7.2)            | No change                          | Already specified verbatim in the techspec; only its _trigger_ changes — the worker writes checkpoints, not an HTTP handler.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ---
 
@@ -652,12 +655,12 @@ erDiagram
 
 **JWT access tokens + opaque refresh tokens, with bcrypt password hashing.**
 
-| Choice | Justification |
-|---|---|
-| Stateless JWT access token (15 min) | Lets the API and the BullMQ worker both validate requests without a DB roundtrip — important because the worker re-checks ownership before persisting overrides. |
-| Opaque, server-side refresh token (7 days, single-use, rotated on refresh) | Storing refresh tokens hashed in `RefreshToken` enables instant revocation (e.g., admin deactivates a user mid-run) — JWT alone cannot. |
-| bcrypt with cost factor 12 | Industry default; resistant to GPU brute force at this cost; 250–400ms hash time on commodity hardware is acceptable for an interactive login. |
-| HS256 for JWT signing | Symmetric is sufficient because the API and worker share infrastructure. RS256 would only matter if a third party needed to verify tokens. The signing key lives in `JWT_SECRET` (env). |
+| Choice                                                                     | Justification                                                                                                                                                                           |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stateless JWT access token (15 min)                                        | Lets the API and the BullMQ worker both validate requests without a DB roundtrip — important because the worker re-checks ownership before persisting overrides.                        |
+| Opaque, server-side refresh token (7 days, single-use, rotated on refresh) | Storing refresh tokens hashed in `RefreshToken` enables instant revocation (e.g., admin deactivates a user mid-run) — JWT alone cannot.                                                 |
+| bcrypt with cost factor 12                                                 | Industry default; resistant to GPU brute force at this cost; 250–400ms hash time on commodity hardware is acceptable for an interactive login.                                          |
+| HS256 for JWT signing                                                      | Symmetric is sufficient because the API and worker share infrastructure. RS256 would only matter if a third party needed to verify tokens. The signing key lives in `JWT_SECRET` (env). |
 
 ### 4.2 Token storage
 
@@ -709,46 +712,47 @@ Justification: Pairing a short-lived header-based access token with a cookie-bas
 
 `-` = denied / 401 if anonymous · `R` = read · `W` = write (create/update) · `D` = delete · `O` = own only · `*` = all rows.
 
-| Resource / Action | `admin` | `user` | `anonymous` |
-|---|:---:|:---:|:---:|
-| `POST /auth/login` | ✅ | ✅ | ✅ |
-| `POST /auth/refresh` | ✅ | ✅ | ✅ (with valid cookie) |
-| `POST /auth/logout` | ✅ | ✅ | – |
-| `GET /auth/me` | ✅ | ✅ | – |
-| `POST /auth/register` (create user) | ✅ | – | – |
-| `GET /users`, `GET /users/:id` | R\* | – | – |
-| `PATCH /users/:id` (role / activation) | W\* | – | – |
-| `DELETE /users/:id` (soft-deactivate) | D\* | – | – |
-| `GET/POST/PATCH/DELETE /semesters` | RWD | R | – |
-| `POST /semesters/:id/activate` | W | – | – |
-| `GET/POST/PATCH/DELETE /rooms` | RWD | R | – |
-| `GET/POST/PATCH/DELETE /timeslots` | RWD | R | – |
-| `GET/POST/PATCH/DELETE /facilities` | RWD | R | – |
-| `GET/POST/PATCH/DELETE /locked-rooms` | RWD | R | – |
-| `GET /lecturers`, `GET /lecturers/:id` | R\* | R\* | – |
-| `POST /lecturers` | W | W | – |
-| `PATCH /lecturers/:id` | W | W (non-structural fields only — see 4.6) | – |
-| `DELETE /lecturers/:id` | D | – | – |
-| `GET /courses`, `GET /courses/:id` | R\* | R\* | – |
-| `POST /courses` | W | W | – |
-| `PATCH /courses/:id` | W | W | – |
-| `DELETE /courses/:id` | D | – | – |
-| `GET /course-offerings` | R\* | R\* | – |
-| `POST /course-offerings` | W | W | – |
-| `PATCH /course-offerings/:id` (full) | W | – | – |
-| `PATCH /course-offerings/:id/student-count` | W | W | – |
-| `DELETE /course-offerings/:id` | D | – | – |
-| `GET /schedule-runs` | R\* | R\* (own only — server filters by `createdById`) | – |
-| `POST /schedule-runs` | W | W | – |
-| `GET /schedule-runs/:id` | R\* | R(O) | – |
-| `GET /schedule-runs/:id/stream` | R\* | R(O) | – |
-| `POST /schedule-runs/:id/cancel` | W\* | W(O) | – |
-| `DELETE /schedule-runs/:id` | D\* | D(O) | – |
-| `PUT /schedule-runs/:id/assignments/:aid` (manual override) | W\* | W(O) | – |
-| `GET /audit-logs` | R\* | – | – |
-| `GET /health`, `GET /ready` | ✅ | ✅ | ✅ |
+| Resource / Action                                           | `admin` |                      `user`                      |      `anonymous`       |
+| ----------------------------------------------------------- | :-----: | :----------------------------------------------: | :--------------------: |
+| `POST /auth/login`                                          |   ✅    |                        ✅                        |           ✅           |
+| `POST /auth/refresh`                                        |   ✅    |                        ✅                        | ✅ (with valid cookie) |
+| `POST /auth/logout`                                         |   ✅    |                        ✅                        |           –            |
+| `GET /auth/me`                                              |   ✅    |                        ✅                        |           –            |
+| `POST /auth/register` (create user)                         |   ✅    |                        –                         |           –            |
+| `GET /users`, `GET /users/:id`                              |   R\*   |                        –                         |           –            |
+| `PATCH /users/:id` (role / activation)                      |   W\*   |                        –                         |           –            |
+| `DELETE /users/:id` (soft-deactivate)                       |   D\*   |                        –                         |           –            |
+| `GET/POST/PATCH/DELETE /semesters`                          |   RWD   |                        R                         |           –            |
+| `POST /semesters/:id/activate`                              |    W    |                        –                         |           –            |
+| `GET/POST/PATCH/DELETE /rooms`                              |   RWD   |                        R                         |           –            |
+| `GET/POST/PATCH/DELETE /timeslots`                          |   RWD   |                        R                         |           –            |
+| `GET/POST/PATCH/DELETE /facilities`                         |   RWD   |                        R                         |           –            |
+| `GET/POST/PATCH/DELETE /locked-rooms`                       |   RWD   |                        R                         |           –            |
+| `GET /lecturers`, `GET /lecturers/:id`                      |   R\*   |                       R\*                        |           –            |
+| `POST /lecturers`                                           |    W    |                        W                         |           –            |
+| `PATCH /lecturers/:id`                                      |    W    |     W (non-structural fields only — see 4.6)     |           –            |
+| `DELETE /lecturers/:id`                                     |    D    |                        –                         |           –            |
+| `GET /courses`, `GET /courses/:id`                          |   R\*   |                       R\*                        |           –            |
+| `POST /courses`                                             |    W    |                        W                         |           –            |
+| `PATCH /courses/:id`                                        |    W    |                        W                         |           –            |
+| `DELETE /courses/:id`                                       |    D    |                        –                         |           –            |
+| `GET /course-offerings`                                     |   R\*   |                       R\*                        |           –            |
+| `POST /course-offerings`                                    |    W    |                        W                         |           –            |
+| `PATCH /course-offerings/:id` (full)                        |    W    |                        –                         |           –            |
+| `PATCH /course-offerings/:id/student-count`                 |    W    |                        W                         |           –            |
+| `DELETE /course-offerings/:id`                              |    D    |                        –                         |           –            |
+| `GET /schedule-runs`                                        |   R\*   | R\* (own only — server filters by `createdById`) |           –            |
+| `POST /schedule-runs`                                       |    W    |                        W                         |           –            |
+| `GET /schedule-runs/:id`                                    |   R\*   |                       R(O)                       |           –            |
+| `GET /schedule-runs/:id/stream`                             |   R\*   |                       R(O)                       |           –            |
+| `POST /schedule-runs/:id/cancel`                            |   W\*   |                       W(O)                       |           –            |
+| `DELETE /schedule-runs/:id`                                 |   D\*   |                       D(O)                       |           –            |
+| `PUT /schedule-runs/:id/assignments/:aid` (manual override) |   W\*   |                       W(O)                       |           –            |
+| `GET /audit-logs`                                           |   R\*   |                        –                         |           –            |
+| `GET /health`, `GET /ready`                                 |   ✅    |                        ✅                        |           ✅           |
 
 **Field-level rule for `user` editing `Lecturer` / `Course`** (referenced in row "PATCH /lecturers/:id"):
+
 - `user` may set: `name`, `preferredTimeSlotIds`, `Lecturer.competencies`, `course.code`, `course.name`, `course.sks`, `course.requiredFacilities`, `course.requiredCompetencies`.
 - `user` may **not** set: `Lecturer.isStructural` (academic policy attribute), `Lecturer.semesterId`/`Course.semesterId` (only admin chooses semester), or any field on `Room`/`TimeSlot`/`LockedRoom`/`Semester`/`User`.
 
@@ -796,18 +800,18 @@ rateLimitAuth, rateLimitRun
 
 ### 5.2 HTTP status code policy
 
-| Code | Used for |
-|---|---|
-| 200 | Successful GET, PATCH, PUT |
-| 201 | Successful POST that created a resource |
-| 202 | `POST /schedule-runs` — accepted into queue |
-| 204 | Successful DELETE, logout |
-| 400 | Malformed request, schema validation failure |
-| 401 | Missing or invalid auth |
-| 403 | Authenticated but not authorized |
-| 404 | Resource not found, or `user` querying someone else's run |
-| 409 | Idempotency conflict, unique constraint violation, illegal state transition (e.g., cancel a COMPLETED run) |
-| 422 | Domain rejection: `NO_FEASIBLE_CANDIDATES`, `SSA_INFEASIBLE`, `AC3_DOMAIN_EMPTY`, `BIPARTITE_MATCHING_INSUFFICIENT`, `COMPETENCY_MISMATCH` (techspec §4.3 `[HC-COMPETENCY]`, §8.3) |
+| Code | Used for                                                                                                                                                                           |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 200  | Successful GET, PATCH, PUT                                                                                                                                                         |
+| 201  | Successful POST that created a resource                                                                                                                                            |
+| 202  | `POST /schedule-runs` — accepted into queue                                                                                                                                        |
+| 204  | Successful DELETE, logout                                                                                                                                                          |
+| 400  | Malformed request, schema validation failure                                                                                                                                       |
+| 401  | Missing or invalid auth                                                                                                                                                            |
+| 403  | Authenticated but not authorized                                                                                                                                                   |
+| 404  | Resource not found, or `user` querying someone else's run                                                                                                                          |
+| 409  | Idempotency conflict, unique constraint violation, illegal state transition (e.g., cancel a COMPLETED run)                                                                         |
+| 422  | Domain rejection: `NO_FEASIBLE_CANDIDATES`, `SSA_INFEASIBLE`, `AC3_DOMAIN_EMPTY`, `BIPARTITE_MATCHING_INSUFFICIENT`, `COMPETENCY_MISMATCH` (techspec §4.3 `[HC-COMPETENCY]`, §8.3) |
 
 **`COMPETENCY_MISMATCH` is per-offering, not per-run.** Unlike `SSA_INFEASIBLE`, `AC3_DOMAIN_EMPTY`, or `BIPARTITE_MATCHING_INSUFFICIENT`, the `COMPETENCY_MISMATCH` code is emitted by Pre-GA's `checkCompetencies` (techspec §4.3) against an individual `CourseOffering` and appears inside the `preGASummary.infeasible[]` list returned with the run, not as a top-level run failure. A run only escalates to a top-level `422 NO_FEASIBLE_CANDIDATES` when the **entire** feasible list is empty after Pre-GA — i.e., every offering was rejected (whether for `COMPETENCY_MISMATCH` or any other Layer 1 reason). A run with some competency-rejected offerings and some feasible offerings still proceeds through SSA → GA on the feasible subset.
 | 429 | Rate limit exceeded |
@@ -818,45 +822,50 @@ rateLimitAuth, rateLimitRun
 
 #### 5.3.1 Auth
 
-| Method | Path | Role | Purpose |
-|---|---|---|---|
-| POST | `/auth/register` | admin | Create a new user. |
-| POST | `/auth/login` | anonymous | Exchange credentials for tokens. |
-| POST | `/auth/refresh` | anonymous (cookie) | Rotate refresh token, return new access token. |
-| POST | `/auth/logout` | any auth | Revoke active refresh token. |
-| GET | `/auth/me` | any auth | Return current principal. |
+| Method | Path             | Role               | Purpose                                        |
+| ------ | ---------------- | ------------------ | ---------------------------------------------- |
+| POST   | `/auth/register` | admin              | Create a new user.                             |
+| POST   | `/auth/login`    | anonymous          | Exchange credentials for tokens.               |
+| POST   | `/auth/refresh`  | anonymous (cookie) | Rotate refresh token, return new access token. |
+| POST   | `/auth/logout`   | any auth           | Revoke active refresh token.                   |
+| GET    | `/auth/me`       | any auth           | Return current principal.                      |
 
 **`POST /auth/register`** — admin-only. (See OQ-1 about whether self-registration is desirable.)
+
 - Request: `{ "email": string, "password": string, "fullName": string, "role": "admin" | "user" }`
 - Response 201: `{ "id": number, "email": string, "fullName": string, "role": Role, "isActive": true, "createdAt": ISO8601 }`
 - Errors: 400 weak password / invalid email; 409 email already used.
 
 **`POST /auth/login`**
+
 - Request: `{ "email": string, "password": string }`
 - Response 200: `{ "user": <Me>, "accessToken": string, "expiresIn": 900 }`. Sets `Set-Cookie: refreshToken=<opaque>; HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth; Max-Age=604800`.
 - Errors: 400 schema; 401 `INVALID_CREDENTIALS`; 403 `ACCOUNT_DISABLED`; 429.
 
 **`POST /auth/refresh`**
+
 - Request: cookie only (no body).
 - Response 200: `{ "accessToken": string, "expiresIn": 900 }`. New refresh-token cookie issued; old one revoked.
 - Errors: 401 `REFRESH_TOKEN_INVALID` (also clears cookie).
 
 **`POST /auth/logout`**
+
 - Response 204; clears cookie; revokes the matching `RefreshToken` row.
 
 **`GET /auth/me`**
+
 - Response 200: `{ "id": number, "email": string, "fullName": string, "role": Role, "lastLoginAt"?: ISO8601 }`.
 
 ---
 
 #### 5.3.2 Users (admin only)
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/users` | List users (paginated, sortable by `createdAt`, filterable by `role` and `isActive`). |
-| GET | `/users/:id` | Get one user. |
-| PATCH | `/users/:id` | Update `role`, `fullName`, or `isActive`. Cannot change `email` (see OQ-2). |
-| DELETE | `/users/:id` | Soft-deactivate (sets `isActive=false`; preserves audit trail). |
+| Method | Path         | Purpose                                                                               |
+| ------ | ------------ | ------------------------------------------------------------------------------------- |
+| GET    | `/users`     | List users (paginated, sortable by `createdAt`, filterable by `role` and `isActive`). |
+| GET    | `/users/:id` | Get one user.                                                                         |
+| PATCH  | `/users/:id` | Update `role`, `fullName`, or `isActive`. Cannot change `email` (see OQ-2).           |
+| DELETE | `/users/:id` | Soft-deactivate (sets `isActive=false`; preserves audit trail).                       |
 
 `PATCH` body: any subset of `{ "role": Role, "fullName": string, "isActive": boolean }`. Errors: 403 if attempting to demote oneself; 404 if missing.
 
@@ -864,14 +873,14 @@ rateLimitAuth, rateLimitRun
 
 #### 5.3.3 Semesters (admin write, user read)
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/semesters` | List. |
-| GET | `/semesters/:id` | Read one. |
-| POST | `/semesters` | Create. Body: `{ code, label, startsOn, endsOn }`. |
-| PATCH | `/semesters/:id` | Update `label`, `startsOn`, `endsOn`. `code` is immutable post-create. |
-| POST | `/semesters/:id/activate` | Set this row's `isActive=true` and unset all others atomically. |
-| DELETE | `/semesters/:id` | 409 if any related rows exist or it is active. |
+| Method | Path                      | Purpose                                                                |
+| ------ | ------------------------- | ---------------------------------------------------------------------- |
+| GET    | `/semesters`              | List.                                                                  |
+| GET    | `/semesters/:id`          | Read one.                                                              |
+| POST   | `/semesters`              | Create. Body: `{ code, label, startsOn, endsOn }`.                     |
+| PATCH  | `/semesters/:id`          | Update `label`, `startsOn`, `endsOn`. `code` is immutable post-create. |
+| POST   | `/semesters/:id/activate` | Set this row's `isActive=true` and unset all others atomically.        |
+| DELETE | `/semesters/:id`          | 409 if any related rows exist or it is active.                         |
 
 ---
 
@@ -885,13 +894,13 @@ Standard CRUD. Bodies match the Prisma fields directly.
 
 #### 5.3.5 Lecturers (admin + user, with field restrictions)
 
-| Method | Path | Role | Body |
-|---|---|---|---|
-| GET | `/lecturers` | both | – |
-| GET | `/lecturers/:id` | both | – |
-| POST | `/lecturers` | both | `{ semesterId, name, isStructural?, preferredTimeSlotIds?: number[], competencies?: string[] }` — `user` cannot set `isStructural` (server forces `false`); `competencies` defaults to `[]` if omitted (techspec §5.5). |
-| PATCH | `/lecturers/:id` | both | Same fields; `user` cannot change `isStructural`. `competencies` is fully editable by both roles. |
-| DELETE | `/lecturers/:id` | admin | 409 if referenced by any `CourseOfferingLecturer`. |
+| Method | Path             | Role  | Body                                                                                                                                                                                                                    |
+| ------ | ---------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/lecturers`     | both  | –                                                                                                                                                                                                                       |
+| GET    | `/lecturers/:id` | both  | –                                                                                                                                                                                                                       |
+| POST   | `/lecturers`     | both  | `{ semesterId, name, isStructural?, preferredTimeSlotIds?: number[], competencies?: string[] }` — `user` cannot set `isStructural` (server forces `false`); `competencies` defaults to `[]` if omitted (techspec §5.5). |
+| PATCH  | `/lecturers/:id` | both  | Same fields; `user` cannot change `isStructural`. `competencies` is fully editable by both roles.                                                                                                                       |
+| DELETE | `/lecturers/:id` | admin | 409 if referenced by any `CourseOfferingLecturer`.                                                                                                                                                                      |
 
 The `allowFields` middleware drops `isStructural` from a `user` request body before Prisma sees it. This is asserted with a 400 + warning when the field is present and the caller is a user (so the client can correct the UI).
 
@@ -903,22 +912,24 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
 
 #### 5.3.7 CourseOfferings (admin + user, with field restrictions)
 
-| Method | Path | Role | Notes |
-|---|---|---|---|
-| GET | `/course-offerings` | both | Filterable by `courseId`, `roomId`, `lecturerId`, `parentOfferingId`. |
-| GET | `/course-offerings/:id` | both | – |
-| POST | `/course-offerings` | both | Body: `{ semesterId, courseId, roomId, effectiveStudentCount, lecturerIds: number[], isFixed?: boolean, fixedTimeSlotIds?: number[], parentOfferingId?: number }`. `user` may not set `isFixed` or `fixedTimeSlotIds` (server forces `false` / omits). |
-| PATCH | `/course-offerings/:id` | admin | Full edit. |
-| PATCH | `/course-offerings/:id/student-count` | both | Body: `{ effectiveStudentCount: number }`. The narrow endpoint exists explicitly so a `user` can update enrollment data without inheriting full-edit privileges. |
-| DELETE | `/course-offerings/:id` | admin | – |
+| Method | Path                                  | Role  | Notes                                                                                                                                                                                                                                                  |
+| ------ | ------------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/course-offerings`                   | both  | Filterable by `courseId`, `roomId`, `lecturerId`, `parentOfferingId`.                                                                                                                                                                                  |
+| GET    | `/course-offerings/:id`               | both  | –                                                                                                                                                                                                                                                      |
+| POST   | `/course-offerings`                   | both  | Body: `{ semesterId, courseId, roomId, effectiveStudentCount, lecturerIds: number[], isFixed?: boolean, fixedTimeSlotIds?: number[], parentOfferingId?: number }`. `user` may not set `isFixed` or `fixedTimeSlotIds` (server forces `false` / omits). |
+| PATCH  | `/course-offerings/:id`               | admin | Full edit.                                                                                                                                                                                                                                             |
+| PATCH  | `/course-offerings/:id/student-count` | both  | Body: `{ effectiveStudentCount: number }`. The narrow endpoint exists explicitly so a `user` can update enrollment data without inheriting full-edit privileges.                                                                                       |
+| DELETE | `/course-offerings/:id`               | admin | –                                                                                                                                                                                                                                                      |
 
 #### 5.3.8 ScheduleRuns
 
 `user` can only see and act on rows where `createdById === req.user.id`. `admin` can see all.
 
 **`POST /schedule-runs`** — enqueue a pipeline run.
+
 - Headers: `Idempotency-Key: <uuid>` (recommended; required if the caller is a worker re-trying).
 - Request:
+
   ```json
   {
     "semesterId": 1,
@@ -935,9 +946,11 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
     }
   }
   ```
+
   The `config` object is exactly `GAConfig` from `src/types.ts` plus the `hardPenaltyWeight` / `softPenaltyWeight` fields the techspec §4.3 mandates (`[ARCH-OBS-01]`).
 
   **GAConfig truth-table note.** As of this revision, the in-code `GAConfig` interface in `src/types.ts:149-157` does **not yet** carry `hardPenaltyWeight` / `softPenaltyWeight` — only the seven hyperparameters `populationSize` / `generations` / `mutationRate` / `elitismCount` / `tournamentSize` / `crossoverType` / `noiseRate`. The techspec §4.3 (`[ARCH-OBS-01]`) mandates the two additional weights with defaults `100` / `1`. The **API contract above is the authoritative shape** for `GAConfig` going forward; `src/types.ts` is expected to converge by adding the two fields. Until that convergence, the worker reads the weights from the persisted `configJson` even if the in-memory type does not yet declare them. Do not assume the in-code type already includes them.
+
 - Response 202:
   ```json
   {
@@ -951,10 +964,12 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
 - Errors: 400 schema; 409 `IDEMPOTENCY_CONFLICT` (same key, different body); 422 `NO_ACTIVE_SEMESTER` if the semester has no offerings; 429 if user exceeds 5 runs / 5 min (techspec §7.1); 503 if the queue is unreachable.
 
 **`GET /schedule-runs`** — list.
+
 - Query: `?status=COMPLETED&semesterId=1&page=1&pageSize=20&sort=-createdAt`. `user` automatically gets `createdById = me`.
 - Response 200: `{ "data": ScheduleRunSummary[], "meta": {...} }` where `ScheduleRunSummary` omits the heavy JSON fields.
 
 **`GET /schedule-runs/:id`** — full read.
+
 - Response 200 (`SchedulerResponse` extension):
   ```json
   {
@@ -992,6 +1007,7 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
 - Errors: 404 if not found, or if `user` and not the owner.
 
 **`GET /schedule-runs/:id/stream`** — Server-Sent Events. Recommendation: SSE over WebSocket (OQ-4) — the channel is one-way (worker → client), SSE auto-reconnects on the browser side, and there is no need for client-driven messages here. The HTTP request stays open and emits:
+
 - `event: progress`, `data:` `{ runId, status, currentGeneration, generationsRun, bestFitness, hardViolations, softPenalty, history, avgHistory }`. Emitted at most once per generation.
 - `event: state`, `data:` `{ runId, status }` whenever status transitions (QUEUED → RUNNING → COMPLETED/etc.).
 - `event: error`, `data:` `{ code, message, details? }` on failure.
@@ -1000,21 +1016,23 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
 The endpoint terminates the stream on COMPLETED, FAILED, CANCELLED, SSA_INFEASIBLE, PRE_GA_EMPTY, or STAGNATED.
 
 **`POST /schedule-runs/:id/cancel`**
+
 - Response 200: `{ "id", "status": "CANCELLED" }`. Idempotent: cancelling an already-terminal run returns 409 `ILLEGAL_STATE_TRANSITION`.
 
 **`DELETE /schedule-runs/:id`** — hard delete; cascades to assignments, slots, fitness history. 409 if `RUNNING` (must cancel first).
 
 **`PUT /schedule-runs/:id/assignments/:assignmentId`** — manual override. **Permitted for admin always; permitted for the run's owner only if `status === COMPLETED`** (you cannot edit a stagnated/infeasible/cancelled run — those have no schedule to fix; you cannot edit a running run — race condition).
+
 - Request: `{ "roomId"?: number, "timeSlotIds"?: number[], "notes"?: string }`
 - The server marks `manualOverride=true`, sets `overriddenById` and `overriddenAt`, and writes an `AuditLog` entry.
 - Validation: room and slot must belong to the same semester as the run; `timeSlotIds.length` must equal the offering's `requiredSessions` (computed per techspec §1.3).
 
 #### 5.3.9 Health
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/health` | Liveness. Returns `{ "status": "ok", "uptimeSec": 1234 }`. Always 200 if the process is up. |
-| GET | `/ready` | Readiness. Returns 200 only when DB and Redis pings succeed; 503 otherwise. |
+| Method | Path      | Purpose                                                                                     |
+| ------ | --------- | ------------------------------------------------------------------------------------------- |
+| GET    | `/health` | Liveness. Returns `{ "status": "ok", "uptimeSec": 1234 }`. Always 200 if the process is up. |
+| GET    | `/ready`  | Readiness. Returns 200 only when DB and Redis pings succeed; 503 otherwise.                 |
 
 ---
 
@@ -1032,10 +1050,10 @@ The endpoint terminates the stream on COMPLETED, FAILED, CANCELLED, SSA_INFEASIB
 - **Request ID propagation:** `requestId` middleware reads `X-Request-Id` (or generates a UUID v4), attaches to `req.id`, mirrors back as a response header, threads into pino logger context, and is included in `AuditLog.metadata`.
 - **Competency array validation (Zod).** Both `Lecturer.competencies` and `Course.requiredCompetencies` (techspec §5.5) are validated by the same shared Zod schema applied in `POST /lecturers`, `PATCH /lecturers/:id`, `POST /courses`, and `PATCH /courses/:id`:
   ```ts
-  const competencyTagSchema = z.string().trim().min(1, 'empty competency tag');
+  const competencyTagSchema = z.string().trim().min(1, "empty competency tag");
   const competencyArraySchema = z
     .array(competencyTagSchema)
-    .max(32, 'too many competency tags (max 32)')
+    .max(32, "too many competency tags (max 32)")
     .transform((arr) => Array.from(new Set(arr))); // dedupe with Set semantics
   ```
   Each element must be a non-empty trimmed string; the validator deduplicates the array (Set semantics) at the boundary so downstream code never sees duplicates; the array is capped at 32 entries to prevent abuse. Casing is preserved as-entered — string equality is the matcher per techspec §5.5, so the Kaprodi is responsible for spelling consistency. Empty arrays are valid and have the techspec-defined "open assignment" semantics.
@@ -1080,18 +1098,18 @@ type CompetencyEligibilityMap = Map<offeringId: number, Set<eligibleLecturerId: 
 
 Every state-changing endpoint writes one `AuditLog` row. The `actorId` is `req.user.id` (or null for system events such as scheduled cleanup).
 
-| Action | Triggered by | What is logged |
-|---|---|---|
-| `auth.login` | `POST /auth/login` | `{ email, success, ip, userAgent }` |
-| `auth.login_failed` | `POST /auth/login` 401 | same as above with `success: false` |
-| `auth.logout` | `POST /auth/logout` | `{ tokenId }` |
-| `user.create` / `user.update` / `user.deactivate` | admin only | `{ before, after }` diff (passwordHash redacted) |
-| `room.*`, `time_slot.*`, `facility.*`, `semester.*`, `locked_room.*` | admin only | `{ before, after }` |
-| `lecturer.*`, `course.*`, `course_offering.*` | admin or user | `{ before, after, role }` (so we can tell which role changed which field) |
-| `schedule_run.create` | admin or user | `{ semesterId, config }` |
-| `schedule_run.cancel` / `schedule_run.delete` | admin or user | `{ status }` |
-| `schedule_run.assignment_override` | admin or user (own run only) | `{ runId, assignmentId, before, after }` — **mandatory** for thesis empirical validation (techspec §3.2 calls this out as in-scope). |
-| `schedule_run.completed` | system | `{ runId, durationMs, hardViolations, softPenalty, competencyMismatch }` — `competencyMismatch` is included so the audit log can attribute hard violations to `[HC-COMPETENCY]` (techspec §4.3) specifically, not a single opaque integer. Sourced from `EvaluatedChromosome.competencyMismatch` (`src/types.ts:139-147`). |
+| Action                                                               | Triggered by                 | What is logged                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth.login`                                                         | `POST /auth/login`           | `{ email, success, ip, userAgent }`                                                                                                                                                                                                                                                                                        |
+| `auth.login_failed`                                                  | `POST /auth/login` 401       | same as above with `success: false`                                                                                                                                                                                                                                                                                        |
+| `auth.logout`                                                        | `POST /auth/logout`          | `{ tokenId }`                                                                                                                                                                                                                                                                                                              |
+| `user.create` / `user.update` / `user.deactivate`                    | admin only                   | `{ before, after }` diff (passwordHash redacted)                                                                                                                                                                                                                                                                           |
+| `room.*`, `time_slot.*`, `facility.*`, `semester.*`, `locked_room.*` | admin only                   | `{ before, after }`                                                                                                                                                                                                                                                                                                        |
+| `lecturer.*`, `course.*`, `course_offering.*`                        | admin or user                | `{ before, after, role }` (so we can tell which role changed which field)                                                                                                                                                                                                                                                  |
+| `schedule_run.create`                                                | admin or user                | `{ semesterId, config }`                                                                                                                                                                                                                                                                                                   |
+| `schedule_run.cancel` / `schedule_run.delete`                        | admin or user                | `{ status }`                                                                                                                                                                                                                                                                                                               |
+| `schedule_run.assignment_override`                                   | admin or user (own run only) | `{ runId, assignmentId, before, after }` — **mandatory** for thesis empirical validation (techspec §3.2 calls this out as in-scope).                                                                                                                                                                                       |
+| `schedule_run.completed`                                             | system                       | `{ runId, durationMs, hardViolations, softPenalty, competencyMismatch }` — `competencyMismatch` is included so the audit log can attribute hard violations to `[HC-COMPETENCY]` (techspec §4.3) specifically, not a single opaque integer. Sourced from `EvaluatedChromosome.competencyMismatch` (`src/types.ts:139-147`). |
 
 Audit logs are append-only. Only `admin` can read `/audit-logs`. The table is indexed on `(entityType, entityId)` and `createdAt` so the frontend can show "history of changes for this offering / this run" cheaply.
 
@@ -1099,16 +1117,14 @@ Audit logs are append-only. Only `admin` can read `/audit-logs`. The table is in
 
 ## 9. Open Questions / Decisions for the User
 
-| ID | Question | Default I have assumed |
-|---|---|---|
-| **OQ-1** | **Self-registration vs admin-invite.** I have specified admin-only `/auth/register`. For a thesis prototype with a tiny user base, this is appropriate, but if the examination committee expects open enrollment we should add a public `POST /auth/register` that always assigns role `user` (and is rate-limited and CAPTCHA-protected). | Admin-only registration. |
-| **OQ-2** | **Email change flow.** `PATCH /users/:id` does not allow `email` updates. Email changes typically need a verify-new-email round-trip. Do we need this for the thesis, or is "create a new account" acceptable? | Email is immutable after creation. |
-| **OQ-3** | **Postgres vs SQLite/libSQL.** Techspec §2.1 references SQLite/libSQL. The Prisma schema is portable (one `provider` line), but Postgres is required to make the BullMQ worker meaningful (file-locked SQLite + multi-process workers are fragile). The thesis defense build can keep SQLite by running the worker in-process; the production blueprint here assumes Postgres. Confirm which mode the document should foreground? | Document foregrounds Postgres + multi-process; SQLite single-process is documented as the thesis-defense fallback. |
-| **OQ-4** | **SSE vs WebSocket for live progress.** I have chosen SSE because the channel is one-way and SSE has built-in browser auto-reconnect. If the frontend already uses WebSocket for anything else, we should consolidate on WS. | SSE. |
-| **OQ-5** | **Manual override permission for `user`.** `PUT /schedule-runs/:id/assignments/:aid` is allowed for the run's owner when `status=COMPLETED`. Some thesis committees prefer "only admin can edit a generated schedule" to keep audit semantics clean. Confirm? | Owner-or-admin while COMPLETED. |
-| **OQ-6** | **Token TTLs.** Access 15 min / refresh 7 days are sensible defaults, but the Kaprodi may run a single long session during exam-period scheduling. Adjust? | 15m / 7d. |
-| **OQ-7** | **Soft-delete vs hard-delete for `User` and `ScheduleRun`.** I have specified soft-deactivate for users (preserves audit) and hard delete for schedule runs (with cascade). Confirm the run-deletion behaviour — for thesis empirical validation, you may prefer soft-delete on runs too. | User soft, run hard. |
-| **OQ-8** | **`isFixed` vs `LockedRoom` redundancy.** Section 3.5 keeps both because the techspec keeps both, but it is a real source of confusion. Should we deprecate `CourseOffering.isFixed` post-migration and treat `LockedRoom` as the single source of truth? | Keep both, document the merge in `entityTagger`. |
-| **OQ-9** | **Competency vocabulary type promotion.** Should the competency vocabulary on `Lecturer.competencies` and `Course.requiredCompetencies` (techspec §5.5) be promoted from free-form `string[]` to a Prisma `enum Competency` or a relational `Competency` / `LecturerCompetency` table once the canonical taxonomy stabilizes? Pros of promotion: integrity (no typos / case drift), referential constraints, ability to attach metadata (e.g., a label, a parent area). Cons: schema migration each time the Kaprodi adds a tag, harder for the curator to iterate quickly. Per techspec `[ARCH-OBS-05]` the current target is intentionally untyped strings. | Keep as `string[]` for the thesis build; revisit after a semester of real usage. |
-
----
+| ID       | Question                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Default I have assumed                                                                                             | Default                                    |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| **OQ-1** | **Self-registration vs admin-invite.** I have specified admin-only `/auth/register`. For a thesis prototype with a tiny user base, this is appropriate, but if the examination committee expects open enrollment we should add a public `POST /auth/register` that always assigns role `user` (and is rate-limited and CAPTCHA-protected).                                                                                                                                                                                                                                                                                                                    | Admin-only registration.                                                                                           | Admin-only                                 |
+| **OQ-2** | **Email change flow.** `PATCH /users/:id` does not allow `email` updates. Email changes typically need a verify-new-email round-trip. Do we need this for the thesis, or is "create a new account" acceptable?                                                                                                                                                                                                                                                                                                                                                                                                                                                | Email is immutable after creation.                                                                                 | For now, make it immutable                 |
+| **OQ-3** | **Postgres vs SQLite/libSQL.** Techspec §2.1 references SQLite/libSQL. The Prisma schema is portable (one `provider` line), but Postgres is required to make the BullMQ worker meaningful (file-locked SQLite + multi-process workers are fragile). The thesis defense build can keep SQLite by running the worker in-process; the production blueprint here assumes Postgres. Confirm which mode the document should foreground?                                                                                                                                                                                                                             | Document foregrounds Postgres + multi-process; SQLite single-process is documented as the thesis-defense fallback. | Go with assumed default.                   |
+| **OQ-4** | **SSE vs WebSocket for live progress.** I have chosen SSE because the channel is one-way and SSE has built-in browser auto-reconnect. If the frontend already uses WebSocket for anything else, we should consolidate on WS.                                                                                                                                                                                                                                                                                                                                                                                                                                  | SSE.                                                                                                               | SSE.                                       |
+| **OQ-5** | **Manual override permission for `user`.** `PUT /schedule-runs/:id/assignments/:aid` is allowed for the run's owner when `status=COMPLETED`. Some thesis committees prefer "only admin can edit a generated schedule" to keep audit semantics clean. Confirm?                                                                                                                                                                                                                                                                                                                                                                                                 | Owner-or-admin while COMPLETED.                                                                                    | No, user should be able to edit aswell.    |
+| **OQ-6** | **Token TTLs.** Access 15 min / refresh 7 days are sensible defaults, but the Kaprodi may run a single long session during exam-period scheduling. Adjust?                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 15m / 7d.                                                                                                          | Go with your default reccomendation.       |
+| **OQ-7** | **Soft-delete vs hard-delete for `User` and `ScheduleRun`.** I have specified soft-deactivate for users (preserves audit) and hard delete for schedule runs (with cascade). Confirm the run-deletion behaviour — for thesis empirical validation, you may prefer soft-delete on runs too.                                                                                                                                                                                                                                                                                                                                                                     | User soft, run hard.                                                                                               | Go with default.                           |
+| **OQ-8** | **`isFixed` vs `LockedRoom` redundancy.** Section 3.5 keeps both because the techspec keeps both, but it is a real source of confusion. Should we deprecate `CourseOffering.isFixed` post-migration and treat `LockedRoom` as the single source of truth?                                                                                                                                                                                                                                                                                                                                                                                                     | Keep both, document the merge in `entityTagger`.                                                                   | If both serves the same purpose, pick one. |
+| **OQ-9** | **Competency vocabulary type promotion.** Should the competency vocabulary on `Lecturer.competencies` and `Course.requiredCompetencies` (techspec §5.5) be promoted from free-form `string[]` to a Prisma `enum Competency` or a relational `Competency` / `LecturerCompetency` table once the canonical taxonomy stabilizes? Pros of promotion: integrity (no typos / case drift), referential constraints, ability to attach metadata (e.g., a label, a parent area). Cons: schema migration each time the Kaprodi adds a tag, harder for the curator to iterate quickly. Per techspec `[ARCH-OBS-05]` the current target is intentionally untyped strings. | Keep as `string[]` for the thesis build; revisit after a semester of real usage.                                   | Keep.                                      |

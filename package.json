@@ -8,6 +8,7 @@
     "layer2": "npx tsx src/cli/run-layer2.ts",
     "layer3": "npx tsx src/cli/run-layer3.ts",
     "pipeline": "npx tsx src/cli/run-pipeline.ts",
+    "api:dev": "tsx src/api/server.ts",
     "db:seed": "tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -21,14 +22,22 @@
   "type": "commonjs",
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
+    "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
+    "@types/supertest": "^7.2.0",
+    "@types/uuid": "^10.0.0",
     "prisma": "^6.19.3",
+    "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.5"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
-    "bcrypt": "^6.0.0"
+    "bcrypt": "^6.0.0",
+    "express": "^5.2.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "uuid": "^14.0.0"
   }
 }
