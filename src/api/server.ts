@@ -1,4 +1,5 @@
 import express, { type Application } from 'express';
+import cookieParser from 'cookie-parser';
 import pinoHttp from 'pino-http';
 import { getRootLogger } from './logger';
 import { requestId } from './middleware/requestId';
@@ -20,6 +21,10 @@ export function createServer(options: CreateServerOptions = {}): Application {
   app.disable('x-powered-by');
 
   app.use(requestId());
+
+  // Cookie parsing is required by the /auth/refresh and /auth/logout handlers
+  // (refresh-token cookie scoped to /api/v1/auth — api_design §4.2).
+  app.use(cookieParser());
 
   app.use(
     pinoHttp({

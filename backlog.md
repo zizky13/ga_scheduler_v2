@@ -39,7 +39,7 @@ Express transport over the existing pipeline. No GA logic changes; only routing,
 
 1. [x] `[P0/L]` Scaffold `src/api/server.ts` with Express, JSON body parsing, `requestId` middleware, pino logging, and the centralized error envelope from api_design §6.
 2. [x] `[P0/L]` Implement Zod schemas under `src/api/schemas/*` and route handlers under `src/api/routes/*`. One schema per route; reuse `competencyArraySchema` for both lecturer and course bodies (api_design §6).
-3. [ ] `[P0/L]` Implement `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/me` with bcrypt (cost 12), HS256 JWT (15-min access), and opaque rotated refresh tokens (7-day, hashed in `RefreshToken`) per api_design §4.
+3. [x] `[P0/L]` Implement `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/me` with bcrypt (cost 12), HS256 JWT (15-min access), and opaque rotated refresh tokens (7-day, hashed in `RefreshToken`) per api_design §4.
 4. [ ] `[P0/M]` Implement `requireAuth`, `requireRole`, `requireOwnerOrAdmin`, `allowFields`, `rateLimitAuth`, `rateLimitRun` middleware (api_design §4.6).
 5. [ ] `[P0/L]` Implement CRUD routes for `users`, `semesters`, `rooms`, `timeslots`, `facilities`, `locked-rooms` per api_design §5.3.2–§5.3.4. Honor the permission matrix in §4.5 exactly.
 6. [ ] `[P0/L]` Implement CRUD for `lecturers`, `courses`, `course-offerings` including the field-level rules in api_design §4.5 and §4.6 (`isStructural` / `isFixed` / `fixedTimeSlotIds` admin-only). Surface `competencies` and `requiredCompetencies` as editable by both roles (api_design §5.3.5–§5.3.7).

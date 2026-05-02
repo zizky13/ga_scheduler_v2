@@ -22,18 +22,8 @@ describe('Phase 2 Task 2 — route scaffolding', () => {
     expect(Array.isArray(res.body.error.details?.issues)).toBe(true);
   });
 
-  it('returns 501 NOT_IMPLEMENTED when POST /auth/login is sent a valid body', async () => {
-    const res = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ email: 'someone@upj.ac.id', password: 'long-enough-password' });
-    expect(res.status).toBe(501);
-    expect(res.body).toEqual({
-      error: {
-        code: 'NOT_IMPLEMENTED',
-        message: expect.stringContaining('POST /auth/login'),
-      },
-    });
-  });
+  // POST /auth/login is no longer NOT_IMPLEMENTED — Phase 2 Task 3 wired the
+  // real handler. Behavioural coverage now lives in tests/api/routes/auth.test.ts.
 
   it('returns 400 when POST /lecturers omits required fields', async () => {
     const res = await request(app).post('/api/v1/lecturers').send({});
