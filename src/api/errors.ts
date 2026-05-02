@@ -89,3 +89,11 @@ export class NotImplementedError extends ApiError {
     super('NOT_IMPLEMENTED', `${routeName} is not implemented yet`, details);
   }
 }
+
+export class RateLimitError extends ApiError {
+  public readonly statusCode = 429;
+
+  constructor(message = 'Too many requests', details?: ApiErrorDetails, code = 'RATE_LIMITED') {
+    super(code, message, details);
+  }
+}

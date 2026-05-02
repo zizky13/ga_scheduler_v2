@@ -1,13 +1,13 @@
 /**
- * Bare-minimum auth middleware needed by Phase 2 Task 3.
+ * Authentication middleware.
  *
- * Scope is intentionally narrow:
  *   - `requireAuth`  — Bearer JWT → `req.user = { id, role, email }`. 401 on
  *     missing or invalid token.
  *   - `requireRole` — must run after `requireAuth`. 403 on role mismatch.
  *
- * `requireOwnerOrAdmin`, `allowFields`, `rateLimitAuth`, and `rateLimitRun`
- * are deferred to Task 4 per backlog.md (Phase 2 item 4).
+ * Companion middleware live alongside this file:
+ *   - `requireOwnerOrAdmin`, `allowFields` → `./permissions.ts`
+ *   - `rateLimitAuth`, `rateLimitRun`     → `./rateLimit.ts`
  */
 
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
