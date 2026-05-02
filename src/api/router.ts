@@ -1,23 +1,16 @@
 import { Router } from 'express';
+import { createAuthRouter } from './routes/auth';
+import { createUsersRouter } from './routes/users';
+import { createSemestersRouter } from './routes/semesters';
+import { createRoomsRouter } from './routes/rooms';
+import { createTimeslotsRouter } from './routes/timeslots';
+import { createFacilitiesRouter } from './routes/facilities';
+import { createLockedRoomsRouter } from './routes/locked-rooms';
+import { createLecturersRouter } from './routes/lecturers';
+import { createCoursesRouter } from './routes/courses';
+import { createCourseOfferingsRouter } from './routes/course-offerings';
+import { createScheduleRunsRouter } from './routes/schedule-runs';
 
-/**
- * v1 router.
- *
- * Currently mounts only GET /health (api_design §5.3.9). Subsequent Phase 2
- * tasks attach the remaining route groups here:
- *   - /auth                  (Phase 2 Task 3)
- *   - /users                 (Phase 2 Task 5)
- *   - /semesters             (Phase 2 Task 5)
- *   - /rooms                 (Phase 2 Task 5)
- *   - /timeslots             (Phase 2 Task 5)
- *   - /facilities            (Phase 2 Task 5)
- *   - /locked-rooms          (Phase 2 Task 5)
- *   - /lecturers             (Phase 2 Task 6)
- *   - /courses               (Phase 2 Task 6)
- *   - /course-offerings      (Phase 2 Task 6)
- *   - /schedule-runs         (Phase 3)
- *   - /ready                 (Phase 2 Task 9)
- */
 export function createV1Router(): Router {
   const router = Router();
 
@@ -27,6 +20,18 @@ export function createV1Router(): Router {
       uptimeSec: Math.floor(process.uptime()),
     });
   });
+
+  router.use('/auth', createAuthRouter());
+  router.use('/users', createUsersRouter());
+  router.use('/semesters', createSemestersRouter());
+  router.use('/rooms', createRoomsRouter());
+  router.use('/timeslots', createTimeslotsRouter());
+  router.use('/facilities', createFacilitiesRouter());
+  router.use('/locked-rooms', createLockedRoomsRouter());
+  router.use('/lecturers', createLecturersRouter());
+  router.use('/courses', createCoursesRouter());
+  router.use('/course-offerings', createCourseOfferingsRouter());
+  router.use('/schedule-runs', createScheduleRunsRouter());
 
   return router;
 }

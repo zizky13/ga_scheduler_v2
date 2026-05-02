@@ -81,3 +81,11 @@ export class DomainError extends ApiError {
     super(code, message, details);
   }
 }
+
+export class NotImplementedError extends ApiError {
+  public readonly statusCode = 501;
+
+  constructor(routeName: string, details?: ApiErrorDetails) {
+    super('NOT_IMPLEMENTED', `${routeName} is not implemented yet`, details);
+  }
+}

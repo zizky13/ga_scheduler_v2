@@ -27,7 +27,11 @@
       "Bash(echo \"started $!\")",
       "Bash(curl -i -s http://localhost:3000/api/v1/health)",
       "Bash(curl -i -s -H \"X-Request-Id: my-trace-123\" http://localhost:3000/api/v1/health)",
-      "Bash(pkill -f \"tsx src/api/server.ts\")"
+      "Bash(pkill -f \"tsx src/api/server.ts\")",
+      "Bash(curl -s -i -X POST http://localhost:3000/api/v1/auth/login -H 'Content-Type: application/json' -d '{}')",
+      "Bash(curl -s -i -X POST http://localhost:3000/api/v1/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"a@b.c\",\"password\":\"long-enough-password\"}')",
+      "Bash(curl -s -i -X POST http://localhost:3000/api/v1/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"a@b.co\",\"password\":\"long-enough-password\"}')",
+      "Bash(kill 77544)"
     ]
   }
 }
