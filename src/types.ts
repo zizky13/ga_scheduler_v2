@@ -203,9 +203,30 @@ export interface GAResult {
 
 // ─── Orchestration Types ─────────────────────────────────────────
 
+/**
+ * One per-offering rejection record produced by Pre-GA. Surfaced to the API
+ * consumer as part of `SchedulerResponse.preGASummary.infeasible[]`
+ * (api_design §5.2). The `code` is one of the stable Pre-GA failure codes
+ * emitted by `src/pre-ga/checks.ts` / `src/pre-ga/validator.ts` —
+ * `INTEGRITY_NO_COURSE`, `INTEGRITY_NO_ROOM`, `INTEGRITY_NO_LECTURERS`,
+ * `INTEGRITY_NO_STUDENTS`, `ROOM_MISSING`, `ROOM_ZERO_CAPACITY`,
+ * `TEMPORAL_INSUFFICIENT`, `FACILITY_MISMATCH`, `LECTURER_NONE`,
+ * `LECTURER_INVALID`, `COMPETENCY_MISMATCH`, `POLICY_FIXED_NO_SLOTS`,
+ * `NO_ROOMS_QUALIFY`.
+ *
+ * `COMPETENCY_MISMATCH` is per-offering (not a top-level run failure):
+ * a run only escalates to `NO_FEASIBLE_CANDIDATES` when **every** offering
+ * is rejected. See api_design §5.2.
+ */
+export interface PreGAInfeasibleEntry {
+  offeringId: number;
+  code: string;
+  message: string;
+}
+
 export interface SchedulerResponse {
   status: 'SUCCESS' | 'INFEASIBLE' | 'NO_FEASIBLE_CANDIDATES';
-  preGASummary: { feasible: number; infeasible: number };
+  preGASummary: { feasible: number; infeasible: PreGAInfeasibleEntry[] };
   ssaResult?: SSAResult;
   gaResult?: GAResult;
   durationMs: number;

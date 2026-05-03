@@ -68,9 +68,17 @@ export function runPipeline(input: OrchestratorInput): OrchestratorOutput {
     ])
   );
 
+  // api_design §5.2: `infeasible` is an array of per-offering rejection
+  // records (not a count). `COMPETENCY_MISMATCH` and any other Layer 1
+  // reason surface here; the run only escalates to top-level
+  // `NO_FEASIBLE_CANDIDATES` when `validation.feasible` is empty.
   const preGASummary = {
     feasible: validation.feasible.length,
-    infeasible: validation.infeasible.length,
+    infeasible: validation.infeasible.map(({ offering, failedCheck }) => ({
+      offeringId: offering.id,
+      code: failedCheck.code,
+      message: failedCheck.message,
+    })),
   };
 
   if (candidates.length === 0) {

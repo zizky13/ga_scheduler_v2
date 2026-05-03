@@ -41,7 +41,7 @@ const { response } = runPipeline({
 
 // ─── Step 1: Pre-GA summary ─────────────────────────────────────
 console.log('── Step 1: Pre-GA Validation ──────────────────────');
-console.log(`  Feasible: ${response.preGASummary.feasible} | Infeasible: ${response.preGASummary.infeasible}\n`);
+console.log(`  Feasible: ${response.preGASummary.feasible} | Infeasible: ${response.preGASummary.infeasible.length}\n`);
 
 if (response.status === 'NO_FEASIBLE_CANDIDATES') {
   console.log('  ❌ No feasible candidates — pipeline aborted.\n');
