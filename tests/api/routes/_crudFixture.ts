@@ -36,6 +36,18 @@ import type {
   LockedRoomRecord,
   LockedRoomRepository,
 } from '../../../src/repo/lockedRoomRepo';
+import type {
+  LecturerRecord,
+  LecturerRepository,
+} from '../../../src/repo/lecturerCrudRepo';
+import type {
+  CourseRecord,
+  CourseRepository,
+} from '../../../src/repo/courseCrudRepo';
+import type {
+  CourseOfferingRecord,
+  CourseOfferingRepository,
+} from '../../../src/repo/courseOfferingRepo';
 import type { CrudRepositories } from '../../../src/api/lib/crudContext';
 
 // ─── Generic helpers ──────────────────────────────────────────────────────
@@ -81,6 +93,9 @@ export interface CrudFixture {
   timeSlotStore: Map<number, TimeSlotRecord>;
   facilityStore: Map<number, FacilityRecord>;
   lockedRoomStore: Map<number, LockedRoomRecord>;
+  lecturerStore: Map<number, LecturerRecord>;
+  courseStore: Map<number, CourseRecord>;
+  courseOfferingStore: Map<number, CourseOfferingRecord>;
   // Out-of-band toggle so a test can simulate an active RUNNING run for a
   // given semesterId without needing the full ScheduleRun model.
   runningScheduleRunSemesters: Set<number>;
@@ -106,6 +121,22 @@ export interface CrudFixture {
     roomId: number;
     lockedById: number;
   }): LockedRoomRecord;
+  insertLecturer(l: Partial<LecturerRecord> & {
+    semesterId: number;
+    name: string;
+  }): LecturerRecord;
+  insertCourse(c: Partial<CourseRecord> & {
+    semesterId: number;
+    code: string;
+    name: string;
+    sks: number;
+  }): CourseRecord;
+  insertCourseOffering(o: Partial<CourseOfferingRecord> & {
+    semesterId: number;
+    courseId: number;
+    roomId: number;
+    effectiveStudentCount: number;
+  }): CourseOfferingRecord;
 }
 
 export function buildCrudFixture(): CrudFixture {
@@ -115,6 +146,9 @@ export function buildCrudFixture(): CrudFixture {
   let nextTimeSlotId = 1;
   let nextFacilityId = 1;
   let nextLockedRoomId = 1;
+  let nextLecturerId = 1;
+  let nextCourseId = 1;
+  let nextCourseOfferingId = 1;
 
   const userStore = new Map<number, UserRecord>();
   const semesterStore = new Map<number, SemesterRecord>();
@@ -122,6 +156,9 @@ export function buildCrudFixture(): CrudFixture {
   const timeSlotStore = new Map<number, TimeSlotRecord>();
   const facilityStore = new Map<number, FacilityRecord>();
   const lockedRoomStore = new Map<number, LockedRoomRecord>();
+  const lecturerStore = new Map<number, LecturerRecord>();
+  const courseStore = new Map<number, CourseRecord>();
+  const courseOfferingStore = new Map<number, CourseOfferingRecord>();
   const runningScheduleRunSemesters = new Set<number>();
 
   // ── Users ───────────────────────────────────────────────────────────────
@@ -454,6 +491,298 @@ export function buildCrudFixture(): CrudFixture {
     },
   };
 
+  // ── Lecturers ───────────────────────────────────────────────────────────
+  const lecturers: LecturerRepository = {
+    async list({ filter, page, pageSize, sort }) {
+      let rows = Array.from(lecturerStore.values());
+      if (filter?.semesterId !== undefined) {
+        rows = rows.filter((r) => r.semesterId === filter.semesterId);
+      }
+      if (filter?.isStructural !== undefined) {
+        rows = rows.filter((r) => r.isStructural === filter.isStructural);
+      }
+      if (sort) {
+        // Match repo: only `createdAt` and `name` are sortable; default desc
+        // by createdAt.
+        const tokens = sort.split(',').map((s) => s.trim()).filter(Boolean);
+        const cmps: ((a: LecturerRecord, b: LecturerRecord) => number)[] = [];
+        for (const token of tokens) {
+          const dir = token.startsWith('-') ? -1 : 1;
+          const field = token.replace(/^[-+]/, '');
+          if (field === 'createdAt') {
+            cmps.push((a, b) => dir * (a.createdAt.getTime() - b.createdAt.getTime()));
+          } else if (field === 'name') {
+            cmps.push((a, b) => dir * a.name.localeCompare(b.name));
+          }
+        }
+        if (cmps.length > 0) {
+          rows.sort((a, b) => {
+            for (const cmp of cmps) {
+              const v = cmp(a, b);
+              if (v !== 0) return v;
+            }
+            return 0;
+          });
+        } else {
+          rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        }
+      } else {
+        rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      }
+      const total = rows.length;
+      return { rows: rows.slice((page - 1) * pageSize, page * pageSize).map(clone), total };
+    },
+    async findById(id) {
+      const r = lecturerStore.get(id);
+      return r ? clone(r) : null;
+    },
+    async create(input) {
+      if (!semesterStore.has(input.semesterId)) throw prismaForeignKey();
+      // Mirror repo: validate preferredTimeSlotIds → if any missing, FK error.
+      for (const tsId of input.preferredTimeSlotIds) {
+        if (!timeSlotStore.has(tsId)) throw prismaForeignKey();
+      }
+      const now = new Date();
+      const id = nextLecturerId++;
+      const row: LecturerRecord = {
+        id,
+        semesterId: input.semesterId,
+        name: input.name,
+        isStructural: input.isStructural,
+        preferredTimeSlotIds: [...input.preferredTimeSlotIds],
+        competencies: [...input.competencies],
+        createdById: input.createdById,
+        createdAt: now,
+        updatedAt: now,
+      };
+      lecturerStore.set(id, row);
+      return clone(row);
+    },
+    async update(id, patch) {
+      const r = lecturerStore.get(id);
+      if (!r) throw prismaNotFound();
+      if (patch.preferredTimeSlotIds !== undefined) {
+        for (const tsId of patch.preferredTimeSlotIds) {
+          if (!timeSlotStore.has(tsId)) throw prismaForeignKey();
+        }
+        r.preferredTimeSlotIds = [...patch.preferredTimeSlotIds];
+      }
+      if (patch.name !== undefined) r.name = patch.name;
+      if (patch.isStructural !== undefined) r.isStructural = patch.isStructural;
+      if (patch.competencies !== undefined) r.competencies = [...patch.competencies];
+      r.updatedAt = new Date();
+      return clone(r);
+    },
+    async delete(id) {
+      if (!lecturerStore.has(id)) throw prismaNotFound();
+      // Mirror onDelete: Restrict via CourseOfferingLecturer → if any offering
+      // references this lecturer, throw P2003.
+      for (const o of courseOfferingStore.values()) {
+        if (o.lecturerIds.includes(id)) throw prismaForeignKey();
+      }
+      lecturerStore.delete(id);
+    },
+    async hasOfferingReferences(id) {
+      for (const o of courseOfferingStore.values()) {
+        if (o.lecturerIds.includes(id)) return true;
+      }
+      return false;
+    },
+  };
+
+  // ── Courses ─────────────────────────────────────────────────────────────
+  function resolveCourseFacilities(codes: string[]): void {
+    const known = new Set(Array.from(facilityStore.values()).map((f) => f.code));
+    const missing = codes.filter((c) => !known.has(c));
+    if (missing.length > 0) throw new UnknownFacilityCodeError(missing);
+  }
+  const courses: CourseRepository = {
+    async list({ filter, page, pageSize }) {
+      let rows = Array.from(courseStore.values());
+      if (filter?.semesterId !== undefined) {
+        rows = rows.filter((r) => r.semesterId === filter.semesterId);
+      }
+      rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      const total = rows.length;
+      return { rows: rows.slice((page - 1) * pageSize, page * pageSize).map(clone), total };
+    },
+    async findById(id) {
+      const r = courseStore.get(id);
+      return r ? clone(r) : null;
+    },
+    async create(input) {
+      resolveCourseFacilities(input.requiredFacilities);
+      // Schema unique on (semesterId, code).
+      for (const r of courseStore.values()) {
+        if (r.semesterId === input.semesterId && r.code === input.code) throw prismaUnique();
+      }
+      if (!semesterStore.has(input.semesterId)) throw prismaForeignKey();
+      const now = new Date();
+      const id = nextCourseId++;
+      const row: CourseRecord = {
+        id,
+        semesterId: input.semesterId,
+        code: input.code,
+        name: input.name,
+        sks: input.sks,
+        requiredFacilities: [...input.requiredFacilities],
+        requiredCompetencies: [...input.requiredCompetencies],
+        createdById: input.createdById,
+        createdAt: now,
+        updatedAt: now,
+      };
+      courseStore.set(id, row);
+      return clone(row);
+    },
+    async update(id, patch) {
+      const r = courseStore.get(id);
+      if (!r) throw prismaNotFound();
+      if (patch.requiredFacilities !== undefined) {
+        resolveCourseFacilities(patch.requiredFacilities);
+        r.requiredFacilities = [...patch.requiredFacilities];
+      }
+      if (patch.code !== undefined) {
+        for (const other of courseStore.values()) {
+          if (other.id !== id && other.semesterId === r.semesterId && other.code === patch.code) {
+            throw prismaUnique();
+          }
+        }
+        r.code = patch.code;
+      }
+      if (patch.name !== undefined) r.name = patch.name;
+      if (patch.sks !== undefined) r.sks = patch.sks;
+      if (patch.requiredCompetencies !== undefined) {
+        r.requiredCompetencies = [...patch.requiredCompetencies];
+      }
+      r.updatedAt = new Date();
+      return clone(r);
+    },
+    async delete(id) {
+      if (!courseStore.has(id)) throw prismaNotFound();
+      for (const o of courseOfferingStore.values()) {
+        if (o.courseId === id) throw prismaForeignKey();
+      }
+      courseStore.delete(id);
+    },
+    async hasOfferingReferences(id) {
+      for (const o of courseOfferingStore.values()) {
+        if (o.courseId === id) return true;
+      }
+      return false;
+    },
+  };
+
+  // ── CourseOfferings ─────────────────────────────────────────────────────
+  const courseOfferings: CourseOfferingRepository = {
+    async list({ filter, page, pageSize }) {
+      let rows = Array.from(courseOfferingStore.values());
+      if (filter?.semesterId !== undefined) {
+        rows = rows.filter((r) => r.semesterId === filter.semesterId);
+      }
+      if (filter?.courseId !== undefined) {
+        rows = rows.filter((r) => r.courseId === filter.courseId);
+      }
+      if (filter?.roomId !== undefined) {
+        rows = rows.filter((r) => r.roomId === filter.roomId);
+      }
+      if (filter?.lecturerId !== undefined) {
+        rows = rows.filter((r) => r.lecturerIds.includes(filter.lecturerId!));
+      }
+      if (filter?.parentOfferingId !== undefined) {
+        rows = rows.filter((r) => r.parentOfferingId === filter.parentOfferingId);
+      }
+      rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      const total = rows.length;
+      return { rows: rows.slice((page - 1) * pageSize, page * pageSize).map(clone), total };
+    },
+    async findById(id) {
+      const r = courseOfferingStore.get(id);
+      return r ? clone(r) : null;
+    },
+    async create(input) {
+      if (!semesterStore.has(input.semesterId)) throw prismaForeignKey();
+      if (!courseStore.has(input.courseId)) throw prismaForeignKey();
+      if (!roomStore.has(input.roomId)) throw prismaForeignKey();
+      for (const lid of input.lecturerIds) {
+        if (!lecturerStore.has(lid)) throw prismaForeignKey();
+      }
+      for (const tsid of input.fixedTimeSlotIds) {
+        if (!timeSlotStore.has(tsid)) throw prismaForeignKey();
+      }
+      if (input.parentOfferingId !== null && !courseOfferingStore.has(input.parentOfferingId)) {
+        throw prismaForeignKey();
+      }
+      const now = new Date();
+      const id = nextCourseOfferingId++;
+      const row: CourseOfferingRecord = {
+        id,
+        semesterId: input.semesterId,
+        courseId: input.courseId,
+        roomId: input.roomId,
+        effectiveStudentCount: input.effectiveStudentCount,
+        lecturerIds: [...input.lecturerIds],
+        isFixed: input.isFixed,
+        fixedTimeSlotIds: [...input.fixedTimeSlotIds],
+        parentOfferingId: input.parentOfferingId,
+        createdById: input.createdById,
+        createdAt: now,
+        updatedAt: now,
+      };
+      courseOfferingStore.set(id, row);
+      return clone(row);
+    },
+    async update(id, patch) {
+      const r = courseOfferingStore.get(id);
+      if (!r) throw prismaNotFound();
+      if (patch.lecturerIds !== undefined) {
+        for (const lid of patch.lecturerIds) {
+          if (!lecturerStore.has(lid)) throw prismaForeignKey();
+        }
+        r.lecturerIds = [...patch.lecturerIds];
+      }
+      if (patch.fixedTimeSlotIds !== undefined) {
+        for (const tsid of patch.fixedTimeSlotIds) {
+          if (!timeSlotStore.has(tsid)) throw prismaForeignKey();
+        }
+        r.fixedTimeSlotIds = [...patch.fixedTimeSlotIds];
+      }
+      if (patch.courseId !== undefined) {
+        if (!courseStore.has(patch.courseId)) throw prismaForeignKey();
+        r.courseId = patch.courseId;
+      }
+      if (patch.roomId !== undefined) {
+        if (!roomStore.has(patch.roomId)) throw prismaForeignKey();
+        r.roomId = patch.roomId;
+      }
+      if (patch.effectiveStudentCount !== undefined) {
+        r.effectiveStudentCount = patch.effectiveStudentCount;
+      }
+      if (patch.isFixed !== undefined) r.isFixed = patch.isFixed;
+      if (patch.parentOfferingId !== undefined) {
+        if (
+          patch.parentOfferingId !== null &&
+          !courseOfferingStore.has(patch.parentOfferingId)
+        ) {
+          throw prismaForeignKey();
+        }
+        r.parentOfferingId = patch.parentOfferingId;
+      }
+      r.updatedAt = new Date();
+      return clone(r);
+    },
+    async updateStudentCount(id, effectiveStudentCount) {
+      const r = courseOfferingStore.get(id);
+      if (!r) throw prismaNotFound();
+      r.effectiveStudentCount = effectiveStudentCount;
+      r.updatedAt = new Date();
+      return clone(r);
+    },
+    async delete(id) {
+      if (!courseOfferingStore.has(id)) throw prismaNotFound();
+      courseOfferingStore.delete(id);
+    },
+  };
+
   // ── Seeders ─────────────────────────────────────────────────────────────
   function insertUser(u: Partial<UserRecord> & {
     email: string;
@@ -556,15 +885,99 @@ export function buildCrudFixture(): CrudFixture {
     if (id >= nextLockedRoomId) nextLockedRoomId = id + 1;
     return clone(row);
   }
+  function insertLecturer(l: Partial<LecturerRecord> & {
+    semesterId: number;
+    name: string;
+  }): LecturerRecord {
+    const now = new Date();
+    const id = l.id ?? nextLecturerId++;
+    const row: LecturerRecord = {
+      id,
+      semesterId: l.semesterId,
+      name: l.name,
+      isStructural: l.isStructural ?? false,
+      preferredTimeSlotIds: l.preferredTimeSlotIds ?? [],
+      competencies: l.competencies ?? [],
+      createdById: l.createdById ?? null,
+      createdAt: l.createdAt ?? now,
+      updatedAt: l.updatedAt ?? now,
+    };
+    lecturerStore.set(id, row);
+    if (id >= nextLecturerId) nextLecturerId = id + 1;
+    return clone(row);
+  }
+  function insertCourse(c: Partial<CourseRecord> & {
+    semesterId: number;
+    code: string;
+    name: string;
+    sks: number;
+  }): CourseRecord {
+    const now = new Date();
+    const id = c.id ?? nextCourseId++;
+    const row: CourseRecord = {
+      id,
+      semesterId: c.semesterId,
+      code: c.code,
+      name: c.name,
+      sks: c.sks,
+      requiredFacilities: c.requiredFacilities ?? [],
+      requiredCompetencies: c.requiredCompetencies ?? [],
+      createdById: c.createdById ?? null,
+      createdAt: c.createdAt ?? now,
+      updatedAt: c.updatedAt ?? now,
+    };
+    courseStore.set(id, row);
+    if (id >= nextCourseId) nextCourseId = id + 1;
+    return clone(row);
+  }
+  function insertCourseOffering(o: Partial<CourseOfferingRecord> & {
+    semesterId: number;
+    courseId: number;
+    roomId: number;
+    effectiveStudentCount: number;
+  }): CourseOfferingRecord {
+    const now = new Date();
+    const id = o.id ?? nextCourseOfferingId++;
+    const row: CourseOfferingRecord = {
+      id,
+      semesterId: o.semesterId,
+      courseId: o.courseId,
+      roomId: o.roomId,
+      effectiveStudentCount: o.effectiveStudentCount,
+      lecturerIds: o.lecturerIds ?? [],
+      isFixed: o.isFixed ?? false,
+      fixedTimeSlotIds: o.fixedTimeSlotIds ?? [],
+      parentOfferingId: o.parentOfferingId ?? null,
+      createdById: o.createdById ?? null,
+      createdAt: o.createdAt ?? now,
+      updatedAt: o.updatedAt ?? now,
+    };
+    courseOfferingStore.set(id, row);
+    if (id >= nextCourseOfferingId) nextCourseOfferingId = id + 1;
+    return clone(row);
+  }
 
   return {
-    repos: { users, semesters, rooms, timeSlots, facilities, lockedRooms },
+    repos: {
+      users,
+      semesters,
+      rooms,
+      timeSlots,
+      facilities,
+      lockedRooms,
+      lecturers,
+      courses,
+      courseOfferings,
+    },
     userStore,
     semesterStore,
     roomStore,
     timeSlotStore,
     facilityStore,
     lockedRoomStore,
+    lecturerStore,
+    courseStore,
+    courseOfferingStore,
     runningScheduleRunSemesters,
     insertUser,
     insertSemester,
@@ -572,5 +985,8 @@ export function buildCrudFixture(): CrudFixture {
     insertTimeSlot,
     insertFacility,
     insertLockedRoom,
+    insertLecturer,
+    insertCourse,
+    insertCourseOffering,
   };
 }

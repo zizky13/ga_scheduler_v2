@@ -25,19 +25,14 @@ describe('Phase 2 Task 2 — route scaffolding', () => {
   // POST /auth/login is no longer NOT_IMPLEMENTED — Phase 2 Task 3 wired the
   // real handler. Behavioural coverage now lives in tests/api/routes/auth.test.ts.
 
-  it('returns 400 when POST /lecturers omits required fields', async () => {
+  it('returns 401 when POST /lecturers is unauthenticated (auth runs before validation)', async () => {
     const res = await request(app).post('/api/v1/lecturers').send({});
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('VALIDATION_FAILED');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
   });
 
-  it('returns 501 when POST /lecturers is given a valid body', async () => {
-    const res = await request(app)
-      .post('/api/v1/lecturers')
-      .send({ semesterId: 1, name: 'Dr. Ani', competencies: ['algorithms'] });
-    expect(res.status).toBe(501);
-    expect(res.body.error.code).toBe('NOT_IMPLEMENTED');
-  });
+  // POST /lecturers is no longer NOT_IMPLEMENTED — Phase 2 Task 6 wired the
+  // real handler. Behavioural coverage lives in tests/api/routes/lecturers.test.ts.
 
   it('returns 400 when POST /schedule-runs config violates the elitism invariant', async () => {
     const res = await request(app)
@@ -58,15 +53,12 @@ describe('Phase 2 Task 2 — route scaffolding', () => {
     expect(res.body.error.code).toBe('VALIDATION_FAILED');
   });
 
-  it('returns 400 when GET /lecturers/:id receives a non-numeric id', async () => {
+  it('returns 401 when GET /lecturers/:id receives a non-numeric id (auth runs before validation)', async () => {
     const res = await request(app).get('/api/v1/lecturers/not-a-number');
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('VALIDATION_FAILED');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
   });
 
-  it('returns 501 when GET /lecturers/:id is well-formed', async () => {
-    const res = await request(app).get('/api/v1/lecturers/42');
-    expect(res.status).toBe(501);
-    expect(res.body.error.code).toBe('NOT_IMPLEMENTED');
-  });
+  // GET /lecturers/:id is no longer NOT_IMPLEMENTED — Phase 2 Task 6 wired the
+  // real handler. Behavioural coverage lives in tests/api/routes/lecturers.test.ts.
 });

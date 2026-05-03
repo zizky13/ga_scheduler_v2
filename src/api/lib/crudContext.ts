@@ -17,6 +17,9 @@ import type { RoomRepository } from '../../repo/roomRepo';
 import type { TimeSlotRepository } from '../../repo/timeslotRepo';
 import type { FacilityRepository } from '../../repo/facilityRepo';
 import type { LockedRoomRepository } from '../../repo/lockedRoomRepo';
+import type { LecturerRepository } from '../../repo/lecturerCrudRepo';
+import type { CourseRepository } from '../../repo/courseCrudRepo';
+import type { CourseOfferingRepository } from '../../repo/courseOfferingRepo';
 
 import { createUserRepository } from '../../repo/userRepo';
 import { createSemesterRepository } from '../../repo/semesterRepo';
@@ -24,6 +27,9 @@ import { createRoomRepository } from '../../repo/roomRepo';
 import { createTimeSlotRepository } from '../../repo/timeslotRepo';
 import { createFacilityRepository } from '../../repo/facilityRepo';
 import { createLockedRoomRepository } from '../../repo/lockedRoomRepo';
+import { createLecturerRepository } from '../../repo/lecturerCrudRepo';
+import { createCourseRepository } from '../../repo/courseCrudRepo';
+import { createCourseOfferingRepository } from '../../repo/courseOfferingRepo';
 import { getPrisma } from '../../repo/prisma';
 
 export interface CrudRepositories {
@@ -33,6 +39,9 @@ export interface CrudRepositories {
   timeSlots: TimeSlotRepository;
   facilities: FacilityRepository;
   lockedRooms: LockedRoomRepository;
+  lecturers: LecturerRepository;
+  courses: CourseRepository;
+  courseOfferings: CourseOfferingRepository;
 }
 
 let cached: CrudRepositories | undefined;
@@ -49,6 +58,9 @@ export function getCrudRepositories(): CrudRepositories {
       timeSlots: createTimeSlotRepository(prisma),
       facilities: createFacilityRepository(prisma),
       lockedRooms: createLockedRoomRepository(prisma),
+      lecturers: createLecturerRepository(prisma),
+      courses: createCourseRepository(prisma),
+      courseOfferings: createCourseOfferingRepository(prisma),
     };
   }
   return cached;

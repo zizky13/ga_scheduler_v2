@@ -99,3 +99,29 @@ export {
   type CreateLockedRoomInput,
   type UpdateLockedRoomInput,
 } from './lockedRoomRepo';
+
+// Phase 2 task 6 — CRUD repos for /lecturers /courses /course-offerings.
+export {
+  createLecturerRepository,
+  type LecturerRepository,
+  type LecturerRecord,
+  type CreateLecturerInput,
+  type UpdateLecturerInput,
+  type ListLecturersOptions,
+} from './lecturerCrudRepo';
+export {
+  createCourseRepository,
+  type CourseRepository,
+  type CourseRecord,
+  type CreateCourseInput,
+  type UpdateCourseInput,
+  type ListCoursesOptions,
+} from './courseCrudRepo';
+export {
+  createCourseOfferingRepository,
+  type CourseOfferingRepository,
+  type CourseOfferingRecord,
+  type CreateCourseOfferingInput,
+  type UpdateCourseOfferingInput,
+  type ListCourseOfferingsOptions,
+} from './courseOfferingRepo';
