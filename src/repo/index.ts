@@ -52,3 +52,50 @@ export {
   getActiveSemesterId,
   type ScheduleRepoInputs,
 } from './scheduleRepo';
+
+// Phase 2 task 5 — CRUD repos for /users /semesters /rooms /timeslots
+// /facilities /locked-rooms.
+export {
+  createUserRepository,
+  type UserRepository,
+  type UserRecord,
+  type CreateUserInput,
+  type UpdateUserInput,
+  type ListUsersOptions,
+} from './userRepo';
+export {
+  createSemesterRepository,
+  type SemesterRepository,
+  type SemesterRecord,
+  type CreateSemesterInput,
+  type UpdateSemesterInput,
+} from './semesterRepo';
+export {
+  createRoomRepository,
+  UnknownFacilityCodeError,
+  type RoomRepository,
+  type RoomRecord,
+  type CreateRoomInput,
+  type UpdateRoomInput,
+} from './roomRepo';
+export {
+  createTimeSlotRepository,
+  type TimeSlotRepository,
+  type TimeSlotRecord,
+  type CreateTimeSlotInput,
+  type UpdateTimeSlotInput,
+} from './timeslotRepo';
+export {
+  createFacilityRepository,
+  type FacilityRepository,
+  type FacilityRecord,
+  type CreateFacilityInput,
+  type UpdateFacilityInput,
+} from './facilityRepo';
+export {
+  createLockedRoomRepository,
+  type LockedRoomRepository,
+  type LockedRoomRecord,
+  type CreateLockedRoomInput,
+  type UpdateLockedRoomInput,
+} from './lockedRoomRepo';

@@ -1,13 +1,10 @@
 /**
- * Thin repository facade around `prisma.user` for the `/auth/*` and (later)
+ * Thin repository facade around `prisma.user` for the `/auth/*` and
  * `/users/*` endpoints. Keeps Prisma imports out of the route handlers so the
  * boundary stays explicit.
- *
- * Only the methods Phase 2 Task 3 actually calls live here; the broader user
- * CRUD surface (list, soft-delete via `setActive`, etc.) is added by Task 5.
  */
 
-import type { PrismaClient, Role, User } from '@prisma/client';
+import type { PrismaClient, Prisma, Role, User } from '@prisma/client';
 
 export type UserRecord = Pick<
   User,
@@ -21,12 +18,32 @@ export interface CreateUserInput {
   role: Role;
 }
 
+export interface UpdateUserInput {
+  role?: Role;
+  fullName?: string;
+  isActive?: boolean;
+}
+
+export interface ListUsersOptions {
+  filter?: { role?: Role; isActive?: boolean };
+  page: number;
+  pageSize: number;
+  sort?: string;
+}
+
+export interface ListResult<T> {
+  rows: T[];
+  total: number;
+}
+
 export interface UserRepository {
   findUserByEmail(email: string): Promise<UserRecord | null>;
   findUserById(id: number): Promise<UserRecord | null>;
   createUser(input: CreateUserInput): Promise<UserRecord>;
   updateLastLogin(id: number, when: Date): Promise<void>;
   setActive(id: number, isActive: boolean): Promise<UserRecord>;
+  listUsers(opts: ListUsersOptions): Promise<ListResult<UserRecord>>;
+  updateUser(id: number, patch: UpdateUserInput): Promise<UserRecord>;
 }
 
 const USER_SELECT = {
@@ -79,5 +96,46 @@ export function createUserRepository(prisma: PrismaClient): UserRepository {
         select: USER_SELECT,
       });
     },
+    async listUsers({ filter, page, pageSize, sort }) {
+      const where: Prisma.UserWhereInput = {};
+      if (filter?.role !== undefined) where.role = filter.role;
+      if (filter?.isActive !== undefined) where.isActive = filter.isActive;
+      const orderBy = parseUserSort(sort);
+      const [rows, total] = await Promise.all([
+        prisma.user.findMany({
+          where,
+          orderBy: orderBy.length > 0 ? orderBy : [{ createdAt: 'desc' }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          select: USER_SELECT,
+        }),
+        prisma.user.count({ where }),
+      ]);
+      return { rows, total };
+    },
+    async updateUser(id, patch) {
+      return prisma.user.update({
+        where: { id },
+        data: patch,
+        select: USER_SELECT,
+      });
+    },
   };
+}
+
+const USER_SORTABLE = new Set(['createdAt', 'email', 'fullName']);
+
+function parseUserSort(sort: string | undefined): Prisma.UserOrderByWithRelationInput[] {
+  if (!sort) return [{ createdAt: 'desc' }];
+  return sort
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((token) => {
+      const dir: 'asc' | 'desc' = token.startsWith('-') ? 'desc' : 'asc';
+      const field = token.replace(/^[-+]/u, '');
+      if (!USER_SORTABLE.has(field)) return null;
+      return { [field]: dir } as Prisma.UserOrderByWithRelationInput;
+    })
+    .filter((v): v is Prisma.UserOrderByWithRelationInput => v !== null);
 }

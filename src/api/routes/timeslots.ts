@@ -1,45 +1,250 @@
-import { Router } from 'express';
+/**
+ * `/timeslots` CRUD — admin write, user read (api_design §4.5, §5.3.4).
+ */
+
+import { Router, type Request, type Response, type NextFunction } from 'express';
+import type { Weekday } from '@prisma/client';
+
 import { validate } from '../middleware/validate';
+import { requireAuth, requireRole } from '../middleware/auth';
 import {
   createTimeslotBodySchema,
   listTimeslotsQuerySchema,
   timeslotIdParamsSchema,
   updateTimeslotBodySchema,
+  type CreateTimeslotBody,
+  type UpdateTimeslotBody,
 } from '../schemas/timeslots';
-import { notImplemented } from './_stub';
+import { ConflictError, NotFoundError, ValidationError } from '../errors';
+import { getCrudRepositories } from '../lib/crudContext';
+import {
+  isPrismaForeignKeyError,
+  isPrismaNotFound,
+  isPrismaUniqueViolation,
+} from '../lib/prismaErrors';
+import { buildListResponse } from '../lib/listResponse';
+import type { TimeSlotRecord } from '../../repo/timeslotRepo';
+
+interface TimeSlotWirePayload {
+  id: number;
+  semesterId: number;
+  day: Weekday;
+  startTime: string;
+  endTime: string;
+}
+
+function toWire(t: TimeSlotRecord): TimeSlotWirePayload {
+  return {
+    id: t.id,
+    semesterId: t.semesterId,
+    day: t.day,
+    startTime: t.startTime,
+    endTime: t.endTime,
+  };
+}
+
+interface ListQuery {
+  page: number;
+  pageSize: number;
+  sort?: string;
+  semesterId?: number;
+  day?: Weekday;
+}
+
+interface IdParams {
+  id: number;
+}
+
+async function getList(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const q = req.query as unknown as ListQuery;
+    const repos = getCrudRepositories();
+    const filter: { semesterId?: number; day?: Weekday } = {};
+    if (q.semesterId !== undefined) filter.semesterId = q.semesterId;
+    if (q.day !== undefined) filter.day = q.day;
+    const opts: Parameters<typeof repos.timeSlots.list>[0] = {
+      filter,
+      page: q.page,
+      pageSize: q.pageSize,
+    };
+    if (q.sort !== undefined) opts.sort = q.sort;
+    const { rows, total } = await repos.timeSlots.list(opts);
+    res.status(200).json(
+      buildListResponse(rows.map(toWire), { page: q.page, pageSize: q.pageSize, total }),
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getOne(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { id } = req.params as unknown as IdParams;
+    const repos = getCrudRepositories();
+    const row = await repos.timeSlots.findById(id);
+    if (!row) {
+      next(new NotFoundError('Timeslot not found'));
+      return;
+    }
+    res.status(200).json(toWire(row));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function postCreate(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const body = req.body as CreateTimeslotBody;
+    const repos = getCrudRepositories();
+    try {
+      const created = await repos.timeSlots.create({
+        semesterId: body.semesterId,
+        day: body.day,
+        startTime: body.startTime,
+        endTime: body.endTime,
+      });
+      res.status(201).json(toWire(created));
+    } catch (err) {
+      if (isPrismaUniqueViolation(err)) {
+        next(
+          new ConflictError(
+            'TIMESLOT_TAKEN',
+            'Timeslot already exists for this semester / day / window',
+          ),
+        );
+        return;
+      }
+      if (isPrismaForeignKeyError(err)) {
+        next(
+          new ValidationError(
+            'Invalid semesterId',
+            [
+              {
+                path: ['semesterId'],
+                message: 'Semester does not exist',
+                code: 'INVALID_REFERENCE',
+              },
+            ],
+            'INVALID_REFERENCE',
+          ),
+        );
+        return;
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function patch(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { id } = req.params as unknown as IdParams;
+    const body = req.body as UpdateTimeslotBody;
+    const repos = getCrudRepositories();
+    // PATCH allows partial — but if both startTime and endTime appear, the
+    // schema's body refine doesn't apply (it's only on create). We re-validate
+    // the resulting window if either bound changes.
+    if (body.startTime !== undefined || body.endTime !== undefined) {
+      const existing = await repos.timeSlots.findById(id);
+      if (!existing) {
+        next(new NotFoundError('Timeslot not found'));
+        return;
+      }
+      const startTime = body.startTime ?? existing.startTime;
+      const endTime = body.endTime ?? existing.endTime;
+      if (startTime >= endTime) {
+        next(
+          new ValidationError(
+            'startTime must be before endTime',
+            [{ path: ['endTime'], message: 'startTime must be before endTime' }],
+          ),
+        );
+        return;
+      }
+    }
+    try {
+      const updated = await repos.timeSlots.update(id, body);
+      res.status(200).json(toWire(updated));
+    } catch (err) {
+      if (isPrismaUniqueViolation(err)) {
+        next(
+          new ConflictError(
+            'TIMESLOT_TAKEN',
+            'Timeslot already exists for this semester / day / window',
+          ),
+        );
+        return;
+      }
+      if (isPrismaNotFound(err)) {
+        next(new NotFoundError('Timeslot not found'));
+        return;
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function remove(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { id } = req.params as unknown as IdParams;
+    const repos = getCrudRepositories();
+    try {
+      await repos.timeSlots.delete(id);
+      res.status(204).end();
+    } catch (err) {
+      if (isPrismaNotFound(err)) {
+        next(new NotFoundError('Timeslot not found'));
+        return;
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+}
 
 export function createTimeslotsRouter(): Router {
   const router = Router();
 
-  // TODO Task 4: requireAuth
-  router.get('/', validate({ query: listTimeslotsQuerySchema }), notImplemented('GET /timeslots'));
+  router.get(
+    '/',
+    requireAuth(),
+    validate({ query: listTimeslotsQuerySchema }),
+    getList,
+  );
 
-  // TODO Task 4: requireAuth
   router.get(
     '/:id',
+    requireAuth(),
     validate({ params: timeslotIdParamsSchema }),
-    notImplemented('GET /timeslots/:id'),
+    getOne,
   );
 
-  // TODO Task 4: requireAuth, requireRole('admin')
   router.post(
     '/',
+    requireAuth(),
+    requireRole('admin'),
     validate({ body: createTimeslotBodySchema }),
-    notImplemented('POST /timeslots'),
+    postCreate,
   );
 
-  // TODO Task 4: requireAuth, requireRole('admin')
   router.patch(
     '/:id',
+    requireAuth(),
+    requireRole('admin'),
     validate({ params: timeslotIdParamsSchema, body: updateTimeslotBodySchema }),
-    notImplemented('PATCH /timeslots/:id'),
+    patch,
   );
 
-  // TODO Task 4: requireAuth, requireRole('admin')
   router.delete(
     '/:id',
+    requireAuth(),
+    requireRole('admin'),
     validate({ params: timeslotIdParamsSchema }),
-    notImplemented('DELETE /timeslots/:id'),
+    remove,
   );
 
   return router;
