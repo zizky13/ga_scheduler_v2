@@ -20,6 +20,7 @@ import type { LockedRoomRepository } from '../../repo/lockedRoomRepo';
 import type { LecturerRepository } from '../../repo/lecturerCrudRepo';
 import type { CourseRepository } from '../../repo/courseCrudRepo';
 import type { CourseOfferingRepository } from '../../repo/courseOfferingRepo';
+import type { AuditLogRepository } from '../../repo/auditLogRepo';
 
 import { createUserRepository } from '../../repo/userRepo';
 import { createSemesterRepository } from '../../repo/semesterRepo';
@@ -30,6 +31,7 @@ import { createLockedRoomRepository } from '../../repo/lockedRoomRepo';
 import { createLecturerRepository } from '../../repo/lecturerCrudRepo';
 import { createCourseRepository } from '../../repo/courseCrudRepo';
 import { createCourseOfferingRepository } from '../../repo/courseOfferingRepo';
+import { createAuditLogRepository } from '../../repo/auditLogRepo';
 import { getPrisma } from '../../repo/prisma';
 
 export interface CrudRepositories {
@@ -42,6 +44,7 @@ export interface CrudRepositories {
   lecturers: LecturerRepository;
   courses: CourseRepository;
   courseOfferings: CourseOfferingRepository;
+  auditLogs: AuditLogRepository;
 }
 
 let cached: CrudRepositories | undefined;
@@ -61,6 +64,7 @@ export function getCrudRepositories(): CrudRepositories {
       lecturers: createLecturerRepository(prisma),
       courses: createCourseRepository(prisma),
       courseOfferings: createCourseOfferingRepository(prisma),
+      auditLogs: createAuditLogRepository(prisma),
     };
   }
   return cached;

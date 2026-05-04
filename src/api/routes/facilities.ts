@@ -16,6 +16,7 @@ import {
 } from '../schemas/facilities';
 import { ConflictError, NotFoundError } from '../errors';
 import { getCrudRepositories } from '../lib/crudContext';
+import { writeAudit } from '../lib/audit';
 import { isPrismaForeignKeyError, isPrismaNotFound, isPrismaUniqueViolation } from '../lib/prismaErrors';
 import { buildListResponse } from '../lib/listResponse';
 import type { FacilityRecord } from '../../repo/facilityRepo';
@@ -74,6 +75,12 @@ async function postCreate(req: Request, res: Response, next: NextFunction): Prom
     const repos = getCrudRepositories();
     try {
       const created = await repos.facilities.create({ code: body.code, label: body.label });
+      await writeAudit(req, {
+        action: 'facility.create',
+        entityType: 'Facility',
+        entityId: String(created.id),
+        metadata: { before: null, after: created },
+      });
       res.status(201).json(toWire(created));
     } catch (err) {
       if (isPrismaUniqueViolation(err)) {
@@ -92,8 +99,19 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
     const { id } = req.params as unknown as IdParams;
     const body = req.body as UpdateFacilityBody;
     const repos = getCrudRepositories();
+    const existing = await repos.facilities.findById(id);
+    if (!existing) {
+      next(new NotFoundError('Facility not found'));
+      return;
+    }
     try {
       const updated = await repos.facilities.update(id, body);
+      await writeAudit(req, {
+        action: 'facility.update',
+        entityType: 'Facility',
+        entityId: String(id),
+        metadata: { before: existing, after: updated },
+      });
       res.status(200).json(toWire(updated));
     } catch (err) {
       if (isPrismaUniqueViolation(err)) {
@@ -115,8 +133,17 @@ async function remove(req: Request, res: Response, next: NextFunction): Promise<
   try {
     const { id } = req.params as unknown as IdParams;
     const repos = getCrudRepositories();
+    const existing = await repos.facilities.findById(id);
     try {
       await repos.facilities.delete(id);
+      if (existing) {
+        await writeAudit(req, {
+          action: 'facility.delete',
+          entityType: 'Facility',
+          entityId: String(id),
+          metadata: { before: existing, after: null },
+        });
+      }
       res.status(204).end();
     } catch (err) {
       if (isPrismaNotFound(err)) {

@@ -48,6 +48,11 @@ import type {
   CourseOfferingRecord,
   CourseOfferingRepository,
 } from '../../../src/repo/courseOfferingRepo';
+import type {
+  AuditLogRecord,
+  AuditLogRepository,
+  CreateAuditLogInput,
+} from '../../../src/repo/auditLogRepo';
 import type { CrudRepositories } from '../../../src/api/lib/crudContext';
 
 // ─── Generic helpers ──────────────────────────────────────────────────────
@@ -96,6 +101,12 @@ export interface CrudFixture {
   lecturerStore: Map<number, LecturerRecord>;
   courseStore: Map<number, CourseRecord>;
   courseOfferingStore: Map<number, CourseOfferingRecord>;
+  // Audit log captures every state-changing request. Tests assert against
+  // this array rather than peeking at the repo internals.
+  auditLogStore: AuditLogRecord[];
+  // Toggle that makes the audit-repo `create()` throw so we can assert that
+  // a failing audit write does NOT break the user-facing request.
+  auditLogFail: { active: boolean };
   // Out-of-band toggle so a test can simulate an active RUNNING run for a
   // given semesterId without needing the full ScheduleRun model.
   runningScheduleRunSemesters: Set<number>;
@@ -149,6 +160,7 @@ export function buildCrudFixture(): CrudFixture {
   let nextLecturerId = 1;
   let nextCourseId = 1;
   let nextCourseOfferingId = 1;
+  let nextAuditLogId = 1;
 
   const userStore = new Map<number, UserRecord>();
   const semesterStore = new Map<number, SemesterRecord>();
@@ -159,6 +171,8 @@ export function buildCrudFixture(): CrudFixture {
   const lecturerStore = new Map<number, LecturerRecord>();
   const courseStore = new Map<number, CourseRecord>();
   const courseOfferingStore = new Map<number, CourseOfferingRecord>();
+  const auditLogStore: AuditLogRecord[] = [];
+  const auditLogFail = { active: false };
   const runningScheduleRunSemesters = new Set<number>();
 
   // ── Users ───────────────────────────────────────────────────────────────
@@ -783,6 +797,32 @@ export function buildCrudFixture(): CrudFixture {
     },
   };
 
+  // ── AuditLogs ───────────────────────────────────────────────────────────
+  const auditLogs: AuditLogRepository = {
+    async create(input: CreateAuditLogInput) {
+      if (auditLogFail.active) {
+        throw new Error('audit-log persistence simulated failure');
+      }
+      const metadataJson =
+        input.metadata === null || input.metadata === undefined
+          ? null
+          : JSON.stringify(input.metadata);
+      const row: AuditLogRecord = {
+        id: nextAuditLogId++,
+        actorId: input.actorId,
+        action: input.action,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        metadata: metadataJson,
+        ipAddress: input.ipAddress ?? null,
+        userAgent: input.userAgent ?? null,
+        createdAt: new Date(),
+      };
+      auditLogStore.push(row);
+      return clone(row);
+    },
+  };
+
   // ── Seeders ─────────────────────────────────────────────────────────────
   function insertUser(u: Partial<UserRecord> & {
     email: string;
@@ -968,6 +1008,7 @@ export function buildCrudFixture(): CrudFixture {
       lecturers,
       courses,
       courseOfferings,
+      auditLogs,
     },
     userStore,
     semesterStore,
@@ -978,6 +1019,8 @@ export function buildCrudFixture(): CrudFixture {
     lecturerStore,
     courseStore,
     courseOfferingStore,
+    auditLogStore,
+    auditLogFail,
     runningScheduleRunSemesters,
     insertUser,
     insertSemester,

@@ -17,6 +17,7 @@ import {
 } from '../schemas/timeslots';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import { getCrudRepositories } from '../lib/crudContext';
+import { writeAudit } from '../lib/audit';
 import {
   isPrismaForeignKeyError,
   isPrismaNotFound,
@@ -103,6 +104,12 @@ async function postCreate(req: Request, res: Response, next: NextFunction): Prom
         startTime: body.startTime,
         endTime: body.endTime,
       });
+      await writeAudit(req, {
+        action: 'time_slot.create',
+        entityType: 'TimeSlot',
+        entityId: String(created.id),
+        metadata: { before: null, after: created },
+      });
       res.status(201).json(toWire(created));
     } catch (err) {
       if (isPrismaUniqueViolation(err)) {
@@ -142,15 +149,15 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
     const { id } = req.params as unknown as IdParams;
     const body = req.body as UpdateTimeslotBody;
     const repos = getCrudRepositories();
-    // PATCH allows partial — but if both startTime and endTime appear, the
-    // schema's body refine doesn't apply (it's only on create). We re-validate
-    // the resulting window if either bound changes.
+    // Fetch unconditionally — we need `before` for the audit row anyway, and
+    // PATCH bound-validation also wants the existing row when only one of
+    // startTime / endTime is supplied.
+    const existing = await repos.timeSlots.findById(id);
+    if (!existing) {
+      next(new NotFoundError('Timeslot not found'));
+      return;
+    }
     if (body.startTime !== undefined || body.endTime !== undefined) {
-      const existing = await repos.timeSlots.findById(id);
-      if (!existing) {
-        next(new NotFoundError('Timeslot not found'));
-        return;
-      }
       const startTime = body.startTime ?? existing.startTime;
       const endTime = body.endTime ?? existing.endTime;
       if (startTime >= endTime) {
@@ -165,6 +172,12 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
     }
     try {
       const updated = await repos.timeSlots.update(id, body);
+      await writeAudit(req, {
+        action: 'time_slot.update',
+        entityType: 'TimeSlot',
+        entityId: String(id),
+        metadata: { before: existing, after: updated },
+      });
       res.status(200).json(toWire(updated));
     } catch (err) {
       if (isPrismaUniqueViolation(err)) {
@@ -191,8 +204,17 @@ async function remove(req: Request, res: Response, next: NextFunction): Promise<
   try {
     const { id } = req.params as unknown as IdParams;
     const repos = getCrudRepositories();
+    const existing = await repos.timeSlots.findById(id);
     try {
       await repos.timeSlots.delete(id);
+      if (existing) {
+        await writeAudit(req, {
+          action: 'time_slot.delete',
+          entityType: 'TimeSlot',
+          entityId: String(id),
+          metadata: { before: existing, after: null },
+        });
+      }
       res.status(204).end();
     } catch (err) {
       if (isPrismaNotFound(err)) {

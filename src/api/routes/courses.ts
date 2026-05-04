@@ -27,6 +27,7 @@ import {
 } from '../schemas/courses';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import { getCrudRepositories } from '../lib/crudContext';
+import { writeAudit } from '../lib/audit';
 import {
   isPrismaForeignKeyError,
   isPrismaNotFound,
@@ -139,6 +140,16 @@ async function postCreate(req: Request, res: Response, next: NextFunction): Prom
         requiredCompetencies: body.requiredCompetencies,
         createdById: req.user?.id ?? null,
       });
+      await writeAudit(req, {
+        action: 'course.create',
+        entityType: 'Course',
+        entityId: String(created.id),
+        metadata: {
+          before: null,
+          after: created,
+          role: req.user?.role ?? null,
+        },
+      });
       res.status(201).json(toWire(created));
     } catch (err) {
       const fac = unknownFacility(err);
@@ -208,6 +219,16 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
 
     try {
       const updated = await repos.courses.update(id, patchInput);
+      await writeAudit(req, {
+        action: 'course.update',
+        entityType: 'Course',
+        entityId: String(id),
+        metadata: {
+          before: existing,
+          after: updated,
+          role: req.user?.role ?? null,
+        },
+      });
       res.status(200).json(toWire(updated));
     } catch (err) {
       const fac = unknownFacility(err);
@@ -255,6 +276,16 @@ async function remove(req: Request, res: Response, next: NextFunction): Promise<
     }
     try {
       await repos.courses.delete(id);
+      await writeAudit(req, {
+        action: 'course.delete',
+        entityType: 'Course',
+        entityId: String(id),
+        metadata: {
+          before: existing,
+          after: null,
+          role: req.user?.role ?? null,
+        },
+      });
       res.status(204).end();
     } catch (err) {
       if (isPrismaNotFound(err)) {

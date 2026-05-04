@@ -1,3 +1,11 @@
+// TODO Phase 3: instrument every state-changing schedule-run endpoint with
+// `writeAudit(...)` per api_design §8 — `schedule_run.create`,
+// `schedule_run.cancel`, `schedule_run.delete`, `schedule_run.assignment_override`,
+// and the system-emitted `schedule_run.completed` from the worker. All four
+// route bodies below are still notImplemented stubs (Phase 2 Task 8 only
+// instruments routes that are actually wired), so audit writes are deferred
+// until each handler lands.
+
 import { Router } from 'express';
 import { validate } from '../middleware/validate';
 import {

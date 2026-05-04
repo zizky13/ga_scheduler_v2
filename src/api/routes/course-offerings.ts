@@ -33,6 +33,7 @@ import {
 } from '../schemas/course-offerings';
 import { NotFoundError, ValidationError } from '../errors';
 import { getCrudRepositories } from '../lib/crudContext';
+import { writeAudit } from '../lib/audit';
 import { isPrismaForeignKeyError, isPrismaNotFound } from '../lib/prismaErrors';
 import { buildListResponse } from '../lib/listResponse';
 import type { CourseOfferingRecord } from '../../repo/courseOfferingRepo';
@@ -179,6 +180,16 @@ async function postCreate(req: Request, res: Response, next: NextFunction): Prom
         parentOfferingId: body.parentOfferingId ?? null,
         createdById: req.user?.id ?? null,
       });
+      await writeAudit(req, {
+        action: 'course_offering.create',
+        entityType: 'CourseOffering',
+        entityId: String(created.id),
+        metadata: {
+          before: null,
+          after: created,
+          role: req.user?.role ?? null,
+        },
+      });
       res.status(201).json(toWire(created));
     } catch (err) {
       if (isPrismaForeignKeyError(err)) {
@@ -228,6 +239,16 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
 
     try {
       const updated = await repos.courseOfferings.update(id, patchInput);
+      await writeAudit(req, {
+        action: 'course_offering.update',
+        entityType: 'CourseOffering',
+        entityId: String(id),
+        metadata: {
+          before: existing,
+          after: updated,
+          role: req.user?.role ?? null,
+        },
+      });
       res.status(200).json(toWire(updated));
     } catch (err) {
       if (isPrismaNotFound(err)) {
@@ -264,6 +285,20 @@ async function patchStudentCount(
         id,
         body.effectiveStudentCount,
       );
+      // Narrow student-count update — still a `course_offering.update` per
+      // §8 (the action table groups all CourseOffering edits under the same
+      // code). `op` annotates which sub-endpoint produced the row.
+      await writeAudit(req, {
+        action: 'course_offering.update',
+        entityType: 'CourseOffering',
+        entityId: String(id),
+        metadata: {
+          before: existing,
+          after: updated,
+          role: req.user?.role ?? null,
+          op: 'student-count',
+        },
+      });
       res.status(200).json(toWire(updated));
     } catch (err) {
       if (isPrismaNotFound(err)) {
@@ -281,8 +316,21 @@ async function remove(req: Request, res: Response, next: NextFunction): Promise<
   try {
     const { id } = req.params as unknown as IdParams;
     const repos = getCrudRepositories();
+    const existing = await repos.courseOfferings.findById(id);
     try {
       await repos.courseOfferings.delete(id);
+      if (existing) {
+        await writeAudit(req, {
+          action: 'course_offering.delete',
+          entityType: 'CourseOffering',
+          entityId: String(id),
+          metadata: {
+            before: existing,
+            after: null,
+            role: req.user?.role ?? null,
+          },
+        });
+      }
       res.status(204).end();
     } catch (err) {
       if (isPrismaNotFound(err)) {

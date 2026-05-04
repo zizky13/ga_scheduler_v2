@@ -29,6 +29,7 @@ import {
 } from '../schemas/lecturers';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import { getCrudRepositories } from '../lib/crudContext';
+import { writeAudit } from '../lib/audit';
 import { isPrismaForeignKeyError, isPrismaNotFound } from '../lib/prismaErrors';
 import { buildListResponse } from '../lib/listResponse';
 import type { LecturerRecord } from '../../repo/lecturerCrudRepo';
@@ -140,6 +141,18 @@ async function postCreate(req: Request, res: Response, next: NextFunction): Prom
         competencies: body.competencies,
         createdById: req.user?.id ?? null,
       });
+      // api_design §8 line 1108: lecturer/course/course_offering audit rows
+      // include `role` so we can attribute which role changed which field.
+      await writeAudit(req, {
+        action: 'lecturer.create',
+        entityType: 'Lecturer',
+        entityId: String(created.id),
+        metadata: {
+          before: null,
+          after: created,
+          role: req.user?.role ?? null,
+        },
+      });
       res.status(201).json(toWire(created));
     } catch (err) {
       if (isPrismaForeignKeyError(err)) {
@@ -195,6 +208,16 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
 
     try {
       const updated = await repos.lecturers.update(id, patchInput);
+      await writeAudit(req, {
+        action: 'lecturer.update',
+        entityType: 'Lecturer',
+        entityId: String(id),
+        metadata: {
+          before: existing,
+          after: updated,
+          role: req.user?.role ?? null,
+        },
+      });
       res.status(200).json(toWire(updated));
     } catch (err) {
       if (isPrismaNotFound(err)) {
@@ -244,6 +267,16 @@ async function remove(req: Request, res: Response, next: NextFunction): Promise<
     }
     try {
       await repos.lecturers.delete(id);
+      await writeAudit(req, {
+        action: 'lecturer.delete',
+        entityType: 'Lecturer',
+        entityId: String(id),
+        metadata: {
+          before: existing,
+          after: null,
+          role: req.user?.role ?? null,
+        },
+      });
       res.status(204).end();
     } catch (err) {
       if (isPrismaNotFound(err)) {

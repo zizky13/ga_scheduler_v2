@@ -17,6 +17,7 @@ import {
 } from '../schemas/semesters';
 import { ConflictError, NotFoundError } from '../errors';
 import { getCrudRepositories } from '../lib/crudContext';
+import { writeAudit } from '../lib/audit';
 import { isPrismaNotFound, isPrismaUniqueViolation } from '../lib/prismaErrors';
 import { buildListResponse } from '../lib/listResponse';
 import type { SemesterRecord } from '../../repo/semesterRepo';
@@ -101,6 +102,12 @@ async function postCreate(req: Request, res: Response, next: NextFunction): Prom
         startsOn: new Date(body.startsOn),
         endsOn: new Date(body.endsOn),
       });
+      await writeAudit(req, {
+        action: 'semester.create',
+        entityType: 'Semester',
+        entityId: String(created.id),
+        metadata: { before: null, after: created },
+      });
       res.status(201).json(toWire(created));
     } catch (err) {
       if (isPrismaUniqueViolation(err)) {
@@ -119,6 +126,11 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
     const { id } = req.params as unknown as IdParams;
     const body = req.body as UpdateSemesterBody;
     const repos = getCrudRepositories();
+    const before = await repos.semesters.findById(id);
+    if (!before) {
+      next(new NotFoundError('Semester not found'));
+      return;
+    }
     const patchInput: { label?: string; startsOn?: Date; endsOn?: Date } = {};
     if (body.label !== undefined) patchInput.label = body.label;
     if (body.startsOn !== undefined) patchInput.startsOn = new Date(body.startsOn);
@@ -126,6 +138,12 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
 
     try {
       const updated = await repos.semesters.update(id, patchInput);
+      await writeAudit(req, {
+        action: 'semester.update',
+        entityType: 'Semester',
+        entityId: String(id),
+        metadata: { before, after: updated },
+      });
       res.status(200).json(toWire(updated));
     } catch (err) {
       if (isPrismaNotFound(err)) {
@@ -149,6 +167,15 @@ async function activate(req: Request, res: Response, next: NextFunction): Promis
       return;
     }
     const activated = await repos.semesters.activate(id);
+    // §8 lumps activate under `semester.*` — emit a `semester.update`-shape
+    // diff so the audit log captures the isActive flip plus any siblings that
+    // were deactivated as part of the operation.
+    await writeAudit(req, {
+      action: 'semester.update',
+      entityType: 'Semester',
+      entityId: String(id),
+      metadata: { before: existing, after: activated, op: 'activate' },
+    });
     res.status(200).json(toWire(activated));
   } catch (err) {
     next(err);
@@ -178,6 +205,12 @@ async function remove(req: Request, res: Response, next: NextFunction): Promise<
       return;
     }
     await repos.semesters.delete(id);
+    await writeAudit(req, {
+      action: 'semester.delete',
+      entityType: 'Semester',
+      entityId: String(id),
+      metadata: { before: existing, after: null },
+    });
     res.status(204).end();
   } catch (err) {
     next(err);

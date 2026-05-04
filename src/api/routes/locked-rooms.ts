@@ -22,6 +22,7 @@ import {
 } from '../schemas/locked-rooms';
 import { AuthError, ConflictError, NotFoundError, ValidationError } from '../errors';
 import { getCrudRepositories } from '../lib/crudContext';
+import { writeAudit } from '../lib/audit';
 import {
   isPrismaForeignKeyError,
   isPrismaNotFound,
@@ -130,6 +131,12 @@ async function postCreate(req: Request, res: Response, next: NextFunction): Prom
         lockedById: req.user.id,
         reason: body.reason ?? null,
       });
+      await writeAudit(req, {
+        action: 'locked_room.create',
+        entityType: 'LockedRoom',
+        entityId: String(created.id),
+        metadata: { before: null, after: created },
+      });
       res.status(201).json(toWire(created));
     } catch (err) {
       if (isPrismaUniqueViolation(err)) {
@@ -192,6 +199,12 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
 
     try {
       const updated = await repos.lockedRooms.update(id, patchInput);
+      await writeAudit(req, {
+        action: 'locked_room.update',
+        entityType: 'LockedRoom',
+        entityId: String(id),
+        metadata: { before: existing, after: updated },
+      });
       res.status(200).json(toWire(updated));
     } catch (err) {
       if (isPrismaForeignKeyError(err)) {
@@ -237,6 +250,12 @@ async function remove(req: Request, res: Response, next: NextFunction): Promise<
     }
     try {
       await repos.lockedRooms.delete(id);
+      await writeAudit(req, {
+        action: 'locked_room.delete',
+        entityType: 'LockedRoom',
+        entityId: String(id),
+        metadata: { before: existing, after: null },
+      });
       res.status(204).end();
     } catch (err) {
       if (isPrismaNotFound(err)) {

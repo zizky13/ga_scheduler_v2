@@ -27,6 +27,7 @@ import {
   setRefreshCookie,
 } from '../lib/cookies';
 import { getAuthRepositories } from '../lib/authContext';
+import { writeAudit } from '../lib/audit';
 import type { UserRecord } from '../../repo/userRepo';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -128,6 +129,25 @@ async function postRegister(req: Request, res: Response, next: NextFunction): Pr
       }
       throw err;
     }
+    // api_design §8: `user.create` is admin-only and writes a full diff with
+    // passwordHash redacted (we don't carry the hash through the helper, but
+    // leaving the redactor visible documents the rule).
+    await writeAudit(req, {
+      action: 'user.create',
+      entityType: 'User',
+      entityId: String(user.id),
+      metadata: {
+        before: null,
+        after: {
+          id: user.id,
+          email: user.email,
+          fullName: user.fullName,
+          role: user.role,
+          isActive: user.isActive,
+          passwordHash: '[REDACTED]',
+        },
+      },
+    });
     res.status(201).json(toRegisterResponse(user));
   } catch (err) {
     next(err);
@@ -148,10 +168,39 @@ async function postLogin(req: Request, res: Response, next: NextFunction): Promi
       '$2b$12$0000000000000000000000000000000000000000000000000000';
     const ok = await verifyPassword(body.password, referenceHash);
     if (!user || !ok) {
+      // api_design §8: emit `auth.login_failed` with actorId=null because the
+      // request is not authenticated. Run BEFORE forwarding the error so a
+      // misbehaving handler later in the chain cannot drop the audit.
+      await writeAudit(req, {
+        action: 'auth.login_failed',
+        entityType: 'User',
+        entityId: user ? String(user.id) : '0',
+        actorId: null,
+        metadata: {
+          email: body.email,
+          success: false,
+          ip: pickIp(req),
+          userAgent: pickUserAgent(req),
+        },
+      });
       next(new AuthError('INVALID_CREDENTIALS', 'Invalid email or password'));
       return;
     }
     if (!user.isActive) {
+      // Disabled-account login attempt is also a failure path per §8.
+      await writeAudit(req, {
+        action: 'auth.login_failed',
+        entityType: 'User',
+        entityId: String(user.id),
+        actorId: null,
+        metadata: {
+          email: body.email,
+          success: false,
+          ip: pickIp(req),
+          userAgent: pickUserAgent(req),
+          reason: 'ACCOUNT_DISABLED',
+        },
+      });
       next(new AuthzError('Account is disabled', undefined, 'ACCOUNT_DISABLED'));
       return;
     }
@@ -171,6 +220,19 @@ async function postLogin(req: Request, res: Response, next: NextFunction): Promi
     await repos.users.updateLastLogin(user.id, now);
 
     setRefreshCookie(res, minted.token);
+    // api_design §8: `auth.login` row carries `{ email, success, ip, userAgent }`.
+    await writeAudit(req, {
+      action: 'auth.login',
+      entityType: 'User',
+      entityId: String(user.id),
+      actorId: user.id,
+      metadata: {
+        email: user.email,
+        success: true,
+        ip: pickIp(req),
+        userAgent: pickUserAgent(req),
+      },
+    });
     res.status(200).json({
       user: toMePayload({ ...user, lastLoginAt: now }),
       accessToken,
@@ -231,6 +293,7 @@ async function postRefresh(req: Request, res: Response, next: NextFunction): Pro
 async function postLogout(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const cookieValue = readRefreshCookie(req);
+    let revokedTokenId: string | null = null;
     if (cookieValue) {
       const repos = getAuthRepositories();
       const tokenHash = hashRefreshToken(cookieValue);
@@ -239,9 +302,21 @@ async function postLogout(req: Request, res: Response, next: NextFunction): Prom
       const row = await repos.refreshTokens.findActiveByHash(tokenHash);
       if (row) {
         await repos.refreshTokens.revokeById(row.id);
+        revokedTokenId = row.id;
       }
     }
     clearRefreshCookie(res);
+    // api_design §8: `auth.logout` carries `{ tokenId }`. If we didn't find a
+    // row to revoke (already logged out / no cookie), omit the field — do not
+    // invent one.
+    const metadata: Record<string, unknown> = {};
+    if (revokedTokenId !== null) metadata.tokenId = revokedTokenId;
+    await writeAudit(req, {
+      action: 'auth.logout',
+      entityType: 'User',
+      entityId: req.user ? String(req.user.id) : '0',
+      metadata,
+    });
     res.status(204).end();
   } catch (err) {
     next(err);

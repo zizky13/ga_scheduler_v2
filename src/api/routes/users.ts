@@ -15,6 +15,7 @@ import {
 } from '../schemas/users';
 import { AuthzError, ConflictError, NotFoundError } from '../errors';
 import { getCrudRepositories } from '../lib/crudContext';
+import { redactPasswordHash, writeAudit } from '../lib/audit';
 import { isPrismaNotFound } from '../lib/prismaErrors';
 import { buildListResponse } from '../lib/listResponse';
 import type { UserRecord } from '../../repo/userRepo';
@@ -123,12 +124,29 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
     }
 
     const repos = getCrudRepositories();
+    const before = await repos.users.findUserById(id);
+    if (!before) {
+      next(new NotFoundError('User not found'));
+      return;
+    }
     const patchInput: { role?: Role; fullName?: string; isActive?: boolean } = {};
     if (body.role !== undefined) patchInput.role = roleWireToEnum(body.role);
     if (body.fullName !== undefined) patchInput.fullName = body.fullName;
     if (body.isActive !== undefined) patchInput.isActive = body.isActive;
     try {
       const updated = await repos.users.updateUser(id, patchInput);
+      // api_design §8: `user.update` carries `{ before, after }` with
+      // passwordHash redacted. The hash itself is never edited via this
+      // endpoint, but we still redact defensively in case the row carries it.
+      await writeAudit(req, {
+        action: 'user.update',
+        entityType: 'User',
+        entityId: String(id),
+        metadata: {
+          before: redactPasswordHash(before),
+          after: redactPasswordHash(updated),
+        },
+      });
       res.status(200).json(toWire(updated));
     } catch (err) {
       if (isPrismaNotFound(err)) {
@@ -167,7 +185,19 @@ async function remove(req: Request, res: Response, next: NextFunction): Promise<
       next(new ConflictError('ALREADY_DEACTIVATED', 'User is already deactivated'));
       return;
     }
-    await repos.users.setActive(id, false);
+    const after = await repos.users.setActive(id, false);
+    // api_design §8: action code is `user.deactivate` (soft-delete), not
+    // `user.delete`. Diff captures the active→inactive flip with passwordHash
+    // redacted.
+    await writeAudit(req, {
+      action: 'user.deactivate',
+      entityType: 'User',
+      entityId: String(id),
+      metadata: {
+        before: redactPasswordHash(existing),
+        after: redactPasswordHash(after),
+      },
+    });
     res.status(204).end();
   } catch (err) {
     next(err);
