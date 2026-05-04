@@ -111,6 +111,10 @@ export function runPreGA(
       roomId: offering.roomId,
       lecturerIds: offering.lecturers.map(l => l.id),
       requiredSessions,
+      // SKS Blocks (task 14): new fields — will be sole source of truth after
+      // task 15 removes `requiredSessions`.
+      parallelSessionCount: requiredSessions,
+      sessionDuration: offering.course.sks,
       possibleTimeSlotIds,
       isFixedRoom: false, // will be stamped by tagEntities below
     };

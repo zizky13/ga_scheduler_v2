@@ -90,7 +90,24 @@ export interface PreGACandidate {
   courseId: number;
   roomId: number;
   lecturerIds: number[];
-  requiredSessions: number;    // ⌈effectiveStudentCount / roomCapacity⌉
+  /**
+   * @deprecated Use `parallelSessionCount` instead. Will be removed in task 15.
+   * Kept temporarily so downstream consumers (GA, SSA) compile while the
+   * migration is in progress.
+   */
+  requiredSessions: number;
+  /**
+   * Number of parallel groups this offering is split into due to capacity.
+   * Formula: ⌈effectiveStudentCount / roomCapacity⌉
+   * Replaces `requiredSessions` (backlog task 14/15).
+   */
+  parallelSessionCount: number;
+  /**
+   * Number of consecutive time slots each parallel session occupies.
+   * Sourced directly from `course.sks` (1 SKS = 1 time slot / 50 min).
+   * A 3-SKS course → sessionDuration = 3 (must be back-to-back, same day).
+   */
+  sessionDuration: number;
   possibleTimeSlotIds: number[];
   possibleRoomIds?: number[];  // techspec §6.3 / [ARCH-OBS-04] — for FLEXIBLE offerings
   isFixedRoom: boolean; // <-- FIXED

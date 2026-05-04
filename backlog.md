@@ -19,7 +19,7 @@ No new infrastructure. Everything below can ship against the current `tsx`-only 
 11. [ ] `[P1/S]` Add a `LICENSE` file at the repo root matching `package.json`'s `ISC` field (or change the field). Carries over the existing README `TODO`.
 12. [ ] `[P2/S]` Fill in `author`, `description`, `keywords`, and `repository` in `package.json`. Carries over the existing README `TODO`.
 13. [x] `[P2/M]` Refactor `src/cli/run-pipeline.ts` and `src/cli/run-layer3.ts` to return a `SchedulerResponse` instead of printing inline, so the CLIs share the type the future API will return.
-14. [ ] `[P1/S]` **SKS Blocks:** Add `parallelSessionCount` (capacity logic) and `sessionDuration` (sks mapping) to `PreGACandidate` in `src/types.ts`.
+14. [x] `[P1/S]` **SKS Blocks:** Add `parallelSessionCount` (capacity logic) and `sessionDuration` (sks mapping) to `PreGACandidate` in `src/types.ts`.
 15. [ ] `[P1/S]` **SKS Blocks:** Update `src/pre-ga/validator.ts` to populate the new `parallelSessionCount` and `sessionDuration` properties for all candidates, removing the old `requiredSessions`.
 16. [ ] `[P1/S]` **SKS Blocks:** Refactor `Gene` and `Chromosome` interfaces in `src/types.ts` to replace flat `assignedTimeSlotIds` with an array: `sessions: { roomId: number, timeSlotIds: number[] }[]`.
 17. [ ] `[P1/M]` **SKS Blocks:** Write a `findContiguousSlots(availableSlots, duration)` utility in `src/ga/chromosome.ts` that strictly finds back-to-back slots happening on the same day.
