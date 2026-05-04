@@ -19,6 +19,15 @@ No new infrastructure. Everything below can ship against the current `tsx`-only 
 11. [ ] `[P1/S]` Add a `LICENSE` file at the repo root matching `package.json`'s `ISC` field (or change the field). Carries over the existing README `TODO`.
 12. [ ] `[P2/S]` Fill in `author`, `description`, `keywords`, and `repository` in `package.json`. Carries over the existing README `TODO`.
 13. [x] `[P2/M]` Refactor `src/cli/run-pipeline.ts` and `src/cli/run-layer3.ts` to return a `SchedulerResponse` instead of printing inline, so the CLIs share the type the future API will return.
+14. [ ] `[P1/S]` **SKS Blocks:** Add `parallelSessionCount` (capacity logic) and `sessionDuration` (sks mapping) to `PreGACandidate` in `src/types.ts`.
+15. [ ] `[P1/S]` **SKS Blocks:** Update `src/pre-ga/validator.ts` to populate the new `parallelSessionCount` and `sessionDuration` properties for all candidates, removing the old `requiredSessions`.
+16. [ ] `[P1/S]` **SKS Blocks:** Refactor `Gene` and `Chromosome` interfaces in `src/types.ts` to replace flat `assignedTimeSlotIds` with an array: `sessions: { roomId: number, timeSlotIds: number[] }[]`.
+17. [ ] `[P1/M]` **SKS Blocks:** Write a `findContiguousSlots(availableSlots, duration)` utility in `src/ga/chromosome.ts` that strictly finds back-to-back slots happening on the same day.
+18. [ ] `[P1/M]` **SKS Blocks:** Update `generateInitialPopulation` and `mutation.ts` to use `findContiguousSlots` so all genes generated and mutated are valid contiguous blocks.
+19. [ ] `[P1/S]` **SKS Blocks:** Update `src/ga/crossover.ts` to safely swap the new `sessions` arrays between parent chromosomes.
+20. [ ] `[P1/M]` **SKS Blocks:** Update `evaluateHardFitness` in `src/ga/fitness.ts` to loop over the new nested `sessions` array and accurately count room/lecturer collisions.
+21. [ ] `[P1/M]` **SKS Blocks:** Update soft constraint functions (`calculateStructuralPenalty`, `calculatePreferencePenalty`) in `src/ga/fitness.ts` to map over the new `sessions` array.
+22. [ ] `[P1/M]` **SKS Blocks:** Refactor `src/ssa/bipartiteGraph.ts` to map whole multi-slot blocks as single matching nodes, ensuring Hopcroft-Karp proves feasibility for contiguous chunks, not isolated slots.
 
 ### Phase 1 — Persistence Layer
 
@@ -32,6 +41,9 @@ Introduce Prisma. The GA core stays Prisma-unaware; a new repository boundary ad
 6. [x] `[P1/M]` Port `src/db/seed.ts` to a Prisma seed script that upserts a single `Semester` (`2025-GANJIL`) plus the existing rooms / slots / lecturers / courses / offerings; gate `infeasibleOfferings` behind `--with-infeasible` (api_design §3.5). Carries over the existing README `TODO` about the production data source.
 7. [x] `[P1/M]` Build a thin repository layer (`src/repo/*.ts`) that returns `Room`, `Lecturer`, `Course`, `CourseOffering`, `LockedRoom` shaped exactly like `src/types.ts` so `runPreGA`, `runSSA`, `runGA` continue to consume plain TS types.
 8. [x] `[P1/S]` Document `OQ-3` (Postgres vs SQLite) decision and pin the Prisma `provider` accordingly; update `prisma/schema.prisma` and the README config section.
+9. [ ] `[P1/S]` **SKS Blocks (Persistence):** Add `sessionIndex Int` column to `ScheduleAssignment` in `prisma/schema.prisma` so each parallel session (Session A, Session B) is stored as its own row rather than as a single offering row.
+10. [ ] `[P1/S]` **SKS Blocks (Persistence):** Change the `@@unique` constraint on `ScheduleAssignment` from `[runId, offeringId]` to `[runId, offeringId, sessionIndex]` and create a new Prisma migration for these two schema changes.
+11. [ ] `[P1/S]` **SKS Blocks (Persistence):** Update the `ScheduleAssignment` repository mapper in `src/repo/*.ts` to read and write the new `sessionIndex` field so the GA result can be correctly persisted and retrieved.
 
 ### Phase 2 — API & Auth
 
@@ -62,6 +74,9 @@ Long-running GA execution off the request thread, with checkpointing and SSE.
 8. [ ] `[P0/M]` Implement `POST /schedule-runs/:id/cancel` with cooperative cancellation: the worker checks the cancellation flag at the top of every generation and exits cleanly (api_design §7).
 9. [ ] `[P1/M]` Implement `PUT /schedule-runs/:id/assignments/:assignmentId` (manual override) — admin always, owner only when `status=COMPLETED`; mandatory `AuditLog` entry per api_design §5.3.8 and §8.
 10. [ ] `[P1/M]` Refactor the GA loop to release the event loop periodically (e.g., `setImmediate` between generations) so the worker can interleave cancellation checks and progress publishes without freezing (techspec §12 LOW, `[ARCH-OBS-02]`).
+11. [ ] `[P1/M]` **SKS Blocks (Worker):** Update the worker's `ScheduleAssignment` persistence loop to iterate over the new `sessions[]` array on each gene, inserting one `ScheduleAssignment` row per parallel session (with correct `sessionIndex` and `roomId`) instead of one row per offering.
+12. [ ] `[P1/S]` **SKS Blocks (Worker):** Update the worker's `ScheduleAssignmentSlot` persistence loop to write the contiguous `timeSlotIds` block for each `sessionIndex` row, matching the new nested gene structure.
+13. [ ] `[P1/S]` **SKS Blocks (API):** Update `GET /schedule-runs/:id` response serializer to group `ScheduleAssignment` rows by `offeringId` and expose sessions as a nested array (e.g., `sessions: [{ sessionIndex, roomId, timeSlots }]`) so the frontend can render each parallel session correctly.
 
 ### Phase 4 — Frontend (FR-01, FR-02)
 
