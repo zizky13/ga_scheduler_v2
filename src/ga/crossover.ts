@@ -11,9 +11,22 @@
  * kind='FIXED' in every chromosome (kind derives from isFixedRoom on the
  * candidate, which never changes), spreading the gene object naturally
  * preserves the invariant — no extra guarding needed.
+ *
+ * sessions[] deep-clone helper: we deep-clone sessions to avoid aliasing
+ * mutations across parents and children.
  */
 
-import type { Chromosome, Gene } from '../types.js';
+import type { Chromosome, Gene, GeneSession } from '../types.js';
+
+/** Deep-clone a sessions array to avoid cross-gene aliasing. */
+function cloneSessions(sessions: GeneSession[]): GeneSession[] {
+  return sessions.map(s => ({ roomId: s.roomId, timeSlotIds: [...s.timeSlotIds] }));
+}
+
+/** Deep-clone a gene (copies sessions[] so mutations don't alias). */
+function cloneGene(g: Gene): Gene {
+  return { ...g, sessions: cloneSessions(g.sessions) };
+}
 
 /** Runtime masking invariant check (non-production only) */
 export function assertMaskingInvariant(parent: Gene, child: Gene, locus: number): void;
@@ -48,13 +61,22 @@ export function assertMaskingInvariant(
   const childGene = child as Gene;
   if (process.env.NODE_ENV !== 'production') {
     if (parentGene.kind === 'FIXED') {
-      if (childGene.kind !== 'FIXED' || parentGene.roomId !== childGene.roomId) {
+      if (childGene.kind !== 'FIXED') {
         throw new Error(
           `MASKING VIOLATION at locus ${locus}: ` +
-          `Fixed gene roomId changed from ${parentGene.roomId} to ${
-            childGene.kind === 'FIXED' ? childGene.roomId : 'FLEXIBLE(kind changed)'
-          }`
+          `Fixed gene kind changed to FLEXIBLE`
         );
+      }
+      // Verify each session's roomId is unchanged.
+      for (let i = 0; i < parentGene.sessions.length; i++) {
+        const pRoom = parentGene.sessions[i]!.roomId;
+        const cRoom = childGene.sessions[i]?.roomId;
+        if (pRoom !== cRoom) {
+          throw new Error(
+            `MASKING VIOLATION at locus ${locus} session ${i}: ` +
+            `Fixed gene roomId changed from ${pRoom} to ${cRoom}`
+          );
+        }
       }
     }
   }
@@ -67,12 +89,12 @@ export function singlePointCrossover(
 ): [Chromosome, Chromosome] {
   const point = Math.floor(Math.random() * parent1.length);
   const child1: Chromosome = [
-    ...parent1.slice(0, point).map(g => ({ ...g, assignedTimeSlotIds: [...g.assignedTimeSlotIds] }) as Gene),
-    ...parent2.slice(point).map(g => ({ ...g, assignedTimeSlotIds: [...g.assignedTimeSlotIds] }) as Gene),
+    ...parent1.slice(0, point).map(cloneGene),
+    ...parent2.slice(point).map(cloneGene),
   ];
   const child2: Chromosome = [
-    ...parent2.slice(0, point).map(g => ({ ...g, assignedTimeSlotIds: [...g.assignedTimeSlotIds] }) as Gene),
-    ...parent1.slice(point).map(g => ({ ...g, assignedTimeSlotIds: [...g.assignedTimeSlotIds] }) as Gene),
+    ...parent2.slice(0, point).map(cloneGene),
+    ...parent1.slice(point).map(cloneGene),
   ];
   return [child1, child2];
 }
@@ -86,11 +108,11 @@ export function uniformCrossover(
   const child2: Chromosome = [];
   for (let i = 0; i < parent1.length; i++) {
     if (Math.random() < 0.5) {
-      child1.push({ ...parent1[i]!, assignedTimeSlotIds: [...parent1[i]!.assignedTimeSlotIds] });
-      child2.push({ ...parent2[i]!, assignedTimeSlotIds: [...parent2[i]!.assignedTimeSlotIds] });
+      child1.push(cloneGene(parent1[i]!));
+      child2.push(cloneGene(parent2[i]!));
     } else {
-      child1.push({ ...parent2[i]!, assignedTimeSlotIds: [...parent2[i]!.assignedTimeSlotIds] });
-      child2.push({ ...parent1[i]!, assignedTimeSlotIds: [...parent1[i]!.assignedTimeSlotIds] });
+      child1.push(cloneGene(parent2[i]!));
+      child2.push(cloneGene(parent1[i]!));
     }
   }
   return [child1, child2];
@@ -106,14 +128,15 @@ export function pmxCrossover(
   let end = Math.floor(Math.random() * len);
   if (start > end) [start, end] = [end, start];
 
-  const child1: Gene[] = parent1.map(g => ({ ...g, assignedTimeSlotIds: [...g.assignedTimeSlotIds] }));
-  const child2: Gene[] = parent2.map(g => ({ ...g, assignedTimeSlotIds: [...g.assignedTimeSlotIds] }));
+  const child1: Gene[] = parent1.map(cloneGene);
+  const child2: Gene[] = parent2.map(cloneGene);
 
-  // Swap only assignedTimeSlotIds in the segment — preserves kind and roomId
+  // Swap only sessions[] in the segment — preserves kind (masking invariant)
+  // by cloning the sessions array from the opposite parent.
   for (let i = start; i <= end; i++) {
-    const tmp = child1[i]!.assignedTimeSlotIds;
-    child1[i]!.assignedTimeSlotIds = [...child2[i]!.assignedTimeSlotIds];
-    child2[i]!.assignedTimeSlotIds = [...tmp];
+    const tmpSessions = child1[i]!.sessions;
+    child1[i]!.sessions = cloneSessions(child2[i]!.sessions);
+    child2[i]!.sessions = cloneSessions(tmpSessions);
   }
 
   return [child1, child2];

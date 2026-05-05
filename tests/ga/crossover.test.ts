@@ -34,14 +34,12 @@ function buildParent(slotOffset: number): Chromosome {
   const fixed = (offeringId: number, roomId: number, slots: number[]): FixedRoomGene => ({
     kind: 'FIXED',
     offeringId,
-    roomId,
-    assignedTimeSlotIds: slots,
+    sessions: [{ roomId, timeSlotIds: slots }],
   });
   const flexible = (offeringId: number, roomId: number, slots: number[]): FlexibleGene => ({
     kind: 'FLEXIBLE',
     offeringId,
-    roomId,
-    assignedTimeSlotIds: slots,
+    sessions: [{ roomId, timeSlotIds: slots }],
   });
   return [
     fixed(101, 1, [10 + slotOffset, 11 + slotOffset]),
@@ -108,7 +106,7 @@ for (const op of operators) {
       }
     });
 
-    it("FixedRoomGene.roomId equals parent's roomId at same locus", () => {
+    it("FixedRoomGene session roomIds equal parent's roomIds at same locus", () => {
       for (let iter = 0; iter < ITERATIONS; iter++) {
         const parent1 = buildParent(0);
         const parent2 = buildParent(100);
@@ -120,9 +118,10 @@ for (const op of operators) {
           const c2 = child2[i]!;
           if (p1.kind === 'FIXED') {
             expect(c1.kind).toBe('FIXED');
-            expect((c1 as FixedRoomGene).roomId).toBe(p1.roomId);
+            // sessions[0].roomId must be preserved from the contributing parent
+            expect((c1 as FixedRoomGene).sessions[0]!.roomId).toBe((p1 as FixedRoomGene).sessions[0]!.roomId);
             expect(c2.kind).toBe('FIXED');
-            expect((c2 as FixedRoomGene).roomId).toBe(p2.roomId);
+            expect((c2 as FixedRoomGene).sessions[0]!.roomId).toBe((p2 as FixedRoomGene).sessions[0]!.roomId);
           }
         }
       }

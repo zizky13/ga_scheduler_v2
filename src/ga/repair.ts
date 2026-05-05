@@ -4,9 +4,14 @@
  * Greedy local search that resolves hard constraint violations
  * after crossover + mutation. Iterates through genes and
  * reassigns conflicting slots.
+ *
+ * NOTE (Task 16): Gene shape changed to sessions[]{roomId, timeSlotIds}.
+ *   Repair operates per-session: for each parallel session we check its
+ *   (roomId, slotId) pairs and greedily re-assign conflicting ones.
+ *   Full contiguous-block repair is deferred to Task 18.
  */
 
-import type { Chromosome, Gene, PreGACandidate } from '../types.js';
+import type { Chromosome, Gene, GeneSession, PreGACandidate } from '../types.js';
 import { fisherYatesShuffle } from './chromosome.js';
 
 interface ConflictIndex {
@@ -28,11 +33,12 @@ function buildConflictIndex(
     const candidate = candidateMap.get(gene.offeringId);
     if (!candidate) continue;
 
-    for (const slotId of gene.assignedTimeSlotIds) {
-      // Use gene.roomId (FLEXIBLE genes may have a different room after mutation)
-      roomTimeUsed.set(`room:${gene.roomId}:slot:${slotId}`, gene.offeringId);
-      for (const lecturerId of candidate.lecturerIds) {
-        lecturerTimeUsed.set(`lec:${lecturerId}:slot:${slotId}`, gene.offeringId);
+    for (const session of gene.sessions) {
+      for (const slotId of session.timeSlotIds) {
+        roomTimeUsed.set(`room:${session.roomId}:slot:${slotId}`, gene.offeringId);
+        for (const lecturerId of candidate.lecturerIds) {
+          lecturerTimeUsed.set(`lec:${lecturerId}:slot:${slotId}`, gene.offeringId);
+        }
       }
     }
   }
@@ -57,59 +63,78 @@ function hasConflict(
   return false;
 }
 
+/**
+ * Repair a single session's timeSlotIds by removing conflicting slots and
+ * filling vacancies from the shuffled available slot pool.
+ */
+function repairSession(
+  session: GeneSession,
+  needed: number,
+  candidate: PreGACandidate,
+  index: ConflictIndex
+): GeneSession {
+  const { roomId } = session;
+  const newSlots: number[] = [];
+  const usedSlots = new Set<number>();
+
+  // Keep non-conflicting slots first
+  for (const slotId of session.timeSlotIds) {
+    if (!hasConflict(slotId, roomId, candidate, index) && !usedSlots.has(slotId)) {
+      newSlots.push(slotId);
+      usedSlots.add(slotId);
+    }
+  }
+
+  // Fill remaining with non-conflicting alternatives
+  if (newSlots.length < needed) {
+    const shuffledSlots = fisherYatesShuffle(candidate.possibleTimeSlotIds);
+    for (const slotId of shuffledSlots) {
+      if (newSlots.length >= needed) break;
+      if (usedSlots.has(slotId)) continue;
+      if (!hasConflict(slotId, roomId, candidate, index)) {
+        newSlots.push(slotId);
+        usedSlots.add(slotId);
+      }
+    }
+  }
+
+  // Greedy fallback — any remaining slot (no conflict guarantee)
+  if (newSlots.length < needed) {
+    const shuffledSlots = fisherYatesShuffle(candidate.possibleTimeSlotIds);
+    for (const slotId of shuffledSlots) {
+      if (newSlots.length >= needed) break;
+      if (usedSlots.has(slotId)) continue;
+      newSlots.push(slotId);
+      usedSlots.add(slotId);
+    }
+  }
+
+  return { roomId, timeSlotIds: newSlots };
+}
+
 export function repairChromosome(
   chromosome: Chromosome,
   candidates: PreGACandidate[]
 ): Chromosome {
   const candidateMap = new Map(candidates.map(c => [c.offeringId, c]));
-  const repaired = chromosome.map(g => ({ ...g, assignedTimeSlotIds: [...g.assignedTimeSlotIds] }) as Gene);
+
+  // Deep-clone sessions to avoid mutating the original chromosome
+  const repaired: Gene[] = chromosome.map(g => ({
+    ...g,
+    sessions: g.sessions.map(s => ({ roomId: s.roomId, timeSlotIds: [...s.timeSlotIds] })),
+  }));
 
   for (const gene of repaired) {
     const candidate = candidateMap.get(gene.offeringId);
     if (!candidate) continue;
     if (gene.kind === 'FIXED') continue; // FIXED genes are never repaired (masking invariant)
 
-    const roomId = gene.roomId;
-
     // Build conflict index excluding this gene
     const index = buildConflictIndex(repaired, candidates, gene.offeringId);
 
-    // Check each assigned slot for conflicts
-    const newSlots: number[] = [];
-    const usedSlots = new Set<number>();
-
-    for (const slotId of gene.assignedTimeSlotIds) {
-      if (!hasConflict(slotId, roomId, candidate, index) && !usedSlots.has(slotId)) {
-        newSlots.push(slotId);
-        usedSlots.add(slotId);
-      }
-    }
-
-    // Fill remaining slots with non-conflicting alternatives
-    if (newSlots.length < candidate.parallelSessionCount) {
-      const shuffledSlots = fisherYatesShuffle(candidate.possibleTimeSlotIds);
-      for (const slotId of shuffledSlots) {
-        if (newSlots.length >= candidate.parallelSessionCount) break;
-        if (usedSlots.has(slotId)) continue;
-        if (!hasConflict(slotId, roomId, candidate, index)) {
-          newSlots.push(slotId);
-          usedSlots.add(slotId);
-        }
-      }
-    }
-
-    // If still not enough, fill with any available (greedy fallback)
-    if (newSlots.length < candidate.parallelSessionCount) {
-      const shuffledSlots = fisherYatesShuffle(candidate.possibleTimeSlotIds);
-      for (const slotId of shuffledSlots) {
-        if (newSlots.length >= candidate.parallelSessionCount) break;
-        if (usedSlots.has(slotId)) continue;
-        newSlots.push(slotId);
-        usedSlots.add(slotId);
-      }
-    }
-
-    gene.assignedTimeSlotIds = newSlots;
+    gene.sessions = gene.sessions.map(session =>
+      repairSession(session, candidate.sessionDuration, candidate, index)
+    );
   }
 
   return repaired;

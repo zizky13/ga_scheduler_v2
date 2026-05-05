@@ -225,9 +225,13 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
     const candidateById = new Map(candidates.map(c => [c.offeringId, c]));
     for (const gene of result.bestChromosome) {
       const cand = candidateById.get(gene.offeringId)!;
-      expect(gene.assignedTimeSlotIds).toHaveLength(cand.parallelSessionCount);
-      for (const slot of gene.assignedTimeSlotIds) {
-        expect(cand.possibleTimeSlotIds).toContain(slot);
+      // Each gene has parallelSessionCount sessions, each with sessionDuration slots
+      expect(gene.sessions).toHaveLength(cand.parallelSessionCount);
+      for (const session of gene.sessions) {
+        expect(session.timeSlotIds).toHaveLength(cand.sessionDuration);
+        for (const slot of session.timeSlotIds) {
+          expect(cand.possibleTimeSlotIds).toContain(slot);
+        }
       }
     }
   });
@@ -304,7 +308,13 @@ describe('Layer 3 integration — Fixed Room invariant across generations', () =
         const expectedRoom = fixedRoomById.get(gene.offeringId);
         if (expectedRoom === undefined) continue; // not a fixed offering
         expect(gene.kind, `${label}: offering ${gene.offeringId} kind`).toBe('FIXED');
-        expect(gene.roomId, `${label}: offering ${gene.offeringId} roomId`).toBe(expectedRoom);
+        // All sessions in a FIXED gene must retain the original roomId
+        for (let si = 0; si < gene.sessions.length; si++) {
+          expect(
+            gene.sessions[si]!.roomId,
+            `${label}: offering ${gene.offeringId} session ${si} roomId`
+          ).toBe(expectedRoom);
+        }
       }
     }
 
@@ -377,19 +387,24 @@ describe('Layer 3 integration — Fixed Room invariant across generations', () =
 
     const result = runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
 
-    for (const gene of result.bestChromosome) {
-      const expectedRoom = fixedRoomById.get(gene.offeringId);
-      if (expectedRoom === undefined) continue;
-      expect(gene.kind).toBe('FIXED');
-      expect(gene.roomId).toBe(expectedRoom);
-      // Fixed offerings must also stay pinned to their fixedTimeSlotIds.
-      const cand = candidates.find(c => c.offeringId === gene.offeringId)!;
-      if (cand.fixedTimeSlotIds && cand.fixedTimeSlotIds.length > 0) {
-        for (const slot of gene.assignedTimeSlotIds) {
-          expect(cand.fixedTimeSlotIds).toContain(slot);
+      for (const gene of result.bestChromosome) {
+        const expectedRoom = fixedRoomById.get(gene.offeringId);
+        if (expectedRoom === undefined) continue;
+        expect(gene.kind).toBe('FIXED');
+        // All sessions in a FIXED gene retain the original room
+        for (const session of gene.sessions) {
+          expect(session.roomId).toBe(expectedRoom);
+        }
+        // Fixed offerings must also stay pinned to their fixedTimeSlotIds.
+        const cand = candidates.find(c => c.offeringId === gene.offeringId)!;
+        if (cand.fixedTimeSlotIds && cand.fixedTimeSlotIds.length > 0) {
+          for (const session of gene.sessions) {
+            for (const slot of session.timeSlotIds) {
+              expect(cand.fixedTimeSlotIds).toContain(slot);
+            }
+          }
         }
       }
-    }
   });
 });
 

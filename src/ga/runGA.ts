@@ -69,7 +69,10 @@ export function runGA(
 
     // Track overall best
     if (best.fitness > overallBestFitness) {
-      overallBest = best.chromosome.map(g => ({ ...g, assignedTimeSlotIds: [...g.assignedTimeSlotIds] }) as Gene);
+      overallBest = best.chromosome.map(g => ({
+        ...g,
+        sessions: g.sessions.map(s => ({ roomId: s.roomId, timeSlotIds: [...s.timeSlotIds] })),
+      })) as Gene[];
       overallBestFitness = best.fitness;
       overallHardViolations = best.hardViolations;
       overallSoftPenalty = best.softPenalty;

@@ -22,27 +22,37 @@ export function fisherYatesShuffle<T>(arr: T[]): T[] {
  * Create a typed gene from a candidate using pre-shuffled slot array.
  * isFixedRoom=true → FixedRoomGene (kind: 'FIXED'); roomId is immutable.
  * isFixedRoom=false → FlexibleGene (kind: 'FLEXIBLE'); roomId is mutable.
+ *
+ * Each gene carries `sessions[]` — one entry per parallel group.
+ * Each session holds a `roomId` and `timeSlotIds` (length = sessionDuration).
+ * NOTE: contiguous-slot enforcement is deferred to Task 17 (findContiguousSlots).
+ *       For now slots are assigned sequentially from the shuffled pool.
  */
 export function createGeneFromCandidate(
   candidate: PreGACandidate,
   shuffledSlots: number[]
 ): Gene {
-  const assignedTimeSlotIds = shuffledSlots.slice(0, candidate.parallelSessionCount);
+  const { parallelSessionCount, sessionDuration, roomId } = candidate;
+
+  // Build one session per parallel group, each consuming sessionDuration slots
+  // from the shuffled pool in order.
+  const sessions = Array.from({ length: parallelSessionCount }, (_, i) => ({
+    roomId,
+    timeSlotIds: shuffledSlots.slice(i * sessionDuration, (i + 1) * sessionDuration),
+  }));
 
   if (candidate.isFixedRoom) {
     return {
       kind: 'FIXED',
       offeringId: candidate.offeringId,
-      roomId: candidate.roomId,
-      assignedTimeSlotIds,
+      sessions,
     };
   }
 
   return {
     kind: 'FLEXIBLE',
     offeringId: candidate.offeringId,
-    roomId: candidate.roomId,
-    assignedTimeSlotIds,
+    sessions,
   };
 }
 

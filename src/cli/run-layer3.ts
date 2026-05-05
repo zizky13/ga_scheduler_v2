@@ -73,13 +73,16 @@ console.log(`  Duration:         ${response.durationMs}ms`);
 console.log('\n── Best Chromosome (Schedule) ──────────────────────');
 for (const gene of gaResult.bestChromosome) {
   const offering = courseOfferings.find(o => o.id === gene.offeringId);
-  const slotLabels = gene.assignedTimeSlotIds.map(sid => {
-    const ts = timeSlots.find(t => t.id === sid);
-    return ts ? `${ts.day} ${ts.startTime}-${ts.endTime}` : `Slot#${sid}`;
-  });
+  const slotLabels = gene.sessions.flatMap(session =>
+    session.timeSlotIds.map(sid => {
+      const ts = timeSlots.find(t => t.id === sid);
+      return ts ? `${ts.day} ${ts.startTime}-${ts.endTime}` : `Slot#${sid}`;
+    })
+  );
+  const roomLabel = gene.sessions.map(s => s.roomId).join('+');
   console.log(
     `  📅 ${offering?.course.code} "${offering?.course.name}" ` +
-    `→ ${offering?.room.name} → [${slotLabels.join(', ')}]`
+    `→ Room(s) ${roomLabel} → [${slotLabels.join(', ')}]`
   );
 }
 

@@ -161,18 +161,35 @@ export interface SSAResult {
 
 // ─── Layer 3: GA Types ───────────────────────────────────────────
 
+/**
+ * One parallel session within a gene.
+ * For a 3-SKS course split into 2 parallel groups:
+ *   sessions[0] = { roomId: 10, timeSlotIds: [5, 6, 7] }  // group A, Mon 08:00–11:00
+ *   sessions[1] = { roomId: 11, timeSlotIds: [5, 6, 7] }  // group B, Mon 08:00–11:00
+ */
+export interface GeneSession {
+  roomId: number;
+  timeSlotIds: number[]; // contiguous back-to-back slots, length === sessionDuration
+}
+
 export interface FixedRoomGene {
   kind: 'FIXED';
   offeringId: number;
-  roomId: number;            // immutable
-  assignedTimeSlotIds: number[]; // length === parallelSessionCount
+  /**
+   * One entry per parallel group (length === parallelSessionCount).
+   * roomId on each session is immutable for FIXED genes.
+   */
+  sessions: GeneSession[];
 }
 
 export interface FlexibleGene {
   kind: 'FLEXIBLE';
   offeringId: number;
-  roomId: number;            // mutable
-  assignedTimeSlotIds: number[]; // length === parallelSessionCount
+  /**
+   * One entry per parallel group (length === parallelSessionCount).
+   * roomId on each session is mutable for FLEXIBLE genes.
+   */
+  sessions: GeneSession[];
 }
 
 export type Gene = FixedRoomGene | FlexibleGene;

@@ -186,21 +186,23 @@ for (const crossoverType of crossoverTypes) {
     const fixedGenes = gaResult.bestChromosome.filter(g => g.kind === 'FIXED');
     const fixedInvariantOk = fixedGenes.every(g => {
       const c = candidates.find(c => c.offeringId === g.offeringId);
-      return c && c.roomId === g.roomId;
+      return c && g.sessions.every(s => s.roomId === c.roomId);
     });
 
     for (const gene of gaResult.bestChromosome) {
       const offering = courseOfferings.find(o => o.id === gene.offeringId);
       if (!offering) continue;
       const lecNames = offering.lecturers.map(l => l.name.split(' ')[0]).join('+');
-      const slotLabels = gene.assignedTimeSlotIds.map(sid => {
-        const ts = timeSlots.find(t => t.id === sid);
-        return ts ? `${ts.day.slice(0, 3)} ${ts.startTime}` : `#${sid}`;
-      });
+      const slotLabels = gene.sessions.flatMap(session =>
+        session.timeSlotIds.map(sid => {
+          const ts = timeSlots.find(t => t.id === sid);
+          return ts ? `${ts.day.slice(0, 3)} ${ts.startTime}` : `#${sid}`;
+        })
+      );
       const prefCheck = offering.lecturers.map(l => {
         const pref = lecturerPreferenceMap.get(l.id);
         if (!pref || pref.size === 0) return '🔵';
-        return gene.assignedTimeSlotIds.every(s => pref.has(s)) ? '🟢' : '🟡';
+        return gene.sessions.every(s => s.timeSlotIds.every(sid => pref.has(sid))) ? '🟢' : '🟡';
       }).join('');
       const kindTag = gene.kind === 'FIXED' ? ' 🔒' : '';
       console.log(
@@ -215,7 +217,7 @@ for (const crossoverType of crossoverTypes) {
       const offering = courseOfferings.find(o => o.id === fg.offeringId);
       console.log(
         `    Offering ${fg.offeringId} (${offering?.course.code}): ` +
-        `kind=${fg.kind} roomId=${fg.roomId} (original=${offering?.roomId})`
+        `kind=${fg.kind} roomId(session0)=${fg.sessions[0]?.roomId ?? 'n/a'} (original=${offering?.roomId})`
       );
     }
   }

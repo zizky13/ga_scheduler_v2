@@ -11,6 +11,11 @@
  * Soft constraints:
  *   - Structural lecturer overload (> 2 sessions/week)
  *   - Lecturer preference violations (assigned slots ∉ preferred slots)
+ *
+ * NOTE (Task 16): Gene shape changed to sessions[]{roomId, timeSlotIds}.
+ *   This file iterates over gene.sessions to extract roomId and slot ids.
+ *   Full semantic updates (contiguous-block collision logic, per-session
+ *   room collision) are deferred to Task 20.
  */
 
 import type { Chromosome, EvaluatedChromosome, PreGACandidate } from '../types.js';
@@ -30,8 +35,7 @@ export type CompetencyEligibilityMap = Map<number, Set<number>>;
 
 /**
  * Evaluate hard constraint violations.
- * Uses gene.roomId (may differ from candidate.roomId for FLEXIBLE genes
- * when possibleRoomIds are in play).
+ * Iterates over gene.sessions — each session owns its roomId and timeSlotIds.
  */
 export function evaluateHardFitness(
   chromosome: Chromosome,
@@ -47,17 +51,19 @@ export function evaluateHardFitness(
     const candidate = candidateMap.get(gene.offeringId);
     if (!candidate) continue;
 
-    for (const slotId of gene.assignedTimeSlotIds) {
-      const roomKey = `room:${gene.roomId}:slot:${slotId}`;
-      const roomCount = (roomTimeMap.get(roomKey) ?? 0) + 1;
-      roomTimeMap.set(roomKey, roomCount);
-      if (roomCount > 1) violations++;
+    for (const session of gene.sessions) {
+      for (const slotId of session.timeSlotIds) {
+        const roomKey = `room:${session.roomId}:slot:${slotId}`;
+        const roomCount = (roomTimeMap.get(roomKey) ?? 0) + 1;
+        roomTimeMap.set(roomKey, roomCount);
+        if (roomCount > 1) violations++;
 
-      for (const lecturerId of candidate.lecturerIds) {
-        const lecKey = `lec:${lecturerId}:slot:${slotId}`;
-        const lecCount = (lecturerTimeMap.get(lecKey) ?? 0) + 1;
-        lecturerTimeMap.set(lecKey, lecCount);
-        if (lecCount > 1) violations++;
+        for (const lecturerId of candidate.lecturerIds) {
+          const lecKey = `lec:${lecturerId}:slot:${slotId}`;
+          const lecCount = (lecturerTimeMap.get(lecKey) ?? 0) + 1;
+          lecturerTimeMap.set(lecKey, lecCount);
+          if (lecCount > 1) violations++;
+        }
       }
     }
   }
@@ -68,7 +74,7 @@ export function evaluateHardFitness(
 /**
  * Competency mismatch — hard violation count.
  * For each gene, every assigned lecturer not in the eligibility set contributes
- * one violation per scheduled session (mirrors room/lecturer collision counting).
+ * one violation per scheduled slot across all sessions.
  * If no eligibility map is supplied, treat all assignments as eligible (no-op).
  */
 export function evaluateCompetencyMismatch(
@@ -86,9 +92,11 @@ export function evaluateCompetencyMismatch(
     const eligible = eligibilityMap.get(gene.offeringId);
     if (!eligible) continue; // no entry = open assignment
 
+    const totalSlots = gene.sessions.reduce((sum, s) => sum + s.timeSlotIds.length, 0);
+
     for (const lecturerId of candidate.lecturerIds) {
       if (!eligible.has(lecturerId)) {
-        violations += gene.assignedTimeSlotIds.length;
+        violations += totalSlots;
       }
     }
   }
@@ -109,9 +117,11 @@ export function calculateStructuralPenalty(
     const candidate = candidateMap.get(gene.offeringId);
     if (!candidate) continue;
 
+    const totalSlots = gene.sessions.reduce((sum, s) => sum + s.timeSlotIds.length, 0);
+
     for (const lecturerId of candidate.lecturerIds) {
       if (lecturerStructuralMap.get(lecturerId)) {
-        const count = (lecturerSessionCount.get(lecturerId) ?? 0) + gene.assignedTimeSlotIds.length;
+        const count = (lecturerSessionCount.get(lecturerId) ?? 0) + totalSlots;
         lecturerSessionCount.set(lecturerId, count);
       }
     }
@@ -146,9 +156,11 @@ export function calculatePreferencePenalty(
       const preferred = lecturerPreferenceMap.get(lecturerId);
       if (!preferred || preferred.size === 0) continue;
 
-      for (const slotId of gene.assignedTimeSlotIds) {
-        if (!preferred.has(slotId)) {
-          penalty++;
+      for (const session of gene.sessions) {
+        for (const slotId of session.timeSlotIds) {
+          if (!preferred.has(slotId)) {
+            penalty++;
+          }
         }
       }
     }
