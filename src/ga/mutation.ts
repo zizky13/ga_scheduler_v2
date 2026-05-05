@@ -22,7 +22,7 @@ export function mutateChromosome(
     if (!candidate) return gene;
 
     const shuffledSlots = fisherYatesShuffle(candidate.possibleTimeSlotIds);
-    const newSlots = shuffledSlots.slice(0, candidate.requiredSessions);
+    const newSlots = shuffledSlots.slice(0, candidate.parallelSessionCount);
 
     if (gene.kind === 'FIXED') {
       // MASKED: roomId is structurally immutable for Fixed Room genes.

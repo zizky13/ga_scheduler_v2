@@ -81,7 +81,7 @@ console.log(`  Candidates: ${candidates.length} (${fixedCount} fixed, ${candidat
 for (const c of candidates) {
   console.log(
     `    📋 #${c.offeringId} room=${c.roomId} lec=[${c.lecturerIds}] ` +
-    `sessions=${c.requiredSessions} slots=${c.possibleTimeSlotIds.length} ` +
+    `sessions=${c.parallelSessionCount} slots=${c.possibleTimeSlotIds.length} ` +
     `fixedRoom=${c.isFixedRoom}`
   );
 }

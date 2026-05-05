@@ -56,19 +56,19 @@ console.log('── Test 3: Hopcroft-Karp Infeasible (3 sessions, 2 slots)');
 const infeasibleCandidates: PreGACandidate[] = [
   {
     offeringId: 101, courseId: 1, roomId: 1,
-    lecturerIds: [1], requiredSessions: 1,
+    lecturerIds: [1],
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
   },
   {
     offeringId: 102, courseId: 2, roomId: 1,
-    lecturerIds: [2], requiredSessions: 1,
+    lecturerIds: [2],
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
   },
   {
     offeringId: 103, courseId: 3, roomId: 1,
-    lecturerIds: [3], requiredSessions: 1,
+    lecturerIds: [3],
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
   },
@@ -91,13 +91,13 @@ console.log('── Test 4: AC-3 Forced Conflict (2 sessions, 1 slot)');
 const ac3ForcedCandidates: PreGACandidate[] = [
   {
     offeringId: 201, courseId: 1, roomId: 1,
-    lecturerIds: [1], requiredSessions: 1,
+    lecturerIds: [1],
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1], isFixedRoom: false,
   },
   {
     offeringId: 202, courseId: 2, roomId: 1,
-    lecturerIds: [2], requiredSessions: 1,
+    lecturerIds: [2],
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1], isFixedRoom: false,
   },
@@ -119,21 +119,21 @@ const exclusionInfeasible: PreGACandidate[] = [
   // Fixed offering locks Room 1, Slot 1
   {
     offeringId: 301, courseId: 1, roomId: 1,
-    lecturerIds: [1], requiredSessions: 1,
+    lecturerIds: [1],
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1], isFixedRoom: true,
   },
   // Fixed offering locks Room 1, Slot 2
   {
     offeringId: 302, courseId: 2, roomId: 1,
-    lecturerIds: [2], requiredSessions: 1,
+    lecturerIds: [2],
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [2], isFixedRoom: true,
   },
   // Flexible offering in Room 1 — only has slots [1, 2] which are both locked
   {
     offeringId: 303, courseId: 3, roomId: 1,
-    lecturerIds: [3], requiredSessions: 1,
+    lecturerIds: [3],
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
   },

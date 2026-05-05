@@ -91,15 +91,9 @@ export interface PreGACandidate {
   roomId: number;
   lecturerIds: number[];
   /**
-   * @deprecated Use `parallelSessionCount` instead. Will be removed in task 15.
-   * Kept temporarily so downstream consumers (GA, SSA) compile while the
-   * migration is in progress.
-   */
-  requiredSessions: number;
-  /**
    * Number of parallel groups this offering is split into due to capacity.
    * Formula: ⌈effectiveStudentCount / roomCapacity⌉
-   * Replaces `requiredSessions` (backlog task 14/15).
+   * (backlog task 14/15 — replaces the old `requiredSessions` field).
    */
   parallelSessionCount: number;
   /**
@@ -171,14 +165,14 @@ export interface FixedRoomGene {
   kind: 'FIXED';
   offeringId: number;
   roomId: number;            // immutable
-  assignedTimeSlotIds: number[]; // length === requiredSessions
+  assignedTimeSlotIds: number[]; // length === parallelSessionCount
 }
 
 export interface FlexibleGene {
   kind: 'FLEXIBLE';
   offeringId: number;
   roomId: number;            // mutable
-  assignedTimeSlotIds: number[]; // length === requiredSessions
+  assignedTimeSlotIds: number[]; // length === parallelSessionCount
 }
 
 export type Gene = FixedRoomGene | FlexibleGene;

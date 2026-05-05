@@ -18,7 +18,7 @@ function buildCandidate(args: {
   isFixedRoom: boolean;
   possibleTimeSlotIds: number[];
   lecturerIds?: number[];
-  requiredSessions?: number;
+  parallelSessionCount?: number;
   fixedTimeSlotIds?: number[];
 }): PreGACandidate {
   return {
@@ -26,7 +26,8 @@ function buildCandidate(args: {
     courseId: args.offeringId * 10,
     roomId: args.roomId,
     lecturerIds: args.lecturerIds ?? [args.offeringId],
-    requiredSessions: args.requiredSessions ?? (args.possibleTimeSlotIds.length || 1),
+    parallelSessionCount: args.parallelSessionCount ?? (args.possibleTimeSlotIds.length || 1),
+    sessionDuration: 1,
     possibleTimeSlotIds: args.possibleTimeSlotIds,
     isFixedRoom: args.isFixedRoom,
     ...(args.fixedTimeSlotIds ? { fixedTimeSlotIds: args.fixedTimeSlotIds } : {}),

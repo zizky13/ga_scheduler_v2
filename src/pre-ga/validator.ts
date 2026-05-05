@@ -95,7 +95,7 @@ export function runPreGA(
 
   // Build PreGACandidate[] for feasible offerings
   const rawCandidates: PreGACandidate[] = feasible.map(offering => {
-    const requiredSessions = Math.ceil(
+    const parallelSessionCount = Math.ceil(
       offering.effectiveStudentCount / offering.room.capacity
     );
 
@@ -110,10 +110,7 @@ export function runPreGA(
       courseId: offering.courseId,
       roomId: offering.roomId,
       lecturerIds: offering.lecturers.map(l => l.id),
-      requiredSessions,
-      // SKS Blocks (task 14): new fields — will be sole source of truth after
-      // task 15 removes `requiredSessions`.
-      parallelSessionCount: requiredSessions,
+      parallelSessionCount,
       sessionDuration: offering.course.sks,
       possibleTimeSlotIds,
       isFixedRoom: false, // will be stamped by tagEntities below

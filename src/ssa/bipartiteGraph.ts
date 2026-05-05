@@ -15,7 +15,7 @@ export function buildBipartiteGraph(candidates: PreGACandidate[]): BipartiteGrap
 
   // Expand offerings into individual sessions
   for (const candidate of candidates) {
-    for (let i = 0; i < candidate.requiredSessions; i++) {
+    for (let i = 0; i < candidate.parallelSessionCount; i++) {
       const sessionId = candidate.offeringId * 100 + i;
       sessions.push({
         sessionId,

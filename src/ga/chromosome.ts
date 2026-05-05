@@ -27,7 +27,7 @@ export function createGeneFromCandidate(
   candidate: PreGACandidate,
   shuffledSlots: number[]
 ): Gene {
-  const assignedTimeSlotIds = shuffledSlots.slice(0, candidate.requiredSessions);
+  const assignedTimeSlotIds = shuffledSlots.slice(0, candidate.parallelSessionCount);
 
   if (candidate.isFixedRoom) {
     return {
@@ -48,7 +48,7 @@ export function createGeneFromCandidate(
 
 /**
  * Create a single random chromosome.
- * Each gene assigns `requiredSessions` time slots to an offering.
+ * Each gene assigns `parallelSessionCount` time slots to an offering.
  */
 export function createRandomChromosome(
   candidates: PreGACandidate[],

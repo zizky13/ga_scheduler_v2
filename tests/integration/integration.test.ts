@@ -144,7 +144,8 @@ function buildStagnationCandidates(): {
       courseId: 1,
       roomId: 1,
       lecturerIds: [1],
-      requiredSessions: 1,
+      parallelSessionCount: 1,
+      sessionDuration: 1,
       possibleTimeSlotIds: [1],
       isFixedRoom: true,
       fixedTimeSlotIds: [1],
@@ -154,7 +155,8 @@ function buildStagnationCandidates(): {
       courseId: 2,
       roomId: 1,
       lecturerIds: [2],
-      requiredSessions: 1,
+      parallelSessionCount: 1,
+      sessionDuration: 1,
       possibleTimeSlotIds: [1],
       isFixedRoom: true,
       fixedTimeSlotIds: [1],
@@ -164,7 +166,8 @@ function buildStagnationCandidates(): {
       courseId: 3,
       roomId: 1,
       lecturerIds: [3],
-      requiredSessions: 1,
+      parallelSessionCount: 1,
+      sessionDuration: 1,
       possibleTimeSlotIds: [1],
       isFixedRoom: true,
       fixedTimeSlotIds: [1],
@@ -222,7 +225,7 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
     const candidateById = new Map(candidates.map(c => [c.offeringId, c]));
     for (const gene of result.bestChromosome) {
       const cand = candidateById.get(gene.offeringId)!;
-      expect(gene.assignedTimeSlotIds).toHaveLength(cand.requiredSessions);
+      expect(gene.assignedTimeSlotIds).toHaveLength(cand.parallelSessionCount);
       for (const slot of gene.assignedTimeSlotIds) {
         expect(cand.possibleTimeSlotIds).toContain(slot);
       }

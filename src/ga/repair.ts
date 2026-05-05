@@ -86,10 +86,10 @@ export function repairChromosome(
     }
 
     // Fill remaining slots with non-conflicting alternatives
-    if (newSlots.length < candidate.requiredSessions) {
+    if (newSlots.length < candidate.parallelSessionCount) {
       const shuffledSlots = fisherYatesShuffle(candidate.possibleTimeSlotIds);
       for (const slotId of shuffledSlots) {
-        if (newSlots.length >= candidate.requiredSessions) break;
+        if (newSlots.length >= candidate.parallelSessionCount) break;
         if (usedSlots.has(slotId)) continue;
         if (!hasConflict(slotId, roomId, candidate, index)) {
           newSlots.push(slotId);
@@ -99,10 +99,10 @@ export function repairChromosome(
     }
 
     // If still not enough, fill with any available (greedy fallback)
-    if (newSlots.length < candidate.requiredSessions) {
+    if (newSlots.length < candidate.parallelSessionCount) {
       const shuffledSlots = fisherYatesShuffle(candidate.possibleTimeSlotIds);
       for (const slotId of shuffledSlots) {
-        if (newSlots.length >= candidate.requiredSessions) break;
+        if (newSlots.length >= candidate.parallelSessionCount) break;
         if (usedSlots.has(slotId)) continue;
         newSlots.push(slotId);
         usedSlots.add(slotId);

@@ -15,7 +15,7 @@ import { runHopcroftKarp } from './hopcroftKarp.js';
 
 export function runSSA(candidates: PreGACandidate[]): SSAResult {
   const totalSessionsRequired = candidates.reduce(
-    (sum, c) => sum + c.requiredSessions, 0
+    (sum, c) => sum + c.parallelSessionCount, 0
   );
 
   // Phase 0: Static Exclusion — prune locked coordinates from flexible domains

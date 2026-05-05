@@ -41,7 +41,7 @@ for (const c of candidates) {
   console.log(
     `  📋 Offering ${c.offeringId} | Room: ${c.roomId} ` +
     `| Lecturers: [${c.lecturerIds.join(', ')}] ` +
-    `| Sessions: ${c.requiredSessions} ` +
+    `| Sessions: ${c.parallelSessionCount} ` +
     `| Possible Slots: ${c.possibleTimeSlotIds.length} ` +
     `| FixedRoom: ${c.isFixedRoom}`
   );
