@@ -373,13 +373,15 @@ model ScheduleRun {
   @@map("schedule_runs")
 }
 
-// One row per CourseOffering in the winning chromosome.
-// Each ScheduleAssignment then points to >= 1 TimeSlot via the join below
-// (because requiredSessions = ⌈effectiveStudentCount / roomCapacity⌉ may be > 1).
+// One row per parallel session of a CourseOffering in the winning chromosome.
+// Task 9 (SKS Blocks, Persistence): rows are now keyed by (runId, offeringId, sessionIndex)
+// so each parallel session (Session A, Session B, …) is persisted as its own row.
+// Each ScheduleAssignment then points to `sessionDuration` TimeSlots via the join below.
 model ScheduleAssignment {
   id             Int       @id @default(autoincrement())
   runId          String
   offeringId     Int
+  sessionIndex   Int       @default(0) // 0-based parallel-session ordinal (Session A=0, Session B=1, …) — Task 9 (SKS Blocks)
   roomId         Int // resolved room (locked or evolved)
   isFixedRoom    Boolean // gene.kind === 'FIXED'
   manualOverride Boolean   @default(false) // true if a Kaprodi/admin edited it post-run

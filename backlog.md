@@ -43,7 +43,7 @@ Introduce Prisma. The GA core stays Prisma-unaware; a new repository boundary ad
 6. [x] `[P1/M]` Port `src/db/seed.ts` to a Prisma seed script that upserts a single `Semester` (`2025-GANJIL`) plus the existing rooms / slots / lecturers / courses / offerings; gate `infeasibleOfferings` behind `--with-infeasible` (api_design §3.5). Carries over the existing README `TODO` about the production data source.
 7. [x] `[P1/M]` Build a thin repository layer (`src/repo/*.ts`) that returns `Room`, `Lecturer`, `Course`, `CourseOffering`, `LockedRoom` shaped exactly like `src/types.ts` so `runPreGA`, `runSSA`, `runGA` continue to consume plain TS types.
 8. [x] `[P1/S]` Document `OQ-3` (Postgres vs SQLite) decision and pin the Prisma `provider` accordingly; update `prisma/schema.prisma` and the README config section.
-9. [ ] `[P1/S]` **SKS Blocks (Persistence):** Add `sessionIndex Int` column to `ScheduleAssignment` in `prisma/schema.prisma` so each parallel session (Session A, Session B) is stored as its own row rather than as a single offering row.
+9. [x] `[P1/S]` **SKS Blocks (Persistence):** Add `sessionIndex Int` column to `ScheduleAssignment` in `prisma/schema.prisma` so each parallel session (Session A, Session B) is stored as its own row rather than as a single offering row.
 10. [ ] `[P1/S]` **SKS Blocks (Persistence):** Change the `@@unique` constraint on `ScheduleAssignment` from `[runId, offeringId]` to `[runId, offeringId, sessionIndex]` and create a new Prisma migration for these two schema changes.
 11. [ ] `[P1/S]` **SKS Blocks (Persistence):** Update the `ScheduleAssignment` repository mapper in `src/repo/*.ts` to read and write the new `sessionIndex` field so the GA result can be correctly persisted and retrieved.
 
