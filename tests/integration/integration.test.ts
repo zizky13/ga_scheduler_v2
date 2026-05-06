@@ -191,7 +191,7 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
     expect(validation.infeasible).toHaveLength(0);
     expect(candidates).toHaveLength(offerings.length);
 
-    const ssaResult = runSSA(candidates);
+    const ssaResult = runSSA(candidates, timeSlots);
     expect(ssaResult.status).toBe('FEASIBLE');
 
     const lecturerStructuralMap = new Map<number, boolean>(
@@ -363,7 +363,7 @@ describe('Layer 3 integration — Fixed Room invariant across generations', () =
     );
     expect(fixedRoomById.size).toBeGreaterThan(0);
 
-    const ssaResult = runSSA(candidates);
+    const ssaResult = runSSA(candidates, seedTimeSlots);
     expect(ssaResult.status).toBe('FEASIBLE');
 
     const lecturerStructuralMap = new Map<number, boolean>(
@@ -415,7 +415,7 @@ describe('Layer 3 integration — elitism monotonicity', () => {
     // genes plus structural / preference soft penalties.
     const { validation, candidates } = runPreGA(seedCourseOfferings, seedTimeSlots);
     expect(validation.infeasible).toHaveLength(0);
-    const ssaResult = runSSA(candidates);
+    const ssaResult = runSSA(candidates, seedTimeSlots);
     expect(ssaResult.status).toBe('FEASIBLE');
 
     const lecturerStructuralMap = new Map<number, boolean>(
@@ -455,7 +455,7 @@ describe('Layer 3 integration — elitism monotonicity', () => {
   it('best fitness in history[] stays monotonic on the easy dataset', () => {
     const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
     const { candidates } = runPreGA(offerings, timeSlots);
-    const ssaResult = runSSA(candidates);
+    const ssaResult = runSSA(candidates, timeSlots);
     expect(ssaResult.status).toBe('FEASIBLE');
 
     const lecturerStructuralMap = new Map<number, boolean>(

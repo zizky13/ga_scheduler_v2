@@ -17,7 +17,7 @@ console.log('══════════════════════�
 console.log('── Test 1: Feasible Dataset (from Layer 1) ────────');
 const { candidates } = runPreGA(courseOfferings, timeSlots, rooms);
 
-const ssaResult = runSSA(candidates);
+const ssaResult = runSSA(candidates, timeSlots);
 console.log(`  Status:             ${ssaResult.status}`);
 console.log(`  Total Sessions:     ${ssaResult.totalSessionsRequired}`);
 console.log(`  Max Matchable:      ${ssaResult.maximumAchievableMatching}`);
@@ -74,7 +74,7 @@ const infeasibleCandidates: PreGACandidate[] = [
   },
 ];
 
-const ssaResult2 = runSSA(infeasibleCandidates);
+const ssaResult2 = runSSA(infeasibleCandidates, timeSlots);
 console.log(`  Status:             ${ssaResult2.status}`);
 console.log(`  Total Sessions:     ${ssaResult2.totalSessionsRequired}`);
 console.log(`  Max Matchable:      ${ssaResult2.maximumAchievableMatching}`);
@@ -103,7 +103,7 @@ const ac3ForcedCandidates: PreGACandidate[] = [
   },
 ];
 
-const ssaResult3 = runSSA(ac3ForcedCandidates);
+const ssaResult3 = runSSA(ac3ForcedCandidates, timeSlots);
 console.log(`  Status:             ${ssaResult3.status}`);
 console.log(`  Total Sessions:     ${ssaResult3.totalSessionsRequired}`);
 console.log(`  Max Matchable:      ${ssaResult3.maximumAchievableMatching}`);
@@ -139,7 +139,7 @@ const exclusionInfeasible: PreGACandidate[] = [
   },
 ];
 
-const ssaResult4 = runSSA(exclusionInfeasible);
+const ssaResult4 = runSSA(exclusionInfeasible, timeSlots);
 console.log(`  Status:             ${ssaResult4.status}`);
 console.log(`  Total Sessions:     ${ssaResult4.totalSessionsRequired}`);
 console.log(`  Max Matchable:      ${ssaResult4.maximumAchievableMatching}`);

@@ -7,13 +7,22 @@
  *   Phase 2: Hopcroft-Karp maximum matching
  */
 
-import type { PreGACandidate, SSAResult, DeadlockReport } from '../types.js';
+import type { PreGACandidate, SSAResult, TimeSlot, DeadlockReport } from '../types.js';
 import { runStaticExclusion } from './staticExclusion.js';
 import { buildBipartiteGraph } from './bipartiteGraph.js';
 import { runAC3 } from './ac3.js';
 import { runHopcroftKarp } from './hopcroftKarp.js';
 
-export function runSSA(candidates: PreGACandidate[]): SSAResult {
+/**
+ * Pass `allTimeSlots` so the bipartite graph can map whole multi-slot blocks
+ * (one node per `sessionDuration`-length contiguous chunk) instead of isolated
+ * slots — see `buildBipartiteGraph`. Omitting it preserves the legacy per-slot
+ * behaviour, which is only correct when every candidate has duration 1.
+ */
+export function runSSA(
+  candidates: PreGACandidate[],
+  allTimeSlots?: TimeSlot[]
+): SSAResult {
   const totalSessionsRequired = candidates.reduce(
     (sum, c) => sum + c.parallelSessionCount, 0
   );
@@ -22,7 +31,7 @@ export function runSSA(candidates: PreGACandidate[]): SSAResult {
   const { prunedCandidates } = runStaticExclusion(candidates);
 
   // Phase 1: Build bipartite graph from pruned candidates
-  const graph = buildBipartiteGraph(prunedCandidates);
+  const graph = buildBipartiteGraph(prunedCandidates, allTimeSlots);
 
   // Phase 1 (AC-3): constraint propagation — domain reduction
   const ac3Result = runAC3(graph);

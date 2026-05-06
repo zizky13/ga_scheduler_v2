@@ -27,7 +27,7 @@ No new infrastructure. Everything below can ship against the current `tsx`-only 
 19. [x] `[P1/S]` **SKS Blocks:** Update `src/ga/crossover.ts` to safely swap the new `sessions` arrays between parent chromosomes.
 20. [x] `[P1/M]` **SKS Blocks:** Update `evaluateHardFitness` in `src/ga/fitness.ts` to loop over the new nested `sessions` array and accurately count room/lecturer collisions.
 21. [x] `[P1/M]` **SKS Blocks:** Update soft constraint functions (`calculateStructuralPenalty`, `calculatePreferencePenalty`) in `src/ga/fitness.ts` to map over the new `sessions` array.
-22. [ ] `[P1/M]` **SKS Blocks:** Refactor `src/ssa/bipartiteGraph.ts` to map whole multi-slot blocks as single matching nodes, ensuring Hopcroft-Karp proves feasibility for contiguous chunks, not isolated slots.
+22. [x] `[P1/M]` **SKS Blocks:** Refactor `src/ssa/bipartiteGraph.ts` to map whole multi-slot blocks as single matching nodes, ensuring Hopcroft-Karp proves feasibility for contiguous chunks, not isolated slots.
 
 ### Phase 1 — Persistence Layer
 

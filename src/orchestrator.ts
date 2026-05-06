@@ -98,7 +98,7 @@ export function runPipeline(input: OrchestratorInput): OrchestratorOutput {
     };
   }
 
-  const ssaResult = runSSA(candidates);
+  const ssaResult = runSSA(candidates, timeSlots);
 
   if (ssaResult.status === 'INFEASIBLE') {
     return {
