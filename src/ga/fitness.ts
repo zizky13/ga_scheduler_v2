@@ -12,10 +12,10 @@
  *   - Structural lecturer overload (> 2 sessions/week)
  *   - Lecturer preference violations (assigned slots ∉ preferred slots)
  *
- * NOTE (Task 16): Gene shape changed to sessions[]{roomId, timeSlotIds}.
- *   This file iterates over gene.sessions to extract roomId and slot ids.
- *   Full semantic updates (contiguous-block collision logic, per-session
- *   room collision) are deferred to Task 20.
+ * Gene shape: sessions[]{roomId, timeSlotIds} (Task 16).
+ * Hard-fitness counts collisions per (roomId, slotId) and (lecturerId, slotId)
+ * across every session of every gene, so it captures both cross-gene clashes
+ * and intra-gene parallel-session clashes (Task 20).
  */
 
 import type { Chromosome, EvaluatedChromosome, PreGACandidate } from '../types.js';

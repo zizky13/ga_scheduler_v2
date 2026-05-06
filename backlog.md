@@ -24,8 +24,8 @@ No new infrastructure. Everything below can ship against the current `tsx`-only 
 16. [x] `[P1/S]` **SKS Blocks:** Refactor `Gene` and `Chromosome` interfaces in `src/types.ts` to replace flat `assignedTimeSlotIds` with an array: `sessions: { roomId: number, timeSlotIds: number[] }[]`.
 17. [x] `[P1/M]` **SKS Blocks:** Write a `findContiguousSlots(availableSlots, duration)` utility in `src/ga/chromosome.ts` that strictly finds back-to-back slots happening on the same day.
 18. [x] `[P1/M]` **SKS Blocks:** Update `generateInitialPopulation` and `mutation.ts` to use `findContiguousSlots` so all genes generated and mutated are valid contiguous blocks.
-19. [ ] `[P1/S]` **SKS Blocks:** Update `src/ga/crossover.ts` to safely swap the new `sessions` arrays between parent chromosomes.
-20. [ ] `[P1/M]` **SKS Blocks:** Update `evaluateHardFitness` in `src/ga/fitness.ts` to loop over the new nested `sessions` array and accurately count room/lecturer collisions.
+19. [x] `[P1/S]` **SKS Blocks:** Update `src/ga/crossover.ts` to safely swap the new `sessions` arrays between parent chromosomes.
+20. [x] `[P1/M]` **SKS Blocks:** Update `evaluateHardFitness` in `src/ga/fitness.ts` to loop over the new nested `sessions` array and accurately count room/lecturer collisions.
 21. [ ] `[P1/M]` **SKS Blocks:** Update soft constraint functions (`calculateStructuralPenalty`, `calculatePreferencePenalty`) in `src/ga/fitness.ts` to map over the new `sessions` array.
 22. [ ] `[P1/M]` **SKS Blocks:** Refactor `src/ssa/bipartiteGraph.ts` to map whole multi-slot blocks as single matching nodes, ensuring Hopcroft-Karp proves feasibility for contiguous chunks, not isolated slots.
 
