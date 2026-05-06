@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getReadinessChecker } from './lib/readiness';
 import { createAuthRouter } from './routes/auth';
 import { createUsersRouter } from './routes/users';
 import { createSemestersRouter } from './routes/semesters';
@@ -18,6 +19,38 @@ export function createV1Router(): Router {
     res.status(200).json({
       status: 'ok',
       uptimeSec: Math.floor(process.uptime()),
+    });
+  });
+
+  // Readiness probe (api_design §5.3.9). Returns 200 only when both DB and
+  // Redis pings succeed; 503 otherwise. Each ping is bounded by a short
+  // timeout in `lib/readiness.ts` so the probe never hangs the request.
+  router.get('/ready', async (req, res) => {
+    const checker = getReadinessChecker();
+    const [dbResult, redisResult] = await Promise.allSettled([
+      checker.pingDb(),
+      checker.pingRedis(),
+    ]);
+
+    const dbOk = dbResult.status === 'fulfilled' && dbResult.value === true;
+    const redisOk = redisResult.status === 'fulfilled' && redisResult.value === true;
+
+    // Log the underlying error at warn level (with req.log so the request id
+    // is attached) but never leak it into the response body.
+    if (dbResult.status === 'rejected') {
+      req.log?.warn({ err: dbResult.reason }, 'readiness: db ping failed');
+    }
+    if (redisResult.status === 'rejected') {
+      req.log?.warn({ err: redisResult.reason }, 'readiness: redis ping failed');
+    }
+
+    const allOk = dbOk && redisOk;
+    res.status(allOk ? 200 : 503).json({
+      status: allOk ? 'ready' : 'not_ready',
+      checks: {
+        db: dbOk ? 'ok' : 'fail',
+        redis: redisOk ? 'ok' : 'fail',
+      },
     });
   });
 

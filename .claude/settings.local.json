@@ -34,7 +34,8 @@
       "Bash(kill 77544)",
       "Bash(ls tests/api)",
       "Bash(ls tests/integration)",
-      "Bash(ls tests/repo)"
+      "Bash(ls tests/repo)",
+      "Bash(git stash *)"
     ]
   }
 }

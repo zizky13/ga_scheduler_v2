@@ -59,7 +59,7 @@ Express transport over the existing pipeline. No GA logic changes; only routing,
 6. [x] `[P0/L]` Implement CRUD for `lecturers`, `courses`, `course-offerings` including the field-level rules in api_design §4.5 and §4.6 (`isStructural` / `isFixed` / `fixedTimeSlotIds` admin-only). Surface `competencies` and `requiredCompetencies` as editable by both roles (api_design §5.3.5–§5.3.7).
 7. [x] `[P0/M]` Wire the `COMPETENCY_MISMATCH` per-offering rejection into the `preGASummary.infeasible[]` payload (not as a top-level run failure) per api_design §5.2; emit `NO_FEASIBLE_CANDIDATES` only when every offering is rejected.
 8. [x] `[P1/M]` Implement `AuditLog` writes from every state-changing endpoint with `before` / `after` diffs, request-id propagation, and redacted password hashes (api_design §8).
-9. [ ] `[P1/S]` Implement `GET /health` and `GET /ready` (DB + Redis pings) per api_design §5.3.9.
+9. [x] `[P1/S]` Implement `GET /health` and `GET /ready` (DB + Redis pings) per api_design §5.3.9.
 10. [ ] `[P1/M]` Generate an OpenAPI document from the Zod schemas via `zod-to-openapi` and serve it at `/api/v1/openapi.json` (api_design §6).
 
 ### Phase 3 — Queue, Workers & Live Progress
