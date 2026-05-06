@@ -124,7 +124,8 @@ export function runPipeline(input: OrchestratorInput): OrchestratorOutput {
     lecturerStructuralMap,
     lecturerPreferenceMap,
     config,
-    competencyEligibilityMap
+    competencyEligibilityMap,
+    timeSlots
   );
 
   return {

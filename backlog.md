@@ -23,7 +23,7 @@ No new infrastructure. Everything below can ship against the current `tsx`-only 
 15. [x] `[P1/S]` **SKS Blocks:** Update `src/pre-ga/validator.ts` to populate the new `parallelSessionCount` and `sessionDuration` properties for all candidates, removing the old `requiredSessions`.
 16. [x] `[P1/S]` **SKS Blocks:** Refactor `Gene` and `Chromosome` interfaces in `src/types.ts` to replace flat `assignedTimeSlotIds` with an array: `sessions: { roomId: number, timeSlotIds: number[] }[]`.
 17. [x] `[P1/M]` **SKS Blocks:** Write a `findContiguousSlots(availableSlots, duration)` utility in `src/ga/chromosome.ts` that strictly finds back-to-back slots happening on the same day.
-18. [ ] `[P1/M]` **SKS Blocks:** Update `generateInitialPopulation` and `mutation.ts` to use `findContiguousSlots` so all genes generated and mutated are valid contiguous blocks.
+18. [x] `[P1/M]` **SKS Blocks:** Update `generateInitialPopulation` and `mutation.ts` to use `findContiguousSlots` so all genes generated and mutated are valid contiguous blocks.
 19. [ ] `[P1/S]` **SKS Blocks:** Update `src/ga/crossover.ts` to safely swap the new `sessions` arrays between parent chromosomes.
 20. [ ] `[P1/M]` **SKS Blocks:** Update `evaluateHardFitness` in `src/ga/fitness.ts` to loop over the new nested `sessions` array and accurately count room/lecturer collisions.
 21. [ ] `[P1/M]` **SKS Blocks:** Update soft constraint functions (`calculateStructuralPenalty`, `calculatePreferencePenalty`) in `src/ga/fitness.ts` to map over the new `sessions` array.

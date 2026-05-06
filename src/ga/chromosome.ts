@@ -115,28 +115,62 @@ export function fisherYatesShuffle<T>(arr: T[]): T[] {
 }
 
 /**
- * Create a typed gene from a candidate using pre-shuffled slot array.
- * isFixedRoom=true → FixedRoomGene (kind: 'FIXED'); roomId is immutable.
- * isFixedRoom=false → FlexibleGene (kind: 'FLEXIBLE'); roomId is mutable.
+ * Pick `count` distinct contiguous blocks from `blocks` using Fisher-Yates
+ * on the block array. If fewer than `count` blocks exist, duplicates are
+ * permitted (the GA will penalise collisions via fitness anyway).
+ */
+function pickDistinctBlocks(blocks: number[][], count: number): number[][] {
+  if (blocks.length === 0) return [];
+  const shuffled = fisherYatesShuffle(blocks);
+  const result: number[][] = [];
+  for (let i = 0; i < count; i++) {
+    result.push(shuffled[i % shuffled.length]!);
+  }
+  return result;
+}
+
+/**
+ * Create a typed gene from a candidate.
+ * isFixedRoom=true  → FixedRoomGene (kind: 'FIXED'); roomId is immutable.
+ * isFixedRoom=false → FlexibleGene  (kind: 'FLEXIBLE'); roomId is mutable.
  *
  * Each gene carries `sessions[]` — one entry per parallel group.
  * Each session holds a `roomId` and `timeSlotIds` (length = sessionDuration).
- * NOTE: contiguous-slot enforcement in initial population / mutation is wired
- *       in Task 18. This function still accepts a flat shuffled array for
- *       backwards compatibility; callers should prefer findContiguousSlots.
+ *
+ * When a `SlotLookup` is supplied, contiguous blocks are enforced via
+ * `findContiguousSlots` (Task 18). Falls back to a shuffled-slice when no
+ * contiguous blocks exist (degenerate timetable / sessionDuration = 1).
  */
 export function createGeneFromCandidate(
   candidate: PreGACandidate,
-  shuffledSlots: number[]
+  lookup?: SlotLookup
 ): Gene {
   const { parallelSessionCount, sessionDuration, roomId } = candidate;
 
-  // Build one session per parallel group, each consuming sessionDuration slots
-  // from the shuffled pool in order.
-  const sessions = Array.from({ length: parallelSessionCount }, (_, i) => ({
-    roomId,
-    timeSlotIds: shuffledSlots.slice(i * sessionDuration, (i + 1) * sessionDuration),
-  }));
+  let sessions: { roomId: number; timeSlotIds: number[] }[];
+
+  if (lookup) {
+    const blocks = findContiguousSlots(candidate.possibleTimeSlotIds, sessionDuration, lookup);
+
+    if (blocks.length > 0) {
+      const picked = pickDistinctBlocks(blocks, parallelSessionCount);
+      sessions = picked.map(block => ({ roomId, timeSlotIds: block }));
+    } else {
+      // Fallback: no contiguous blocks available (edge case)
+      const shuffled = fisherYatesShuffle(candidate.possibleTimeSlotIds);
+      sessions = Array.from({ length: parallelSessionCount }, (_, i) => ({
+        roomId,
+        timeSlotIds: shuffled.slice(i * sessionDuration, (i + 1) * sessionDuration),
+      }));
+    }
+  } else {
+    // Legacy path (no lookup) — plain shuffle, kept for backward-compat
+    const shuffled = fisherYatesShuffle(candidate.possibleTimeSlotIds);
+    sessions = Array.from({ length: parallelSessionCount }, (_, i) => ({
+      roomId,
+      timeSlotIds: shuffled.slice(i * sessionDuration, (i + 1) * sessionDuration),
+    }));
+  }
 
   if (candidate.isFixedRoom) {
     return {
@@ -155,20 +189,16 @@ export function createGeneFromCandidate(
 
 /**
  * Create a single random chromosome.
- * Each gene assigns `parallelSessionCount` time slots to an offering.
+ * Each gene assigns `parallelSessionCount` contiguous time-slot blocks.
+ * When a `SlotLookup` is supplied (Task 18), genes are guaranteed to have
+ * valid contiguous slots via `findContiguousSlots`.
  */
 export function createRandomChromosome(
   candidates: PreGACandidate[],
-  noiseRate: number = 0.15
+  noiseRate: number = 0.15,
+  lookup?: SlotLookup
 ): Chromosome {
   return candidates.map(candidate => {
-    let shuffled = fisherYatesShuffle(candidate.possibleTimeSlotIds);
-
-    // Apply noise: with noiseRate probability, shuffle again for diversity
-    if (Math.random() < noiseRate) {
-      shuffled = fisherYatesShuffle(shuffled);
-    }
-
-    return createGeneFromCandidate(candidate, shuffled);
+    return createGeneFromCandidate(candidate, lookup);
   });
 }

@@ -6,13 +6,14 @@
  * Includes stagnation exit (Section 8.2).
  */
 
-import type { Chromosome, Gene, PreGACandidate, EvaluatedChromosome, GAConfig, GAResult } from '../types.js';
+import type { Chromosome, Gene, PreGACandidate, EvaluatedChromosome, GAConfig, GAResult, TimeSlot } from '../types.js';
 import { generateInitialPopulation } from './population.js';
 import { evaluateFitness, type CompetencyEligibilityMap } from './fitness.js';
 import { tournamentSelection } from './selection.js';
 import { getCrossoverFn } from './crossover.js';
 import { mutateChromosome } from './mutation.js';
 import { repairChromosome } from './repair.js';
+import { buildSlotLookup } from './chromosome.js';
 
 const STAGNATION_WINDOW = 100; // Updated from 15 — Fixed Room masking can create deeper local optima
 const STAGNATION_THRESHOLD = 1e-6;
@@ -22,13 +23,18 @@ export function runGA(
   lecturerStructuralMap: Map<number, boolean>,
   lecturerPreferenceMap: Map<number, Set<number>>,
   config: GAConfig,
-  competencyEligibilityMap?: CompetencyEligibilityMap
+  competencyEligibilityMap?: CompetencyEligibilityMap,
+  allTimeSlots?: TimeSlot[]
 ): GAResult {
   const crossover = getCrossoverFn(config.crossoverType);
 
+  // Build slot lookup for contiguous-block enforcement (Task 18).
+  // When allTimeSlots is provided, genes are guaranteed to use contiguous blocks.
+  const slotLookup = allTimeSlots ? buildSlotLookup(allTimeSlots) : undefined;
+
   // Step 1: Generate initial population + repair each individual (ADR-02)
   let population: Chromosome[] = generateInitialPopulation(
-    candidates, config.populationSize, config.noiseRate
+    candidates, config.populationSize, config.noiseRate, slotLookup
   ).map(ch => repairChromosome(ch, candidates));
 
   const history: number[] = [];
@@ -127,8 +133,8 @@ export function runGA(
 
       let [child1, child2] = crossover(parent1.chromosome, parent2.chromosome);
 
-      child1 = mutateChromosome(child1, candidates, config.mutationRate);
-      child2 = mutateChromosome(child2, candidates, config.mutationRate);
+      child1 = mutateChromosome(child1, candidates, config.mutationRate, slotLookup);
+      child2 = mutateChromosome(child2, candidates, config.mutationRate, slotLookup);
 
       child1 = repairChromosome(child1, candidates);
       child2 = repairChromosome(child2, candidates);
