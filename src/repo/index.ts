@@ -53,6 +53,20 @@ export {
   type ScheduleRepoInputs,
 } from './scheduleRepo';
 
+// Phase 1 task 11 — ScheduleAssignment mapper + repo (SKS Blocks).
+export {
+  mapScheduleAssignmentRow,
+  chromosomeToScheduleAssignmentWrites,
+  scheduleAssignmentRecordsToChromosome,
+  type ScheduleAssignmentRow,
+  type ScheduleAssignmentRecord,
+  type ScheduleAssignmentWriteInput,
+} from './mappers/scheduleAssignmentMapper';
+export {
+  persistScheduleAssignments,
+  loadScheduleAssignments,
+} from './scheduleAssignmentRepo';
+
 // Phase 2 task 5 — CRUD repos for /users /semesters /rooms /timeslots
 // /facilities /locked-rooms.
 export {

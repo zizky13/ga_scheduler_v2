@@ -45,7 +45,7 @@ Introduce Prisma. The GA core stays Prisma-unaware; a new repository boundary ad
 8. [x] `[P1/S]` Document `OQ-3` (Postgres vs SQLite) decision and pin the Prisma `provider` accordingly; update `prisma/schema.prisma` and the README config section.
 9. [x] `[P1/S]` **SKS Blocks (Persistence):** Add `sessionIndex Int` column to `ScheduleAssignment` in `prisma/schema.prisma` so each parallel session (Session A, Session B) is stored as its own row rather than as a single offering row.
 10. [x] `[P1/S]` **SKS Blocks (Persistence):** Change the `@@unique` constraint on `ScheduleAssignment` from `[runId, offeringId]` to `[runId, offeringId, sessionIndex]` and create a new Prisma migration for these two schema changes.
-11. [ ] `[P1/S]` **SKS Blocks (Persistence):** Update the `ScheduleAssignment` repository mapper in `src/repo/*.ts` to read and write the new `sessionIndex` field so the GA result can be correctly persisted and retrieved.
+11. [x] `[P1/S]` **SKS Blocks (Persistence):** Update the `ScheduleAssignment` repository mapper in `src/repo/*.ts` to read and write the new `sessionIndex` field so the GA result can be correctly persisted and retrieved.
 
 ### Phase 2 — API & Auth
 
