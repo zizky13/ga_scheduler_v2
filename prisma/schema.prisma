@@ -395,7 +395,7 @@ model ScheduleAssignment {
   offering CourseOffering           @relation(fields: [offeringId], references: [id], onDelete: Restrict)
   slots    ScheduleAssignmentSlot[]
 
-  @@unique([runId, offeringId])
+  @@unique([runId, offeringId, sessionIndex])
   @@index([runId])
   @@map("schedule_assignments")
 }
