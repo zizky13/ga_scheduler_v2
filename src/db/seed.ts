@@ -6,7 +6,7 @@
  *      - PASS: 15 feasible offerings
  *      - FAIL: 4 infeasible (facility, capacity, no-lecturer, fixed-no-slots)
  *   2. Layer 2 (SSA): Static Exclusion + AC-3 + Hopcroft-Karp
- *      - Phase 0: 2 fixed offerings lock (R-201, Mon 08:00) and (R-201, Tue 08:00)
+ *      - Phase 0: 2 fixed offerings lock (R-201, Mon 07:30-10:00) and (R-201, Tue 07:30-10:00)
  *        → flexible R-201 offerings lose those slots from their domain
  *      - Phase 1 & 2: pass for feasible data; exported infeasible test sets
  *   3. Layer 3 (GA): Masked Gene Operators + Soft Constraints
@@ -163,13 +163,14 @@ export const courseOfferings: CourseOffering[] = [
     room: rooms[1]!, lecturers: [lecturers[0]!, lecturers[1]!],
     effectiveStudentCount: 35, isFixed: false,
   },
-  // Offering 6: RPL — R-201, FIXED (pinned Mon 08:00), Eko (structural)
-  //   → Tests: isFixedRoom=true, Static Exclusion locks R-201 slot 1
+  // Offering 6: RPL (sks=3) — R-201, FIXED (pinned Mon 07:30-10:00), Eko (structural)
+  //   → Tests: isFixedRoom=true, Static Exclusion locks R-201 slots 1-3
+  //   → Task 24: fixedTimeSlotIds provides exactly `sks` contiguous slots
   {
     id: 6, courseId: 5, course: courses[4]!, roomId: 3,
     room: rooms[2]!, lecturers: [lecturers[4]!],
     effectiveStudentCount: 40, isFixed: true,
-    fixedTimeSlotIds: [1], // Monday 08:00
+    fixedTimeSlotIds: [1, 2, 3], // Monday 07:30-10:00 (3 contiguous slots = sks)
   },
   // Offering 7: Kecerdasan Buatan — R-101, Andi (structural, prefers Mon/Tue AM)
   {
@@ -235,15 +236,16 @@ export const courseOfferings: CourseOffering[] = [
   },
 
   // ── Second fixed offering (tests multiple fixed in SSA Phase 0)─
-  // Offering 15: Komputasi Awan — R-201, FIXED (pinned Tue 08:00), Eko
-  //   → Tests: second fixed offering locks R-201 slot 4
-  //   → Together with offering 6, R-201 loses slots 1 and 4 for flexible
+  // Offering 15: Komputasi Awan (sks=3) — R-201, FIXED (pinned Tue 07:30-10:00), Eko
+  //   → Tests: second fixed offering locks R-201 slots 12-14
+  //   → Together with offering 6, R-201 loses slots 1-3 (Mon AM) and 12-14 (Tue AM)
   //   → Eko now teaches offerings 6, 13, 15 = 3 sessions (structural penalty!)
+  //   → Task 24: fixedTimeSlotIds provides exactly `sks` contiguous slots
   {
     id: 15, courseId: 11, course: courses[10]!, roomId: 3,
     room: rooms[2]!, lecturers: [lecturers[4]!],
     effectiveStudentCount: 30, isFixed: true,
-    fixedTimeSlotIds: [4], // Tuesday 08:00
+    fixedTimeSlotIds: [12, 13, 14], // Tuesday 07:30-10:00 (3 contiguous slots = sks)
   },
 ];
 

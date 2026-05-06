@@ -35,7 +35,7 @@ export function runGA(
   // Step 1: Generate initial population + repair each individual (ADR-02)
   let population: Chromosome[] = generateInitialPopulation(
     candidates, config.populationSize, config.noiseRate, slotLookup
-  ).map(ch => repairChromosome(ch, candidates));
+  ).map(ch => repairChromosome(ch, candidates, slotLookup));
 
   const history: number[] = [];
   const avgHistory: number[] = [];
@@ -136,8 +136,8 @@ export function runGA(
       child1 = mutateChromosome(child1, candidates, config.mutationRate, slotLookup);
       child2 = mutateChromosome(child2, candidates, config.mutationRate, slotLookup);
 
-      child1 = repairChromosome(child1, candidates);
-      child2 = repairChromosome(child2, candidates);
+      child1 = repairChromosome(child1, candidates, slotLookup);
+      child2 = repairChromosome(child2, candidates, slotLookup);
 
       newPopulation.push(child1, child2);
     }
