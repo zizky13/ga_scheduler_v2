@@ -10,7 +10,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { evaluateHardFitness } from '../../src/ga/fitness.js';
+import {
+  evaluateHardFitness,
+  calculateStructuralPenalty,
+  calculatePreferencePenalty,
+} from '../../src/ga/fitness.js';
 import type { Chromosome, FlexibleGene, PreGACandidate } from '../../src/types.js';
 
 function flex(offeringId: number, sessions: { roomId: number; timeSlotIds: number[] }[]): FlexibleGene {
@@ -123,5 +127,103 @@ describe('evaluateHardFitness — nested sessions', () => {
     ];
     const cands = [candidate(1, [100, 101]), candidate(2, [100, 101])];
     expect(evaluateHardFitness(chrom, cands)).toBe(2);
+  });
+});
+
+describe('calculateStructuralPenalty — nested sessions', () => {
+  it('returns 0 when no lecturer is structural', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 3] }]),
+    ];
+    const cands = [candidate(1, [100])];
+    const structural = new Map<number, boolean>([[100, false]]);
+    expect(calculateStructuralPenalty(chrom, cands, structural)).toBe(0);
+  });
+
+  it('returns 0 when slot count is at or below max (2)', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2] }]),
+    ];
+    const cands = [candidate(1, [100])];
+    const structural = new Map<number, boolean>([[100, true]]);
+    expect(calculateStructuralPenalty(chrom, cands, structural)).toBe(0);
+  });
+
+  it('counts slots across all parallel sessions of a single gene', () => {
+    // 2 parallel sessions × 2 slots each = 4 slots → penalty = 4 - 2 = 2.
+    const chrom: Chromosome = [
+      flex(1, [
+        { roomId: 10, timeSlotIds: [1, 2] },
+        { roomId: 11, timeSlotIds: [3, 4] },
+      ]),
+    ];
+    const cands = [candidate(1, [100])];
+    const structural = new Map<number, boolean>([[100, true]]);
+    expect(calculateStructuralPenalty(chrom, cands, structural)).toBe(2);
+  });
+
+  it('aggregates slots across multiple genes per structural lecturer', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2] }]),  // 2 slots
+      flex(2, [{ roomId: 11, timeSlotIds: [3, 4, 5] }]), // 3 slots
+    ];
+    const cands = [candidate(1, [100]), candidate(2, [100])];
+    const structural = new Map<number, boolean>([[100, true]]);
+    // 5 total slots − 2 max = 3
+    expect(calculateStructuralPenalty(chrom, cands, structural)).toBe(3);
+  });
+
+  it('only counts structural lecturers when team-teaching', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 3, 4] }]),
+    ];
+    const cands = [candidate(1, [100, 101])]; // 100 structural, 101 not
+    const structural = new Map<number, boolean>([[100, true], [101, false]]);
+    expect(calculateStructuralPenalty(chrom, cands, structural)).toBe(2);
+  });
+});
+
+describe('calculatePreferencePenalty — nested sessions', () => {
+  it('returns 0 when lecturer has no preferences', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 3] }]),
+    ];
+    const cands = [candidate(1, [100])];
+    const prefs = new Map<number, Set<number>>(); // empty
+    expect(calculatePreferencePenalty(chrom, cands, prefs)).toBe(0);
+  });
+
+  it('returns 0 when all assigned slots are preferred', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 3] }]),
+    ];
+    const cands = [candidate(1, [100])];
+    const prefs = new Map<number, Set<number>>([[100, new Set([1, 2, 3])]]);
+    expect(calculatePreferencePenalty(chrom, cands, prefs)).toBe(0);
+  });
+
+  it('counts each non-preferred slot across all sessions', () => {
+    const chrom: Chromosome = [
+      flex(1, [
+        { roomId: 10, timeSlotIds: [1, 2] },  // 1 preferred, 2 not
+        { roomId: 11, timeSlotIds: [3, 4] },  // both not preferred
+      ]),
+    ];
+    const cands = [candidate(1, [100])];
+    const prefs = new Map<number, Set<number>>([[100, new Set([1])]]);
+    // Slots [2, 3, 4] are non-preferred → penalty = 3
+    expect(calculatePreferencePenalty(chrom, cands, prefs)).toBe(3);
+  });
+
+  it('charges each lecturer separately when team-teaching', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [5] }]),
+    ];
+    const cands = [candidate(1, [100, 101])];
+    const prefs = new Map<number, Set<number>>([
+      [100, new Set([1, 2])], // slot 5 not preferred for 100
+      [101, new Set([5])],    // slot 5 preferred for 101
+    ]);
+    expect(calculatePreferencePenalty(chrom, cands, prefs)).toBe(1);
   });
 });
