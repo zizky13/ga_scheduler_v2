@@ -1,0 +1,266 @@
+
+> ga_scheduler_v2@1.0.0 pipeline
+> npx tsx src/cli/run-pipeline.ts
+
+
+════════════════════════════════════════════════════════════
+  GA SCHEDULER v2 — Full Pipeline Orchestrator
+  Three-Layer Architecture Backbone Validation
+════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────┐
+│  LAYER 1: Pre-GA Policy Engine                  │
+│  Deterministic. O(n) complexity.                │
+└─────────────────────────────────────────────────┘
+
+  Input: 19 offerings, 55 time slots
+  Feasible:   15
+  Infeasible: 4
+    ❌ ID=91 "Algoritma & Pemrograman" → [FACILITY_MISMATCH]
+    ❌ ID=92 "Struktur Data" → [ROOM_ZERO_CAPACITY]
+    ❌ ID=93 "Basis Data" → [INTEGRITY_NO_LECTURERS]
+    ❌ ID=94 "Jaringan Komputer" → [POLICY_FIXED_NO_SLOTS]
+  Candidates: 15 (2 fixed, 13 flexible)
+    📋 #1 room=4 lec=[2] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #2 room=4 lec=[4] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #3 room=5 lec=[7] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #4 room=1 lec=[3] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #5 room=2 lec=[1,2] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #6 room=3 lec=[5] parallel=1×3slot domain=1 fixedRoom=true
+    📋 #7 room=1 lec=[1] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #8 room=2 lec=[6] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #9 room=6 lec=[3] parallel=1×2slot domain=55 fixedRoom=false
+    📋 #10 room=3 lec=[4] parallel=1×2slot domain=55 fixedRoom=false
+    📋 #11 room=1 lec=[8] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #12 room=3 lec=[6] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #13 room=5 lec=[5,8] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #14 room=4 lec=[7] parallel=1×3slot domain=55 fixedRoom=false
+    📋 #15 room=3 lec=[5] parallel=1×3slot domain=1 fixedRoom=true
+
+  ✅ Layer 1 passed → 15 candidates forwarded.
+
+┌─────────────────────────────────────────────────┐
+│  LAYER 2: Static Structural Analysis (SSA)      │
+│  Deterministic. O(E√V) complexity.              │
+└─────────────────────────────────────────────────┘
+
+  Phase 0 — Static Exclusion:
+    Locked coordinates: 2
+      🔐 R-201 × Mon 07:30
+      🔐 R-201 × Mon 10:00
+
+  Status:            FEASIBLE
+  Total Sessions:    15
+  Max Matchable:     15
+
+  ✅ Layer 2 passed — feasibility confirmed.
+
+┌─────────────────────────────────────────────────┐
+│  LAYER 3: GA Core (Evolutionary Optimization)   │
+│  Probabilistic. O(g × p × n) complexity.        │
+└─────────────────────────────────────────────────┘
+
+  Lecturer Preferences:
+    Dr. Andi Suryadi 🏛️ structural
+      Preferred: Mon 07:30, Mon 08:20, Mon 10:00, Mon 10:50
+    Budi Hartono, M.Kom 
+      Preferred: Mon 07:30, Mon 08:20, Mon 09:10, Mon 10:00, Mon 10:50, Mon 12:30
+    Citra Lestari, M.T. 
+      Preferred: Mon 13:20, Mon 14:10, Mon 15:00, Mon 15:50, Mon 16:40, Tue 07:30
+    Dewi Anggraeni, Ph.D. 
+      Preferred: Mon 10:00, Mon 10:50, Mon 12:30, Mon 13:20, Mon 14:10, Mon 15:00
+    Eko Prasetyo, M.Sc. 🏛️ structural
+      Preferred: Mon 07:30, Mon 10:00, Mon 13:20, Mon 15:50, Tue 08:20
+    Fani Rahayu, M.Kom 
+      Preferred: Mon 09:10, Mon 12:30, Mon 15:00, Tue 07:30, Tue 10:00
+    Gunawan Wibowo, M.T. 
+      Preferred: Mon 15:50, Mon 16:40, Tue 07:30, Tue 08:20, Tue 09:10, Tue 10:00
+    Hesti Kusuma, Ph.D. 
+      Preferred: (any — fully flexible)
+
+  ────────────────────────────────────────────────────────────
+  Crossover: SINGLEPOINT
+  ────────────────────────────────────────────────────────────
+  [Gen    1] Best: 0.0303 | Avg: 0.0242 | Hard: 0 | Soft: 32 (struct=7 pref=25)
+  [Gen   10] Best: 0.0417 | Avg: 0.0339 | Hard: 0 | Soft: 23 (struct=7 pref=16)
+  [Gen   20] Best: 0.0500 | Avg: 0.0420 | Hard: 0 | Soft: 19 (struct=7 pref=12)
+  [Gen   30] Best: 0.0526 | Avg: 0.0444 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen   40] Best: 0.0526 | Avg: 0.0456 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen   50] Best: 0.0526 | Avg: 0.0468 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen   60] Best: 0.0526 | Avg: 0.0446 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen   70] Best: 0.0526 | Avg: 0.0467 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen   80] Best: 0.0556 | Avg: 0.0470 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen   90] Best: 0.0556 | Avg: 0.0481 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  100] Best: 0.0556 | Avg: 0.0482 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  110] Best: 0.0556 | Avg: 0.0487 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  120] Best: 0.0556 | Avg: 0.0483 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  130] Best: 0.0556 | Avg: 0.0472 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  140] Best: 0.0556 | Avg: 0.0473 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  150] Best: 0.0556 | Avg: 0.0482 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  160] Best: 0.0556 | Avg: 0.0490 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  170] Best: 0.0556 | Avg: 0.0476 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  180] Best: 0.0556 | Avg: 0.0467 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  190] Best: 0.0556 | Avg: 0.0478 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen  200] Best: 0.0556 | Avg: 0.0474 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+
+  Results:
+    Best Fitness:      0.0556
+    Hard Violations:   0
+    Soft Penalty:      17
+    Generations:       200
+    Stagnated:         false
+    Duration:          1629ms
+    Status:            ✅ VALID
+
+  ────────────────────────────────────────────────────────────
+  Crossover: UNIFORM
+  ────────────────────────────────────────────────────────────
+  [Gen    1] Best: 0.0313 | Avg: 0.0242 | Hard: 0 | Soft: 31 (struct=7 pref=24)
+  [Gen   10] Best: 0.0417 | Avg: 0.0363 | Hard: 0 | Soft: 23 (struct=7 pref=16)
+  [Gen   20] Best: 0.0476 | Avg: 0.0416 | Hard: 0 | Soft: 20 (struct=7 pref=13)
+  [Gen   30] Best: 0.0476 | Avg: 0.0427 | Hard: 0 | Soft: 20 (struct=7 pref=13)
+  [Gen   40] Best: 0.0476 | Avg: 0.0432 | Hard: 0 | Soft: 20 (struct=7 pref=13)
+  [Gen   50] Best: 0.0476 | Avg: 0.0414 | Hard: 0 | Soft: 20 (struct=7 pref=13)
+  [Gen   60] Best: 0.0500 | Avg: 0.0427 | Hard: 0 | Soft: 19 (struct=7 pref=12)
+  [Gen   70] Best: 0.0500 | Avg: 0.0429 | Hard: 0 | Soft: 19 (struct=7 pref=12)
+  [Gen   80] Best: 0.0500 | Avg: 0.0438 | Hard: 0 | Soft: 19 (struct=7 pref=12)
+  [Gen   90] Best: 0.0500 | Avg: 0.0444 | Hard: 0 | Soft: 19 (struct=7 pref=12)
+  [Gen  100] Best: 0.0526 | Avg: 0.0450 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen  110] Best: 0.0526 | Avg: 0.0458 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen  120] Best: 0.0526 | Avg: 0.0447 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen  130] Best: 0.0526 | Avg: 0.0455 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen  140] Best: 0.0526 | Avg: 0.0464 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen  150] Best: 0.0526 | Avg: 0.0461 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen  160] Best: 0.0526 | Avg: 0.0456 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen  170] Best: 0.0526 | Avg: 0.0452 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen  180] Best: 0.0526 | Avg: 0.0457 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen  190] Best: 0.0526 | Avg: 0.0458 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen  200] Best: 0.0526 | Avg: 0.0459 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+
+  Results:
+    Best Fitness:      0.0526
+    Hard Violations:   0
+    Soft Penalty:      18
+    Generations:       200
+    Stagnated:         false
+    Duration:          1579ms
+    Status:            ✅ VALID
+
+  ────────────────────────────────────────────────────────────
+  Crossover: PMX
+  ────────────────────────────────────────────────────────────
+  [Gen    1] Best: 0.0303 | Avg: 0.0243 | Hard: 0 | Soft: 32 (struct=7 pref=25)
+  [Gen   10] Best: 0.0417 | Avg: 0.0350 | Hard: 0 | Soft: 23 (struct=7 pref=16)
+  [Gen   20] Best: 0.0455 | Avg: 0.0404 | Hard: 0 | Soft: 21 (struct=7 pref=14)
+  [Gen   30] Best: 0.0526 | Avg: 0.0435 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen   40] Best: 0.0526 | Avg: 0.0447 | Hard: 0 | Soft: 18 (struct=7 pref=11)
+  [Gen   50] Best: 0.0556 | Avg: 0.0478 | Hard: 0 | Soft: 17 (struct=7 pref=10)
+  [Gen   60] Best: 0.0625 | Avg: 0.0501 | Hard: 0 | Soft: 15 (struct=7 pref=8)
+  [Gen   70] Best: 0.0625 | Avg: 0.0541 | Hard: 0 | Soft: 15 (struct=7 pref=8)
+  [Gen   80] Best: 0.0625 | Avg: 0.0529 | Hard: 0 | Soft: 15 (struct=7 pref=8)
+  [Gen   90] Best: 0.0667 | Avg: 0.0531 | Hard: 0 | Soft: 14 (struct=7 pref=7)
+  [Gen  100] Best: 0.0714 | Avg: 0.0526 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+  [Gen  110] Best: 0.0714 | Avg: 0.0583 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+  [Gen  120] Best: 0.0714 | Avg: 0.0600 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+  [Gen  130] Best: 0.0714 | Avg: 0.0586 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+  [Gen  140] Best: 0.0714 | Avg: 0.0562 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+  [Gen  150] Best: 0.0714 | Avg: 0.0598 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+  [Gen  160] Best: 0.0714 | Avg: 0.0574 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+  [Gen  170] Best: 0.0714 | Avg: 0.0582 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+  [Gen  180] Best: 0.0714 | Avg: 0.0571 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+  [Gen  190] Best: 0.0714 | Avg: 0.0568 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+  [Gen  200] Best: 0.0714 | Avg: 0.0583 | Hard: 0 | Soft: 13 (struct=7 pref=6)
+
+  Results:
+    Best Fitness:      0.0714
+    Hard Violations:   0
+    Soft Penalty:      13
+    Generations:       200
+    Stagnated:         false
+    Duration:          1637ms
+    Status:            ✅ VALID
+
+  📅 Best Schedule (PMX):
+    🟢 IF101 "Algoritma & Pemrograman" | Budi | sks=3
+         LAB-A ▸ Mon 07:30-10:00 (3 slots)
+    🟢 IF201 "Basis Data" | Dewi | sks=3
+         LAB-A ▸ NON-CONTIGUOUS [Mon 12:30, Mon 13:20, Mon 10:50]
+    🟡 IF203 "Sistem Operasi" | Gunawan | sks=3
+         LAB-A ▸ Mon 15:00-17:30 (3 slots)
+    🟢 IF102 "Struktur Data" | Citra | sks=3
+         R-101 ▸ Mon 15:00-17:30 (3 slots)
+    🟡🟢 IF202 "Jaringan Komputer" | Dr.+Budi | sks=3
+         R-101 ▸ NON-CONTIGUOUS [Mon 10:00, Mon 10:50, Mon 12:30]
+    🟢 IF301 "Rekayasa Perangkat Lunak" | Eko | sks=3 🔒
+         R-201 ▸ Mon 07:30-08:20 (1 slot) ⚠ expected 3 slots
+    🟡 IF302 "Kecerdasan Buatan" | Dr. | sks=3
+         R-101 ▸ Mon 07:30-10:00 (3 slots)
+    🟢 IF303 "Keamanan Informasi" | Fani | sks=3
+         R-102 ▸ NON-CONTIGUOUS [Tue 07:30, Mon 12:30, Mon 09:10]
+    🟢 DK101 "Desain Visual" | Citra | sks=2
+         Studio-1 ▸ Mon 13:20-15:00 (2 slots)
+    🟢 IF401 "Tugas Akhir Seminar" | Dewi | sks=2
+         R-201 ▸ Mon 14:10-15:50 (2 slots)
+    🔵 IF102 "Struktur Data" | Hesti | sks=3
+         R-101 ▸ Thu 13:20-15:50 (3 slots)
+    🟡 IF301 "Rekayasa Perangkat Lunak" | Fani | sks=3
+         R-201 ▸ Tue 08:20-10:50 (3 slots)
+    🟡🔵 IF302 "Kecerdasan Buatan" | Eko+Hesti | sks=3
+         LAB-B ▸ NON-CONTIGUOUS [Tue 10:00, Mon 15:50, Mon 13:20]
+    🟢 IF101 "Algoritma & Pemrograman" | Gunawan | sks=3
+         LAB-A ▸ Tue 07:30-10:00 (3 slots)
+    🟢 IF304 "Komputasi Awan" | Eko | sks=3 🔒
+         R-201 ▸ Mon 10:00-10:50 (1 slot) ⚠ expected 3 slots
+
+  Legend: 🟢=preferred 🟡=non-preferred 🔵=no preference 🔒=fixed room
+
+  📐 Block Integrity:
+    Longest contiguous block:  3 slot(s)
+    Non-contiguous sessions:   4
+    Duration mismatches:       2
+    Status: ⚠️  some sessions broke the contract
+
+  🔒 Fixed Gene Masking Invariant: ✅ PASS
+    Offering 6 (IF301): kind=FIXED roomId(session0)=3 (original=3)
+    Offering 15 (IF304): kind=FIXED roomId(session0)=3 (original=3)
+
+════════════════════════════════════════════════════════════
+  LONG-SESSION DEMO — 3 and 4 slot contiguous blocks
+════════════════════════════════════════════════════════════
+
+  Grid:      20 slots (5 days × 4 back-to-back hours)
+  Offerings:
+    • LS301 "Long Lecture (3-slot)" → sks=3 (must occupy 3 contiguous hours)
+    • LS401 "Mega Workshop (4-slot)" → sks=4 (must occupy 4 contiguous hours)
+    • LS302 "Lab Practicum (3-slot)" → sks=3 (must occupy 3 contiguous hours)
+
+  Best Fitness:     1.0000
+  Hard Violations:  0
+  Soft Penalty:     0
+  Generations Run:  1
+
+  📅 Best Schedule:
+    LS301 "Long Lecture (3-slot)" (sks=3)
+         R-101 ▸ Thu 09:00-12:00 (3 slots)
+           ↳ raw: [14,15,16] = Thu 09:00-12:00 (3 slots)
+    LS401 "Mega Workshop (4-slot)" (sks=4)
+         R-102 ▸ Fri 08:00-12:00 (4 slots)
+           ↳ raw: [17,18,19,20] = Fri 08:00-12:00 (4 slots)
+    LS302 "Lab Practicum (3-slot)" (sks=3)
+         LAB-A ▸ Wed 09:00-12:00 (3 slots)
+           ↳ raw: [10,11,12] = Wed 09:00-12:00 (3 slots)
+
+  📐 Verification:
+    Longest contiguous block:  4 slot(s) ✅
+    Non-contiguous sessions:   0 ✅
+    Duration mismatches:       0 ✅
+    Long-session support:      ✅ VERIFIED end-to-end
+
+════════════════════════════════════════════════════════════
+  PIPELINE COMPLETE
+════════════════════════════════════════════════════════════
+  Total Duration:    6518ms
+  Layer 3 (GA):      3 crossover runs above + 1 long-session demo
+
+  Architecture: All 3 layers operational. ✅
+

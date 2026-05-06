@@ -28,6 +28,8 @@ No new infrastructure. Everything below can ship against the current `tsx`-only 
 20. [x] `[P1/M]` **SKS Blocks:** Update `evaluateHardFitness` in `src/ga/fitness.ts` to loop over the new nested `sessions` array and accurately count room/lecturer collisions.
 21. [x] `[P1/M]` **SKS Blocks:** Update soft constraint functions (`calculateStructuralPenalty`, `calculatePreferencePenalty`) in `src/ga/fitness.ts` to map over the new `sessions` array.
 22. [x] `[P1/M]` **SKS Blocks:** Refactor `src/ssa/bipartiteGraph.ts` to map whole multi-slot blocks as single matching nodes, ensuring Hopcroft-Karp proves feasibility for contiguous chunks, not isolated slots.
+23. [ ] `[P1/M]` **SKS Blocks:** Update `src/ga/repair.ts` to implement full contiguous-block repair logic. It should resolve hard conflicts by replacing the entire session with a new contiguous block instead of doing a greedy per-slot reassignment.
+24. [ ] `[P1/S]` **SKS Blocks:** Update `src/db/seed.ts` so that `fixedTimeSlotIds` for fixed offerings provides exactly `sks` number of contiguous slots instead of a single slot, ensuring domain lengths match requested session durations.
 
 ### Phase 1 — Persistence Layer
 
