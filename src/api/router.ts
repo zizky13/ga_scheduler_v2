@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getReadinessChecker } from './lib/readiness';
+import { getOpenApiDocument } from './openapi/registry';
 import { createAuthRouter } from './routes/auth';
 import { createUsersRouter } from './routes/users';
 import { createSemestersRouter } from './routes/semesters';
@@ -14,6 +15,16 @@ import { createScheduleRunsRouter } from './routes/schedule-runs';
 
 export function createV1Router(): Router {
   const router = Router();
+
+  // OpenAPI document is mounted first so a developer's `curl /api/v1/openapi.json`
+  // resolves before any auth-guarded route. Document is generated once per
+  // process at first call (see `getOpenApiDocument`) and the same JSON is
+  // served thereafter; we set Cache-Control so a Swagger UI workflow can
+  // reuse the response without re-fetching every keystroke.
+  router.get('/openapi.json', (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.status(200).json(getOpenApiDocument());
+  });
 
   router.get('/health', (_req, res) => {
     res.status(200).json({
