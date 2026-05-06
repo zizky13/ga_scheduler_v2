@@ -20,11 +20,11 @@ const { validation, candidates } = runPreGA(allOfferings, timeSlots, rooms);
 // ─── Print Results ───────────────────────────────────────────────
 console.log('── Feasible Offerings ──────────────────────────────');
 for (const offering of validation.feasible) {
-  const sessions = Math.ceil(offering.effectiveStudentCount / offering.room.capacity);
+  const parallelGroups = Math.ceil(offering.effectiveStudentCount / offering.room.capacity);
   console.log(
     `  ✅ ID=${offering.id} | ${offering.course.code} "${offering.course.name}" ` +
     `| Room: ${offering.room.name} | Students: ${offering.effectiveStudentCount} ` +
-    `| Sessions: ${sessions} | Fixed: ${offering.isFixed}`
+    `| Parallel: ${parallelGroups} × ${offering.course.sks} slot(s) | Fixed: ${offering.isFixed}`
   );
 }
 
@@ -41,7 +41,7 @@ for (const c of candidates) {
   console.log(
     `  📋 Offering ${c.offeringId} | Room: ${c.roomId} ` +
     `| Lecturers: [${c.lecturerIds.join(', ')}] ` +
-    `| Sessions: ${c.parallelSessionCount} ` +
+    `| Parallel: ${c.parallelSessionCount} × ${c.sessionDuration} slot(s) back-to-back ` +
     `| Possible Slots: ${c.possibleTimeSlotIds.length} ` +
     `| FixedRoom: ${c.isFixedRoom}`
   );

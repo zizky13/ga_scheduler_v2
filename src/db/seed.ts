@@ -32,14 +32,24 @@ export const rooms: Room[] = [
   { id: 6, name: 'Studio-1', capacity: 25, facilities: ['STUDIO'] },
 ];
 
-// ─── Time Slots (Mon–Fri, 3 slots/day = 15 total) ───────────────
+// ─── Time Slots (Mon–Fri, 12 slots/day = 60 total) ──────────────
+// Each slot is 50 minutes, starting at 07:30 through 17:30.
 // Slot IDs:
-//   Mon: 1,2,3   Tue: 4,5,6   Wed: 7,8,9   Thu: 10,11,12   Fri: 13,14,15
+//   Mon: 1–12   Tue: 13–24   Wed: 25–36   Thu: 37–48   Fri: 49–60
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const slotTimes = [
-  { start: '08:00', end: '10:00' },
-  { start: '10:00', end: '12:00' },
-  { start: '13:00', end: '15:00' },
+  { start: '07:30', end: '08:20' },
+  { start: '08:20', end: '09:10' },
+  { start: '09:10', end: '10:00' },
+  { start: '10:00', end: '10:50' },
+  { start: '10:50', end: '11:40' },
+  // { start: '11:40', end: '12:30' },
+  { start: '12:30', end: '13:20' },
+  { start: '13:20', end: '14:10' },
+  { start: '14:10', end: '15:00' },
+  { start: '15:00', end: '15:50' },
+  { start: '15:50', end: '16:40' },
+  { start: '16:40', end: '17:30' },
 ];
 
 export const timeSlots: TimeSlot[] = [];

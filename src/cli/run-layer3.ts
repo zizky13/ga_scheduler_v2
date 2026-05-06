@@ -9,6 +9,7 @@
 import type { GAConfig } from '../types.js';
 import { courseOfferings, timeSlots, lecturers, rooms } from '../db/seed.js';
 import { runPipeline } from '../orchestrator.js';
+import { formatGeneLines } from './_format.js';
 
 console.log('═══════════════════════════════════════════════════');
 console.log('  LAYER 3: GA Core — Backbone Test');
@@ -71,19 +72,21 @@ console.log(`  Stagnated Early:  ${gaResult.stagnatedEarly}`);
 console.log(`  Duration:         ${response.durationMs}ms`);
 
 console.log('\n── Best Chromosome (Schedule) ──────────────────────');
+const slotLookup = new Map(timeSlots.map(t => [t.id, t]));
+const roomLookup = new Map(rooms.map(r => [r.id, r]));
 for (const gene of gaResult.bestChromosome) {
   const offering = courseOfferings.find(o => o.id === gene.offeringId);
-  const slotLabels = gene.sessions.flatMap(session =>
-    session.timeSlotIds.map(sid => {
-      const ts = timeSlots.find(t => t.id === sid);
-      return ts ? `${ts.day} ${ts.startTime}-${ts.endTime}` : `Slot#${sid}`;
-    })
-  );
-  const roomLabel = gene.sessions.map(s => s.roomId).join('+');
+  const kindTag = gene.kind === 'FIXED' ? ' 🔒' : '';
   console.log(
-    `  📅 ${offering?.course.code} "${offering?.course.name}" ` +
-    `→ Room(s) ${roomLabel} → [${slotLabels.join(', ')}]`
+    `  📅 ${offering?.course.code} "${offering?.course.name}"` +
+    ` (sks=${offering?.course.sks})${kindTag}`
   );
+  const lines = formatGeneLines(gene, slotLookup, {
+    expectedDuration: offering?.course.sks,
+    roomLookup,
+    indent: '       ',
+  });
+  for (const line of lines) console.log(line);
 }
 
 console.log(`\n── Fitness History (first 5, last 5) ───────────────`);
