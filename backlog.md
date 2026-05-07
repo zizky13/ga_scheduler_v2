@@ -76,9 +76,9 @@ Long-running GA execution off the request thread, with checkpointing and SSE.
 8. [x] `[P0/M]` Implement `POST /schedule-runs/:id/cancel` with cooperative cancellation: the worker checks the cancellation flag at the top of every generation and exits cleanly (api_design §7).
 9. [x] `[P1/M]` Implement `PUT /schedule-runs/:id/assignments/:assignmentId` (manual override) — admin always, owner only when `status=COMPLETED`; mandatory `AuditLog` entry per api_design §5.3.8 and §8.
 10. [x] `[P1/M]` Refactor the GA loop to release the event loop periodically (e.g., `setImmediate` between generations) so the worker can interleave cancellation checks and progress publishes without freezing (techspec §12 LOW, `[ARCH-OBS-02]`).
-11. [ ] `[P1/M]` **SKS Blocks (Worker):** Update the worker's `ScheduleAssignment` persistence loop to iterate over the new `sessions[]` array on each gene, inserting one `ScheduleAssignment` row per parallel session (with correct `sessionIndex` and `roomId`) instead of one row per offering.
-12. [ ] `[P1/S]` **SKS Blocks (Worker):** Update the worker's `ScheduleAssignmentSlot` persistence loop to write the contiguous `timeSlotIds` block for each `sessionIndex` row, matching the new nested gene structure.
-13. [ ] `[P1/S]` **SKS Blocks (API):** Update `GET /schedule-runs/:id` response serializer to group `ScheduleAssignment` rows by `offeringId` and expose sessions as a nested array (e.g., `sessions: [{ sessionIndex, roomId, timeSlots }]`) so the frontend can render each parallel session correctly.
+11. [x] `[P1/M]` **SKS Blocks (Worker):** Update the worker's `ScheduleAssignment` persistence loop to iterate over the new `sessions[]` array on each gene, inserting one `ScheduleAssignment` row per parallel session (with correct `sessionIndex` and `roomId`) instead of one row per offering.
+12. [x] `[P1/S]` **SKS Blocks (Worker):** Update the worker's `ScheduleAssignmentSlot` persistence loop to write the contiguous `timeSlotIds` block for each `sessionIndex` row, matching the new nested gene structure.
+13. [x] `[P1/S]` **SKS Blocks (API):** Update `GET /schedule-runs/:id` response serializer to group `ScheduleAssignment` rows by `offeringId` and expose sessions as a nested array (e.g., `sessions: [{ sessionIndex, roomId, timeSlots }]`) so the frontend can render each parallel session correctly.
 
 ### Phase 4 — Frontend (FR-01, FR-02)
 

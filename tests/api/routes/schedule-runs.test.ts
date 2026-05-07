@@ -500,11 +500,16 @@ describe('GET /schedule-runs/:id', () => {
     expect(res.body.assignments).toHaveLength(1);
     expect(res.body.assignments[0]).toEqual(
       expect.objectContaining({
-        id: 1,
         offeringId: 6,
-        roomId: 3,
-        isFixedRoom: true,
         offering: expect.objectContaining({ courseCode: 'IF301' }),
+        sessions: [
+          expect.objectContaining({
+            assignmentId: 1,
+            sessionIndex: 0,
+            roomId: 3,
+            isFixedRoom: true,
+          }),
+        ],
       }),
     );
   });

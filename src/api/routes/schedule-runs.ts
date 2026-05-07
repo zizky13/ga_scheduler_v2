@@ -46,6 +46,7 @@ import { diff, writeAudit } from '../lib/audit';
 import { enqueueGaPipelineRun } from '../../queue/ga-pipeline';
 import type {
   AssignmentWithRun,
+  ScheduleRunAssignmentDetail,
   ScheduleRunDetailRecord,
   ScheduleRunRow,
   ScheduleRunSummaryRecord,
@@ -341,6 +342,52 @@ interface IdParams {
   id: string;
 }
 
+interface SessionWire {
+  assignmentId: number;
+  sessionIndex: number;
+  roomId: number;
+  isFixedRoom: boolean;
+  manualOverride: boolean;
+  timeSlots: Array<{ id: number; day: string; startTime: string; endTime: string }>;
+}
+
+interface GroupedAssignmentWire {
+  offeringId: number;
+  offering: {
+    id: number;
+    courseCode: string;
+    courseName: string;
+    lecturers: Array<{ id: number; name: string }>;
+  };
+  sessions: SessionWire[];
+}
+
+function groupAssignmentsByOffering(
+  flat: ScheduleRunAssignmentDetail[],
+): GroupedAssignmentWire[] {
+  const grouped = new Map<number, GroupedAssignmentWire>();
+  for (const a of flat) {
+    let entry = grouped.get(a.offeringId);
+    if (!entry) {
+      entry = {
+        offeringId: a.offeringId,
+        offering: a.offering,
+        sessions: [],
+      };
+      grouped.set(a.offeringId, entry);
+    }
+    entry.sessions.push({
+      assignmentId: a.id,
+      sessionIndex: a.sessionIndex,
+      roomId: a.roomId,
+      isFixedRoom: a.isFixedRoom,
+      manualOverride: a.manualOverride,
+      timeSlots: a.slots,
+    });
+  }
+  return Array.from(grouped.values());
+}
+
 interface ScheduleRunDetailWire extends ScheduleRunSummaryWire {
   config: unknown;
   preGASummary: unknown;
@@ -348,12 +395,12 @@ interface ScheduleRunDetailWire extends ScheduleRunSummaryWire {
   history: unknown;
   avgHistory: unknown;
   idempotencyKey: string | null;
-  assignments: unknown[];
+  assignments: GroupedAssignmentWire[];
 }
 
 function toDetailWire(
   r: ScheduleRunDetailRecord,
-  assignments: unknown[],
+  assignments: ScheduleRunAssignmentDetail[],
 ): ScheduleRunDetailWire {
   return {
     ...toSummaryWire(r),
@@ -363,7 +410,7 @@ function toDetailWire(
     history: parseJsonField(r.historyJson),
     avgHistory: parseJsonField(r.avgHistoryJson),
     idempotencyKey: r.idempotencyKey,
-    assignments,
+    assignments: groupAssignmentsByOffering(assignments),
   };
 }
 
