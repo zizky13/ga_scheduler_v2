@@ -16,6 +16,7 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import IORedis from 'ioredis';
 
 import { validate } from '../middleware/validate';
 import { requireAuth } from '../middleware/auth';
@@ -47,6 +48,11 @@ import type {
   ScheduleRunRow,
   ScheduleRunSummaryRecord,
 } from '../../repo/scheduleRunRepo';
+import {
+  gaProgressChannel,
+  type ProgressEvent,
+  type RunStatus,
+} from '../../worker/progressChannel';
 import { notImplemented } from './_stub';
 
 const IDEMPOTENCY_HEADER = 'Idempotency-Key';
@@ -441,6 +447,155 @@ async function deleteOne(
   }
 }
 
+// ─── SSE handler (Phase 3 Task 7) ────────────────────────────────────────
+
+const TERMINAL_STATUSES: ReadonlySet<RunStatus> = new Set([
+  'COMPLETED',
+  'FAILED',
+  'CANCELLED',
+  'SSA_INFEASIBLE',
+  'PRE_GA_EMPTY',
+  'STAGNATED',
+]);
+
+const HEARTBEAT_INTERVAL_MS = 15_000;
+
+function sendSseEvent(res: Response, event: string, data: unknown): void {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+async function getStream(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) {
+      next(new AuthError('UNAUTHORIZED', 'Authentication required'));
+      return;
+    }
+    const { id: runId } = req.params as unknown as IdParams;
+    const repos = getCrudRepositories();
+
+    const run = await repos.scheduleRuns.findDetailById(runId);
+    if (!run || (req.user.role === 'user' && run.createdById !== req.user.id)) {
+      next(new NotFoundError('Schedule run not found'));
+      return;
+    }
+
+    // If already terminal, send final state and close immediately.
+    if (TERMINAL_STATUSES.has(run.status as RunStatus)) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.status(200);
+      res.flushHeaders();
+      sendSseEvent(res, 'state', { runId, status: run.status });
+      res.end();
+      return;
+    }
+
+    // Set up SSE headers.
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.status(200);
+    res.flushHeaders();
+
+    // Dedicated subscriber connection — Redis pub/sub requires a connection
+    // that does nothing else once SUBSCRIBE is issued.
+    const redisUrl = process.env.REDIS_URL ?? 'redis://127.0.0.1:6379';
+    const subscriber = new IORedis(redisUrl, {
+      lazyConnect: false,
+      maxRetriesPerRequest: null,
+      enableOfflineQueue: true,
+    });
+
+    const channel = gaProgressChannel(runId);
+    let closed = false;
+
+    function cleanup(): void {
+      if (closed) return;
+      closed = true;
+      clearInterval(heartbeatTimer);
+      subscriber.unsubscribe(channel).catch(() => {});
+      subscriber.disconnect();
+    }
+
+    const heartbeatTimer = setInterval(() => {
+      if (closed) return;
+      res.write(': heartbeat\n\n');
+    }, HEARTBEAT_INTERVAL_MS);
+
+    subscriber.on('message', (_ch: string, raw: string) => {
+      if (closed) return;
+      let event: ProgressEvent;
+      try {
+        event = JSON.parse(raw) as ProgressEvent;
+      } catch {
+        return;
+      }
+
+      switch (event.type) {
+        case 'progress':
+          sendSseEvent(res, 'progress', {
+            runId,
+            status: 'RUNNING',
+            currentGeneration: event.snapshot.generation,
+            bestFitness: event.snapshot.bestFitness,
+            avgFitness: event.snapshot.avgFitness,
+            hardViolations: event.snapshot.hardViolations,
+            softPenalty: event.snapshot.softPenalty,
+            competencyMismatch: event.snapshot.competencyMismatch,
+            structuralPenalty: event.snapshot.structuralPenalty,
+            preferencePenalty: event.snapshot.preferencePenalty,
+          });
+          break;
+        case 'state':
+          sendSseEvent(res, 'state', { runId, status: event.status });
+          if (TERMINAL_STATUSES.has(event.status)) {
+            cleanup();
+            res.end();
+          }
+          break;
+        case 'error':
+          sendSseEvent(res, 'error', {
+            code: 'RUN_ERROR',
+            message: event.message,
+          });
+          break;
+      }
+    });
+
+    subscriber.on('error', () => {
+      if (closed) return;
+      sendSseEvent(res, 'error', {
+        code: 'STREAM_ERROR',
+        message: 'Redis subscriber connection lost',
+      });
+      cleanup();
+      res.end();
+    });
+
+    req.on('close', cleanup);
+
+    await subscriber.subscribe(channel);
+
+    // Emit the current state so late-joining clients don't miss a transition
+    // that happened between their DB lookup and the subscribe call.
+    const freshRun = await repos.scheduleRuns.findDetailById(runId);
+    if (freshRun && TERMINAL_STATUSES.has(freshRun.status as RunStatus)) {
+      sendSseEvent(res, 'state', { runId, status: freshRun.status });
+      cleanup();
+      res.end();
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+
 export function createScheduleRunsRouter(): Router {
   const router = Router();
 
@@ -466,11 +621,11 @@ export function createScheduleRunsRouter(): Router {
     getOne,
   );
 
-  // TODO Phase 3 Task 7 (SSE): requireAuth, requireOwnerOrAdmin
   router.get(
     '/:id/stream',
+    requireAuth(),
     validate({ params: scheduleRunStreamParamsSchema }),
-    notImplemented('GET /schedule-runs/:id/stream'),
+    getStream,
   );
 
   // TODO Phase 3 Task 8 (cancel): requireAuth, requireOwnerOrAdmin
