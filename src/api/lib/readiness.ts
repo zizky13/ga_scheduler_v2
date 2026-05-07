@@ -55,6 +55,8 @@ export function createDefaultReadinessChecker(): ReadinessChecker {
       return true;
     },
     async pingRedis(): Promise<boolean> {
+      // The BullMQ client (`src/queue/connection.ts`) targets the same Redis
+      // instance as this readiness client, so a single PING covers both.
       const redis = getRedis();
       const reply = await withTimeout(redis.ping(), PING_TIMEOUT_MS, 'redis');
       // ioredis returns the raw 'PONG' string on success.

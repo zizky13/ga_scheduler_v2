@@ -35,7 +35,9 @@
       "Bash(ls tests/api)",
       "Bash(ls tests/integration)",
       "Bash(ls tests/repo)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(node -e \"console.log\\(require\\('bullmq/package.json'\\).version\\)\")",
+      "Bash(node -e \"const b = require\\('bullmq'\\); console.log\\(Object.keys\\(b\\).filter\\(k => /Queue|Worker|Job/.test\\(k\\)\\).slice\\(0, 20\\)\\)\")"
     ]
   }
 }
