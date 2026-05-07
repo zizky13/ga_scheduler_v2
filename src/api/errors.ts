@@ -97,3 +97,16 @@ export class RateLimitError extends ApiError {
     super(code, message, details);
   }
 }
+
+/**
+ * 503 Service Unavailable — the request was well-formed and authorized but a
+ * downstream dependency (queue, DB, Redis) is unreachable. See api_design §6
+ * and §5.3.8 (`QUEUE_UNAVAILABLE` on `POST /schedule-runs`).
+ */
+export class ServiceUnavailableError extends ApiError {
+  public readonly statusCode = 503;
+
+  constructor(code: string, message: string, details?: ApiErrorDetails) {
+    super(code, message, details);
+  }
+}

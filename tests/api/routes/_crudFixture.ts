@@ -53,6 +53,11 @@ import type {
   AuditLogRepository,
   CreateAuditLogInput,
 } from '../../../src/repo/auditLogRepo';
+import type {
+  CreateScheduleRunInput,
+  ScheduleRunRepository,
+  ScheduleRunRow,
+} from '../../../src/repo/scheduleRunRepo';
 import type { CrudRepositories } from '../../../src/api/lib/crudContext';
 
 // ─── Generic helpers ──────────────────────────────────────────────────────
@@ -101,6 +106,8 @@ export interface CrudFixture {
   lecturerStore: Map<number, LecturerRecord>;
   courseStore: Map<number, CourseRecord>;
   courseOfferingStore: Map<number, CourseOfferingRecord>;
+  // Schedule runs created via the repo facade — used by Phase 3 task 5.
+  scheduleRunStore: Map<string, ScheduleRunRow>;
   // Audit log captures every state-changing request. Tests assert against
   // this array rather than peeking at the repo internals.
   auditLogStore: AuditLogRecord[];
@@ -171,6 +178,8 @@ export function buildCrudFixture(): CrudFixture {
   const lecturerStore = new Map<number, LecturerRecord>();
   const courseStore = new Map<number, CourseRecord>();
   const courseOfferingStore = new Map<number, CourseOfferingRecord>();
+  const scheduleRunStore = new Map<string, ScheduleRunRow>();
+  let nextScheduleRunSeq = 1;
   const auditLogStore: AuditLogRecord[] = [];
   const auditLogFail = { active: false };
   const runningScheduleRunSemesters = new Set<number>();
@@ -797,6 +806,49 @@ export function buildCrudFixture(): CrudFixture {
     },
   };
 
+  // ── ScheduleRuns ────────────────────────────────────────────────────────
+  const scheduleRuns: ScheduleRunRepository = {
+    async findByIdempotencyKey(key) {
+      for (const r of scheduleRunStore.values()) {
+        if (r.idempotencyKey === key) return clone(r);
+      }
+      return null;
+    },
+    async countOfferingsForSemester(semesterId) {
+      let count = 0;
+      for (const o of courseOfferingStore.values()) {
+        if (o.semesterId === semesterId) count++;
+      }
+      return count;
+    },
+    async create(input: CreateScheduleRunInput) {
+      // Mirror the unique constraint on idempotencyKey so the route layer's
+      // P2002 fallback can be exercised if a test wants to.
+      if (input.idempotencyKey) {
+        for (const r of scheduleRunStore.values()) {
+          if (r.idempotencyKey === input.idempotencyKey) throw prismaUnique();
+        }
+      }
+      const id = `run-${nextScheduleRunSeq++}`;
+      const row: ScheduleRunRow = {
+        id,
+        semesterId: input.semesterId,
+        createdById: input.createdById,
+        status: 'QUEUED',
+        configJson: input.configJson,
+        idempotencyKey: input.idempotencyKey ?? null,
+        createdAt: new Date(),
+      };
+      scheduleRunStore.set(id, row);
+      return clone(row);
+    },
+    async markFailed(id, _errorCode, _errorMessage) {
+      const r = scheduleRunStore.get(id);
+      if (!r) throw prismaNotFound();
+      r.status = 'FAILED';
+    },
+  };
+
   // ── AuditLogs ───────────────────────────────────────────────────────────
   const auditLogs: AuditLogRepository = {
     async create(input: CreateAuditLogInput) {
@@ -1009,6 +1061,7 @@ export function buildCrudFixture(): CrudFixture {
       courses,
       courseOfferings,
       auditLogs,
+      scheduleRuns,
     },
     userStore,
     semesterStore,
@@ -1019,6 +1072,7 @@ export function buildCrudFixture(): CrudFixture {
     lecturerStore,
     courseStore,
     courseOfferingStore,
+    scheduleRunStore,
     auditLogStore,
     auditLogFail,
     runningScheduleRunSemesters,
