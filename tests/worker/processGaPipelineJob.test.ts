@@ -115,6 +115,7 @@ function makeRedisStub(): {
 } {
   const calls: PublishCall[] = [];
   const setCalls: SetCall[] = [];
+  const store = new Map<string, string>();
   const redis = {
     publish: vi.fn(async (channel: string, payload: string) => {
       calls.push({ channel, payload });
@@ -122,7 +123,14 @@ function makeRedisStub(): {
     }),
     set: vi.fn(async (key: string, value: string, mode?: string, ttl?: number) => {
       setCalls.push({ key, value, mode, ttl });
+      store.set(key, value);
       return 'OK';
+    }),
+    get: vi.fn(async (key: string) => store.get(key) ?? null),
+    del: vi.fn(async (key: string) => {
+      const had = store.has(key);
+      store.delete(key);
+      return had ? 1 : 0;
     }),
   } as unknown as Redis;
   return { redis, calls, setCalls };

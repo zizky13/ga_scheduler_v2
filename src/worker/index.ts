@@ -40,6 +40,7 @@ import {
   type ProgressEvent,
   type RunStatus,
 } from './progressChannel';
+import { isCancellationRequested, clearCancellation } from '../queue/cancellation';
 
 const logger = getRootLogger();
 
@@ -81,9 +82,18 @@ export async function processGaPipelineJob(
     throw new Error(`ScheduleRun ${runId} not found`);
   }
 
-  if (run.status === 'CANCELLED') {
+  // Check both DB status and Redis cancellation key — the cancel endpoint
+  // sets both, and either one is sufficient to skip the run.
+  if (run.status === 'CANCELLED' || await isCancellationRequested(runId, redis)) {
     log.info('Run already cancelled — emitting final state and exiting');
+    if (run.status !== 'CANCELLED') {
+      await prisma.scheduleRun.update({
+        where: { id: runId },
+        data: { status: 'CANCELLED', completedAt: new Date() },
+      });
+    }
     await safePublish(redis, runId, { type: 'state', status: 'CANCELLED' });
+    await clearCancellation(runId, redis);
     return;
   }
 
@@ -97,6 +107,11 @@ export async function processGaPipelineJob(
     const config = parseConfig(run.configJson);
     const inputs = await loadScheduleInputs(prisma, run.semesterId);
 
+    // Mutable flag read synchronously by the GA loop's shouldCancel hook.
+    // The cancel endpoint sets a Redis key; we poll it here before the
+    // sync loop starts (and after task 10 yields, between generations).
+    let cancelledFlag = false;
+
     const pendingFitnessRows: Array<{
       runId: string;
       generation: number;
@@ -107,11 +122,6 @@ export async function processGaPipelineJob(
       competencyMismatch: number;
     }> = [];
     const pendingProgressEvents: ProgressEvent[] = [];
-    // Checkpoints (techspec §7.2) — only the latest snapshot is meaningful
-    // for resume since the key is overwritten on each write. The GA loop is
-    // synchronous (Phase 3 task 10) so we hold onto the snapshot here and
-    // flush after `runPipeline` returns instead of fire-and-forgetting an
-    // unhandled async write from inside the hook.
     let latestCheckpointSnapshot: GACheckpointSnapshot | undefined;
 
     const { response } = runPipeline({
@@ -133,14 +143,19 @@ export async function processGaPipelineJob(
           });
           pendingProgressEvents.push({ type: 'progress', snapshot });
         },
-        // Phase 3 task 8 will replace this with a Redis cancellation flag
-        // fetch. Returning `false` keeps the loop running today.
-        shouldCancel: () => false,
+        shouldCancel: () => cancelledFlag,
         onCheckpoint: (snapshot: GACheckpointSnapshot) => {
           latestCheckpointSnapshot = snapshot;
         },
       },
     });
+
+    // After the sync loop returns, check whether cancellation was requested
+    // while the loop was running. If so, mark the run CANCELLED instead of
+    // the normal terminal status.
+    if (await isCancellationRequested(runId, redis)) {
+      cancelledFlag = true;
+    }
 
     if (latestCheckpointSnapshot) {
       const payload: GACheckpointPayload = {
@@ -176,6 +191,25 @@ export async function processGaPipelineJob(
     await Promise.allSettled(
       pendingProgressEvents.map((event) => publishProgressEvent(redis, runId, event)),
     );
+
+    // Cooperative cancellation: if the flag was set while the pipeline ran
+    // (or was set before but the sync loop couldn't yield to check), honour
+    // it now. The cancel endpoint already set status=CANCELLED in the DB;
+    // we just need to publish the terminal event and clean up.
+    if (cancelledFlag) {
+      await clearCancellation(runId, redis);
+      // Re-check DB — the cancel endpoint may have already set CANCELLED.
+      const currentRun = await prisma.scheduleRun.findUnique({ where: { id: runId } });
+      if (currentRun && currentRun.status !== 'CANCELLED') {
+        await prisma.scheduleRun.update({
+          where: { id: runId },
+          data: { status: 'CANCELLED', completedAt: new Date() },
+        });
+      }
+      await safePublish(redis, runId, { type: 'state', status: 'CANCELLED' });
+      log.info('Run cancelled cooperatively');
+      return;
+    }
 
     if (response.status === 'NO_FEASIBLE_CANDIDATES') {
       await prisma.scheduleRun.update({

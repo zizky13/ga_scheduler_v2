@@ -53,6 +53,7 @@ import {
   type ProgressEvent,
   type RunStatus,
 } from '../../worker/progressChannel';
+import { requestCancellation } from '../../queue/cancellation';
 import { notImplemented } from './_stub';
 
 const IDEMPOTENCY_HEADER = 'Idempotency-Key';
@@ -596,6 +597,55 @@ async function getStream(
   }
 }
 
+// ─── Cancel handler (Phase 3 Task 8) ────────────────────────────────────
+
+const CANCELLABLE_STATUSES: ReadonlySet<string> = new Set(['QUEUED', 'RUNNING']);
+
+async function postCancel(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) {
+      next(new AuthError('UNAUTHORIZED', 'Authentication required'));
+      return;
+    }
+    const { id: runId } = req.params as unknown as IdParams;
+    const repos = getCrudRepositories();
+
+    const run = await repos.scheduleRuns.findDetailById(runId);
+    if (!run || (req.user.role === 'user' && run.createdById !== req.user.id)) {
+      next(new NotFoundError('Schedule run not found'));
+      return;
+    }
+
+    if (!CANCELLABLE_STATUSES.has(run.status)) {
+      next(
+        new ConflictError(
+          'ILLEGAL_STATE_TRANSITION',
+          `Cannot cancel a run with status ${run.status}`,
+        ),
+      );
+      return;
+    }
+
+    await requestCancellation(runId);
+    await repos.scheduleRuns.cancel(runId);
+
+    await writeAudit(req, {
+      action: 'schedule_run.cancel',
+      entityType: 'ScheduleRun',
+      entityId: runId,
+      metadata: { status: run.status },
+    });
+
+    res.status(200).json({ id: runId, status: 'CANCELLED' });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export function createScheduleRunsRouter(): Router {
   const router = Router();
 
@@ -628,14 +678,14 @@ export function createScheduleRunsRouter(): Router {
     getStream,
   );
 
-  // TODO Phase 3 Task 8 (cancel): requireAuth, requireOwnerOrAdmin
   router.post(
     '/:id/cancel',
+    requireAuth(),
     validate({
       params: scheduleRunIdParamsSchema,
       body: cancelScheduleRunBodySchema,
     }),
-    notImplemented('POST /schedule-runs/:id/cancel'),
+    postCancel,
   );
 
   router.delete(

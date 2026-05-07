@@ -178,6 +178,9 @@ export interface ScheduleRunRepository {
   create(input: CreateScheduleRunInput): Promise<ScheduleRunRow>;
   markFailed(id: string, errorCode: string, errorMessage: string): Promise<void>;
 
+  // POST /schedule-runs/:id/cancel (Phase 3 Task 8)
+  cancel(id: string): Promise<void>;
+
   // GET / DELETE (Phase 3 Task 6)
   list(opts: ListOptions): Promise<ListResult<ScheduleRunSummaryRecord>>;
   findDetailById(id: string): Promise<ScheduleRunDetailRecord | null>;
@@ -243,6 +246,12 @@ export function createScheduleRunRepository(
           errorMessage,
           completedAt: new Date(),
         },
+      });
+    },
+    async cancel(id) {
+      await prisma.scheduleRun.update({
+        where: { id },
+        data: { status: 'CANCELLED', completedAt: new Date() },
       });
     },
     async list({ filter, page, pageSize, sort }) {
