@@ -102,7 +102,7 @@ function buildLecturers(): Lecturer[] {
 
 // ─── 1. Mixed scenario: some pass, some COMPETENCY_MISMATCH ──────
 describe('orchestrator preGASummary — COMPETENCY_MISMATCH is per-offering, not per-run', () => {
-  it('mixed: some offerings pass, others fail COMPETENCY_MISMATCH → SUCCESS with infeasible[] populated and GA runs on feasible subset', () => {
+  it('mixed: some offerings pass, others fail COMPETENCY_MISMATCH → SUCCESS with infeasible[] populated and GA runs on feasible subset', async () => {
     const rooms = buildRooms();
     const timeSlots = buildTimeSlots();
     const lecturers = buildLecturers();
@@ -143,7 +143,7 @@ describe('orchestrator preGASummary — COMPETENCY_MISMATCH is per-offering, not
       },
     ];
 
-    const { response } = runPipeline({
+    const { response } = await runPipeline({
       offerings, timeSlots, rooms, lecturers, config: buildBaseConfig(),
     });
 
@@ -169,7 +169,7 @@ describe('orchestrator preGASummary — COMPETENCY_MISMATCH is per-offering, not
 
 // ─── 2. All-rejected scenario ───────────────────────────────────
 describe('orchestrator preGASummary — NO_FEASIBLE_CANDIDATES only when every offering is rejected', () => {
-  it('all offerings fail COMPETENCY_MISMATCH → NO_FEASIBLE_CANDIDATES with infeasible[] containing every entry', () => {
+  it('all offerings fail COMPETENCY_MISMATCH → NO_FEASIBLE_CANDIDATES with infeasible[] containing every entry', async () => {
     const rooms = buildRooms();
     const timeSlots = buildTimeSlots();
     const lecturers = buildLecturers();
@@ -209,7 +209,7 @@ describe('orchestrator preGASummary — NO_FEASIBLE_CANDIDATES only when every o
       },
     ];
 
-    const { response } = runPipeline({
+    const { response } = await runPipeline({
       offerings, timeSlots, rooms, lecturers, config: buildBaseConfig(),
     });
 
@@ -232,7 +232,7 @@ describe('orchestrator preGASummary — NO_FEASIBLE_CANDIDATES only when every o
 
 // ─── 3. Mixed-reason scenario (non-COMPETENCY codes appear too) ─
 describe('orchestrator preGASummary — non-COMPETENCY Layer 1 codes also surface in infeasible[]', () => {
-  it('FACILITY_MISMATCH, COMPETENCY_MISMATCH, and NO_ROOMS_QUALIFY all surface as per-offering entries', () => {
+  it('FACILITY_MISMATCH, COMPETENCY_MISMATCH, and NO_ROOMS_QUALIFY all surface as per-offering entries', async () => {
     const rooms = buildRooms();
     const timeSlots = buildTimeSlots();
     const lecturers = buildLecturers();
@@ -290,7 +290,7 @@ describe('orchestrator preGASummary — non-COMPETENCY Layer 1 codes also surfac
       },
     ];
 
-    const { response } = runPipeline({
+    const { response } = await runPipeline({
       offerings, timeSlots, rooms, lecturers, config: buildBaseConfig(),
     });
 

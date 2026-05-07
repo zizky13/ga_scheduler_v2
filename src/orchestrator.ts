@@ -47,7 +47,7 @@ export interface OrchestratorOutput {
   context: OrchestratorContext;
 }
 
-export function runPipeline(input: OrchestratorInput): OrchestratorOutput {
+export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorOutput> {
   const { offerings, timeSlots, rooms, lecturers, config, hooks } = input;
   const start = performance.now();
 
@@ -120,7 +120,7 @@ export function runPipeline(input: OrchestratorInput): OrchestratorOutput {
     };
   }
 
-  const gaResult = runGA(
+  const gaResult = await runGA(
     candidates,
     lecturerStructuralMap,
     lecturerPreferenceMap,

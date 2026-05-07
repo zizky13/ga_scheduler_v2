@@ -63,24 +63,28 @@ export const CHECKPOINT_INTERVAL = 10;
  * (e.g. progress throttling, mid-run pause) can be added without churning
  * `runGA`'s signature.
  *
+ * All hooks may return a `Promise` — the async GA loop awaits them before
+ * proceeding to the next generation. This lets the worker publish progress
+ * events, write checkpoints, and poll Redis for cancellation in real-time
+ * between generations (Phase 3 task 10).
+ *
  * - `onGeneration`: called once per completed generation BEFORE stagnation /
  *   perfect-solution exits, so the worker observes every generation that ran.
- *   The synchronous loop means async work in this callback is queued — the
- *   worker buffers events and flushes them after `runGA` returns.
- *   See Phase 3 task 10 (event-loop yielding refactor).
  * - `shouldCancel`: queried at the top of every generation. Returning `true`
- *   exits the loop cleanly with the best-so-far chromosome. Phase 3 task 8
- *   wires this to the Redis cancellation flag; the hook itself stays here.
+ *   exits the loop cleanly with the best-so-far chromosome.
  * - `onCheckpoint`: called every `CHECKPOINT_INTERVAL` generations (techspec
- *   §7.2). Same buffering caveat as `onGeneration` until Phase 3 task 10.
+ *   §7.2).
  */
 export interface GAHooks {
-  onGeneration?: (snapshot: GenerationSnapshot) => void;
-  shouldCancel?: () => boolean;
-  onCheckpoint?: (snapshot: GACheckpointSnapshot) => void;
+  onGeneration?: (snapshot: GenerationSnapshot) => void | Promise<void>;
+  shouldCancel?: () => boolean | Promise<boolean>;
+  onCheckpoint?: (snapshot: GACheckpointSnapshot) => void | Promise<void>;
 }
 
-export function runGA(
+const yieldToEventLoop = (): Promise<void> =>
+  new Promise((resolve) => setImmediate(resolve));
+
+export async function runGA(
   candidates: PreGACandidate[],
   lecturerStructuralMap: Map<number, boolean>,
   lecturerPreferenceMap: Map<number, Set<number>>,
@@ -88,7 +92,7 @@ export function runGA(
   competencyEligibilityMap?: CompetencyEligibilityMap,
   allTimeSlots?: TimeSlot[],
   hooks?: GAHooks
-): GAResult {
+): Promise<GAResult> {
   const crossover = getCrossoverFn(config.crossoverType);
 
   // Build slot lookup for contiguous-block enforcement (Task 18).
@@ -116,9 +120,12 @@ export function runGA(
 
   // Step 2: Main generation loop
   for (let gen = 0; gen < config.generations; gen++) {
-    // Cooperative cancellation hook — Phase 3 task 8 wires the actual flag
-    // fetch from Redis. For now the worker passes a no-op that returns false.
-    if (hooks?.shouldCancel?.()) {
+    // Yield to the event loop so the worker can interleave cancellation
+    // checks, progress publishes, and other I/O (Phase 3 task 10,
+    // techspec §12 LOW [ARCH-OBS-02]).
+    await yieldToEventLoop();
+
+    if (await hooks?.shouldCancel?.()) {
       break;
     }
 
@@ -165,7 +172,7 @@ export function runGA(
     }
 
     if (hooks?.onGeneration) {
-      hooks.onGeneration({
+      await hooks.onGeneration({
         generation: gen + 1,
         bestFitness: best.fitness,
         avgFitness,
@@ -183,7 +190,7 @@ export function runGA(
     // Deep-copy population + bestChromosome so the worker's serialisation
     // sees the snapshot at this generation, not state mutated by later loops.
     if (hooks?.onCheckpoint && (gen + 1) % CHECKPOINT_INTERVAL === 0) {
-      hooks.onCheckpoint({
+      await hooks.onCheckpoint({
         generation: gen + 1,
         bestChromosome: cloneChromosome(overallBest!),
         bestFitness: overallBestFitness,

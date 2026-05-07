@@ -188,8 +188,8 @@ describe('processGaPipelineJob', () => {
       generationsRun: 3,
     };
 
-    mockedRunPipeline.mockImplementation((input) => {
-      input.hooks?.onGeneration?.({
+    mockedRunPipeline.mockImplementation(async (input) => {
+      await input.hooks?.onGeneration?.({
         generation: 1,
         bestFitness: 0.5,
         avgFitness: 0.4,
@@ -199,7 +199,7 @@ describe('processGaPipelineJob', () => {
         structuralPenalty: 2,
         preferencePenalty: 1,
       });
-      input.hooks?.onGeneration?.({
+      await input.hooks?.onGeneration?.({
         generation: 2,
         bestFitness: 0.7,
         avgFitness: 0.6,
@@ -209,7 +209,7 @@ describe('processGaPipelineJob', () => {
         structuralPenalty: 1,
         preferencePenalty: 1,
       });
-      input.hooks?.onGeneration?.({
+      await input.hooks?.onGeneration?.({
         generation: 3,
         bestFitness: 0.99,
         avgFitness: 0.85,
@@ -304,9 +304,10 @@ describe('processGaPipelineJob', () => {
       generationsRun: 20,
     };
 
-    mockedRunPipeline.mockImplementation((input) => {
-      // Two checkpoint snapshots — only the latest should be persisted.
-      input.hooks?.onCheckpoint?.({
+    mockedRunPipeline.mockImplementation(async (input) => {
+      // Two checkpoint snapshots — both are written in real-time (Phase 3
+      // task 10: async hooks with event-loop yielding).
+      await input.hooks?.onCheckpoint?.({
         generation: 10,
         bestChromosome: [],
         bestFitness: 0.5,
@@ -316,7 +317,7 @@ describe('processGaPipelineJob', () => {
         avgHistory: [0.2, 0.4],
         candidates: [],
       });
-      input.hooks?.onCheckpoint?.({
+      await input.hooks?.onCheckpoint?.({
         generation: 20,
         bestChromosome: [],
         bestFitness: 0.9,
@@ -357,8 +358,10 @@ describe('processGaPipelineJob', () => {
     await processGaPipelineJob(prisma, redis, { data: { runId: 'run-1' } });
 
     expect(runs.get('run-1')!.status).toBe('COMPLETED');
-    expect(setCalls).toHaveLength(1);
-    const checkpoint = setCalls[0]!;
+    expect(setCalls).toHaveLength(2);
+
+    // Both checkpoints are persisted; verify the latest (last) one.
+    const checkpoint = setCalls[1]!;
     expect(checkpoint.key).toBe('ga:run:run-1:checkpoint');
     expect(checkpoint.mode).toBe('EX');
     expect(checkpoint.ttl).toBe(60 * 60);
@@ -389,8 +392,8 @@ describe('processGaPipelineJob', () => {
       generationsRun: 1,
     };
 
-    mockedRunPipeline.mockImplementation((input) => {
-      input.hooks?.onGeneration?.({
+    mockedRunPipeline.mockImplementation(async (input) => {
+      await input.hooks?.onGeneration?.({
         generation: 1,
         bestFitness: 0.4,
         avgFitness: 0.3,
@@ -437,7 +440,7 @@ describe('processGaPipelineJob', () => {
     const { prisma, runs } = makePrismaStub([baseRun()]);
     const { redis, calls } = makeRedisStub();
 
-    mockedRunPipeline.mockReturnValue({
+    mockedRunPipeline.mockResolvedValue({
       response: {
         status: 'NO_FEASIBLE_CANDIDATES',
         preGASummary: {
@@ -471,7 +474,7 @@ describe('processGaPipelineJob', () => {
     const { prisma, runs } = makePrismaStub([baseRun()]);
     const { redis, calls } = makeRedisStub();
 
-    mockedRunPipeline.mockReturnValue({
+    mockedRunPipeline.mockResolvedValue({
       response: {
         status: 'INFEASIBLE',
         preGASummary: { feasible: 1, infeasible: [] },
@@ -530,7 +533,7 @@ describe('processGaPipelineJob', () => {
       generationsRun: 100,
     };
 
-    mockedRunPipeline.mockReturnValue({
+    mockedRunPipeline.mockResolvedValue({
       response: {
         status: 'SUCCESS',
         preGASummary: { feasible: 1, infeasible: [] },
@@ -572,9 +575,7 @@ describe('processGaPipelineJob', () => {
     const { prisma, runs } = makePrismaStub([baseRun()]);
     const { redis, calls } = makeRedisStub();
 
-    mockedRunPipeline.mockImplementation(() => {
-      throw new Error('boom in pipeline');
-    });
+    mockedRunPipeline.mockRejectedValue(new Error('boom in pipeline'));
 
     await expect(
       processGaPipelineJob(prisma, redis, { data: { runId: 'run-1' } }),

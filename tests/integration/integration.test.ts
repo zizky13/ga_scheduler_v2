@@ -184,7 +184,7 @@ function buildStagnationCandidates(): {
 
 // ─── 1. Easy-dataset convergence ────────────────────────────────
 describe('Layer 3 integration — easy-dataset convergence', () => {
-  it('runPreGA → runSSA → runGA reaches hardViolations === 0 on a small easy dataset', () => {
+  it('runPreGA → runSSA → runGA reaches hardViolations === 0 on a small easy dataset', async () => {
     const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
 
     const { validation, candidates } = runPreGA(offerings, timeSlots);
@@ -213,7 +213,7 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
       softPenaltyWeight: 1,
     };
 
-    const result = runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
 
     expect(result.hardViolations).toBe(0);
     expect(result.generationsRun).toBeLessThanOrEqual(config.generations);
@@ -239,7 +239,7 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
 
 // ─── 2. Stagnation exit ─────────────────────────────────────────
 describe('Layer 3 integration — stagnation exit', () => {
-  it('runGA early-exits with stagnatedEarly=true when fitness cannot improve', () => {
+  it('runGA early-exits with stagnatedEarly=true when fitness cannot improve', async () => {
     const { candidates, lecturerStructuralMap, lecturerPreferenceMap } = buildStagnationCandidates();
 
     // Generations budget large enough that the stagnation window (100) is
@@ -256,7 +256,7 @@ describe('Layer 3 integration — stagnation exit', () => {
       softPenaltyWeight: 1,
     };
 
-    const result = runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
 
     expect(result.stagnatedEarly).toBe(true);
     expect(result.hardViolations).toBeGreaterThan(0);
@@ -354,7 +354,7 @@ describe('Layer 3 integration — Fixed Room invariant across generations', () =
     }
   });
 
-  it('runGA bestChromosome preserves Fixed Room invariant when run end-to-end on the seed dataset', () => {
+  it('runGA bestChromosome preserves Fixed Room invariant when run end-to-end on the seed dataset', async () => {
     const { validation, candidates } = runPreGA(seedCourseOfferings, seedTimeSlots);
     expect(validation.infeasible).toHaveLength(0);
 
@@ -385,7 +385,7 @@ describe('Layer 3 integration — Fixed Room invariant across generations', () =
       softPenaltyWeight: 1,
     };
 
-    const result = runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
 
       for (const gene of result.bestChromosome) {
         const expectedRoom = fixedRoomById.get(gene.offeringId);
@@ -410,7 +410,7 @@ describe('Layer 3 integration — Fixed Room invariant across generations', () =
 
 // ─── 4. Elitism monotonicity ────────────────────────────────────
 describe('Layer 3 integration — elitism monotonicity', () => {
-  it('best fitness in history[] is monotonically non-decreasing', () => {
+  it('best fitness in history[] is monotonically non-decreasing', async () => {
     // Use the seed dataset so the run exercises both FIXED and FLEXIBLE
     // genes plus structural / preference soft penalties.
     const { validation, candidates } = runPreGA(seedCourseOfferings, seedTimeSlots);
@@ -437,7 +437,7 @@ describe('Layer 3 integration — elitism monotonicity', () => {
       softPenaltyWeight: 1,
     };
 
-    const result = runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
 
     expect(result.history.length).toBeGreaterThan(1);
     // Elitism (elitismCount >= 1) guarantees the previous generation's best
@@ -452,7 +452,7 @@ describe('Layer 3 integration — elitism monotonicity', () => {
     }
   });
 
-  it('best fitness in history[] stays monotonic on the easy dataset', () => {
+  it('best fitness in history[] stays monotonic on the easy dataset', async () => {
     const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
     const { candidates } = runPreGA(offerings, timeSlots);
     const ssaResult = runSSA(candidates, timeSlots);
@@ -477,7 +477,7 @@ describe('Layer 3 integration — elitism monotonicity', () => {
       softPenaltyWeight: 1,
     };
 
-    const result = runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
 
     // The easy dataset can converge in a single generation (perfect solution
     // discovered in the initial random population), in which case there is

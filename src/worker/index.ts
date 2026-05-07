@@ -7,13 +7,12 @@
  * `FitnessHistory` rows, and publishes `state` / `progress` / `error` events
  * on `ga-progress:<runId>`.
  *
- * Buffering note: the GA loop in `src/ga/runGA.ts` is currently synchronous
- * (no `await`, no `setImmediate`), so async work scheduled from inside the
- * `onGeneration` hook would queue up behind the loop and never drain mid-run.
- * Phase 3 task 10 refactors the loop to yield. Until then this worker buffers
- * the per-generation snapshots in memory and flushes them after `runPipeline`
- * returns. Events are still persisted and published in order — they just
- * arrive in a single burst at the end rather than streaming live.
+ * The async GA loop (Phase 3 task 10) yields between generations via
+ * `setImmediate`, so hooks can do real-time I/O: `onGeneration` publishes
+ * progress events and buffers fitness rows for batch persistence,
+ * `shouldCancel` polls Redis for the cancellation flag, and `onCheckpoint`
+ * writes checkpoint snapshots to Redis — all streaming live instead of
+ * arriving in a burst after the loop returns.
  */
 
 import { Worker, type Job } from 'bullmq';
@@ -107,11 +106,11 @@ export async function processGaPipelineJob(
     const config = parseConfig(run.configJson);
     const inputs = await loadScheduleInputs(prisma, run.semesterId);
 
-    // Mutable flag read synchronously by the GA loop's shouldCancel hook.
-    // The cancel endpoint sets a Redis key; we poll it here before the
-    // sync loop starts (and after task 10 yields, between generations).
     let cancelledFlag = false;
 
+    // Fitness rows are buffered for batch persistence after the loop.
+    // Progress events and checkpoints are published in real-time via async
+    // hooks (Phase 3 task 10).
     const pendingFitnessRows: Array<{
       runId: string;
       generation: number;
@@ -121,17 +120,15 @@ export async function processGaPipelineJob(
       softPenalty: number;
       competencyMismatch: number;
     }> = [];
-    const pendingProgressEvents: ProgressEvent[] = [];
-    let latestCheckpointSnapshot: GACheckpointSnapshot | undefined;
 
-    const { response } = runPipeline({
+    const { response } = await runPipeline({
       offerings: inputs.offerings,
       timeSlots: inputs.timeSlots,
       rooms: inputs.rooms,
       lecturers: inputs.lecturers,
       config,
       hooks: {
-        onGeneration: (snapshot: GenerationSnapshot) => {
+        async onGeneration(snapshot: GenerationSnapshot) {
           pendingFitnessRows.push({
             runId,
             generation: snapshot.generation,
@@ -141,43 +138,37 @@ export async function processGaPipelineJob(
             softPenalty: snapshot.softPenalty,
             competencyMismatch: snapshot.competencyMismatch,
           });
-          pendingProgressEvents.push({ type: 'progress', snapshot });
+          await safePublish(redis, runId, { type: 'progress', snapshot });
         },
-        shouldCancel: () => cancelledFlag,
-        onCheckpoint: (snapshot: GACheckpointSnapshot) => {
-          latestCheckpointSnapshot = snapshot;
+        async shouldCancel() {
+          if (cancelledFlag) return true;
+          if (await isCancellationRequested(runId, redis)) {
+            cancelledFlag = true;
+            return true;
+          }
+          return false;
+        },
+        async onCheckpoint(snapshot: GACheckpointSnapshot) {
+          const payload: GACheckpointPayload = {
+            runId,
+            generation: snapshot.generation,
+            bestChromosome: snapshot.bestChromosome,
+            bestFitness: snapshot.bestFitness,
+            hardViolations: snapshot.hardViolations,
+            population: snapshot.population,
+            history: snapshot.history,
+            avgHistory: snapshot.avgHistory,
+            candidates: snapshot.candidates,
+            checkpointedAt: new Date().toISOString(),
+          };
+          try {
+            await writeCheckpoint(runId, payload, undefined, redis);
+          } catch (err) {
+            log.warn({ err }, 'checkpoint write failed');
+          }
         },
       },
     });
-
-    // After the sync loop returns, check whether cancellation was requested
-    // while the loop was running. If so, mark the run CANCELLED instead of
-    // the normal terminal status.
-    if (await isCancellationRequested(runId, redis)) {
-      cancelledFlag = true;
-    }
-
-    if (latestCheckpointSnapshot) {
-      const payload: GACheckpointPayload = {
-        runId,
-        generation: latestCheckpointSnapshot.generation,
-        bestChromosome: latestCheckpointSnapshot.bestChromosome,
-        bestFitness: latestCheckpointSnapshot.bestFitness,
-        hardViolations: latestCheckpointSnapshot.hardViolations,
-        population: latestCheckpointSnapshot.population,
-        history: latestCheckpointSnapshot.history,
-        avgHistory: latestCheckpointSnapshot.avgHistory,
-        candidates: latestCheckpointSnapshot.candidates,
-        checkpointedAt: new Date().toISOString(),
-      };
-      try {
-        await writeCheckpoint(runId, payload, undefined, redis);
-      } catch (err) {
-        // Don't fail the whole run if checkpointing fails — checkpoints are
-        // a recovery aid, not a correctness requirement.
-        log.warn({ err }, 'checkpoint write failed');
-      }
-    }
 
     if (pendingFitnessRows.length > 0) {
       await prisma.fitnessHistory.createMany({
@@ -186,19 +177,8 @@ export async function processGaPipelineJob(
       });
     }
 
-    // Use allSettled so a transient Redis error on one publish doesn't
-    // discard the rest of the buffered events or fail the whole job.
-    await Promise.allSettled(
-      pendingProgressEvents.map((event) => publishProgressEvent(redis, runId, event)),
-    );
-
-    // Cooperative cancellation: if the flag was set while the pipeline ran
-    // (or was set before but the sync loop couldn't yield to check), honour
-    // it now. The cancel endpoint already set status=CANCELLED in the DB;
-    // we just need to publish the terminal event and clean up.
     if (cancelledFlag) {
       await clearCancellation(runId, redis);
-      // Re-check DB — the cancel endpoint may have already set CANCELLED.
       const currentRun = await prisma.scheduleRun.findUnique({ where: { id: runId } });
       if (currentRun && currentRun.status !== 'CANCELLED') {
         await prisma.scheduleRun.update({

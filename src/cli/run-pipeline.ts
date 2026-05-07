@@ -17,17 +17,6 @@ import { formatGeneLines, formatSession, isContiguous } from './_format.js';
 const DIVIDER = '═'.repeat(60);
 const SDIVIDER = '─'.repeat(60);
 
-console.log(`\n${DIVIDER}`);
-console.log('  GA SCHEDULER v2 — Full Pipeline Orchestrator');
-console.log('  Three-Layer Architecture Backbone Validation');
-console.log(DIVIDER);
-console.log();
-
-const pipelineStart = performance.now();
-
-const allOfferings = [...courseOfferings, ...infeasibleOfferings];
-const crossoverTypes = ['singlePoint', 'uniform', 'pmx'] as const;
-
 function buildConfig(crossoverType: GAConfig['crossoverType']): GAConfig {
   return {
     populationSize: 80,
@@ -42,6 +31,18 @@ function buildConfig(crossoverType: GAConfig['crossoverType']): GAConfig {
   };
 }
 
+async function main(): Promise<void> {
+console.log(`\n${DIVIDER}`);
+console.log('  GA SCHEDULER v2 — Full Pipeline Orchestrator');
+console.log('  Three-Layer Architecture Backbone Validation');
+console.log(DIVIDER);
+console.log();
+
+const pipelineStart = performance.now();
+
+const allOfferings = [...courseOfferings, ...infeasibleOfferings];
+const crossoverTypes = ['singlePoint', 'uniform', 'pmx'] as const;
+
 // ═══════════════════════════════════════════════════════════════
 // LAYER 1: Pre-GA Policy Engine (presentation comes from first run)
 // ═══════════════════════════════════════════════════════════════
@@ -52,15 +53,11 @@ console.log('└─────────────────────�
 
 console.log(`  Input: ${allOfferings.length} offerings, ${timeSlots.length} time slots`);
 
-// First run captures the pre-GA / SSA results we use for the Layer 1 and
-// Layer 2 sections. The GA's per-generation progress logs are muted here
-// so they don't leak into the Layer 1 presentation; they print live for
-// each crossover variant in the loop below.
 const realLog = console.log;
 const realWarn = console.warn;
 console.log = () => {};
 console.warn = () => {};
-const firstRun = runPipeline({
+const firstRun = await runPipeline({
   offerings: allOfferings,
   timeSlots,
   rooms,
@@ -162,7 +159,7 @@ for (const crossoverType of crossoverTypes) {
   console.log(`  Crossover: ${crossoverType.toUpperCase()}`);
   console.log(`  ${SDIVIDER}`);
 
-  const run = runPipeline({
+  const run = await runPipeline({
     offerings: allOfferings,
     timeSlots,
     rooms,
@@ -337,7 +334,7 @@ const realLog2 = console.log;
 const realWarn2 = console.warn;
 console.log = () => {};
 console.warn = () => {};
-const demoRun = runPipeline({
+const demoRun = await runPipeline({
   offerings: demo.offerings,
   timeSlots: demo.timeSlots,
   rooms: demo.rooms,
@@ -416,3 +413,6 @@ console.log(DIVIDER);
 console.log(`  Total Duration:    ${totalDuration}ms`);
 console.log(`  Layer 3 (GA):      3 crossover runs above + 1 long-session demo`);
 console.log(`\n  Architecture: All 3 layers operational. ✅\n`);
+}
+
+main().catch((err) => { console.error(err); process.exit(1); });
