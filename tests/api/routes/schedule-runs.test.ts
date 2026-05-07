@@ -1,9 +1,13 @@
 /**
  * Phase 3 Task 5 — `POST /schedule-runs` route tests.
+ * Phase 3 Task 6 — `GET /schedule-runs`, `GET /schedule-runs/:id`,
+ *                  `DELETE /schedule-runs/:id` route tests.
  *
  * Covers: happy path 202, idempotent replay (same key + body), 409 idempotency
  * conflict, 400 schema, 422 NO_ACTIVE_SEMESTER, 429 rate limit, 503
- * QUEUE_UNAVAILABLE, 401 unauth, audit row.
+ * QUEUE_UNAVAILABLE, 401 unauth, audit row, and the read/delete endpoints
+ * including owner-vs-admin filtering and the 409 ILLEGAL_STATE_TRANSITION
+ * on RUNNING delete.
  */
 
 import {
@@ -333,5 +337,274 @@ describe('POST /schedule-runs', () => {
 
     expect(res.status).toBe(202);
     expect(res.body.createdById).toBe(1);
+  });
+});
+
+// ─── GET / DELETE (Phase 3 Task 6) ─────────────────────────────────────────
+
+const adminBearer = () =>
+  `Bearer ${signAccessToken({ id: 1, email: 'a@upj.ac.id', role: 'admin' })}`;
+
+function seedAdmin(): void {
+  fixture.insertUser({ id: 1, email: 'a@upj.ac.id', fullName: 'A', role: 'ADMIN' });
+}
+
+function seedRun(
+  overrides: Partial<Parameters<CrudFixture['insertScheduleRun']>[0]>,
+): ReturnType<CrudFixture['insertScheduleRun']> {
+  return fixture.insertScheduleRun({
+    id: 'run-x',
+    semesterId: 1,
+    createdById: 7,
+    ...overrides,
+  });
+}
+
+describe('GET /schedule-runs', () => {
+  it('401 without bearer', async () => {
+    const res = await request(app).get('/api/v1/schedule-runs');
+    expect(res.status).toBe(401);
+  });
+
+  it('user only sees own runs (owner-vs-admin filter at repo)', async () => {
+    seedUser();
+    seedAdmin();
+    seedRun({ id: 'run-mine', createdById: 7, status: 'COMPLETED' });
+    seedRun({ id: 'run-other', createdById: 1, status: 'COMPLETED' });
+
+    const res = await request(app)
+      .get('/api/v1/schedule-runs')
+      .set('Authorization', userBearer());
+
+    expect(res.status).toBe(200);
+    expect(res.body.meta.total).toBe(1);
+    const ids = (res.body.data as Array<{ id: string }>).map((r) => r.id);
+    expect(ids).toEqual(['run-mine']);
+  });
+
+  it('admin sees every run regardless of createdById', async () => {
+    seedAdmin();
+    seedRun({ id: 'run-1', createdById: 7, status: 'COMPLETED' });
+    seedRun({ id: 'run-2', createdById: 1, status: 'COMPLETED' });
+
+    const res = await request(app)
+      .get('/api/v1/schedule-runs')
+      .set('Authorization', adminBearer());
+
+    expect(res.status).toBe(200);
+    expect(res.body.meta.total).toBe(2);
+  });
+
+  it('honours status / semesterId / pagination / sort filters', async () => {
+    seedAdmin();
+    seedRun({ id: 'r-q', createdById: 1, semesterId: 1, status: 'QUEUED', bestFitness: 0.1 });
+    seedRun({ id: 'r-c1', createdById: 1, semesterId: 1, status: 'COMPLETED', bestFitness: 0.5 });
+    seedRun({ id: 'r-c2', createdById: 1, semesterId: 2, status: 'COMPLETED', bestFitness: 0.9 });
+
+    // status filter
+    const byStatus = await request(app)
+      .get('/api/v1/schedule-runs?status=COMPLETED')
+      .set('Authorization', adminBearer());
+    expect(byStatus.status).toBe(200);
+    expect(byStatus.body.meta.total).toBe(2);
+
+    // semesterId filter
+    const bySem = await request(app)
+      .get('/api/v1/schedule-runs?semesterId=2')
+      .set('Authorization', adminBearer());
+    expect(bySem.status).toBe(200);
+    expect(bySem.body.meta.total).toBe(1);
+    expect(bySem.body.data[0].id).toBe('r-c2');
+
+    // sort by -bestFitness
+    const sorted = await request(app)
+      .get('/api/v1/schedule-runs?sort=-bestFitness')
+      .set('Authorization', adminBearer());
+    expect(sorted.status).toBe(200);
+    const sortedIds = (sorted.body.data as Array<{ id: string }>).map((r) => r.id);
+    expect(sortedIds).toEqual(['r-c2', 'r-c1', 'r-q']);
+  });
+
+  it('summary projection omits heavy JSON fields', async () => {
+    seedAdmin();
+    seedRun({
+      id: 'run-heavy',
+      createdById: 1,
+      status: 'COMPLETED',
+      configJson: '{"populationSize":50}',
+      historyJson: '[0.1,0.2]',
+      preGASummaryJson: '{"feasible":3,"infeasible":[]}',
+    });
+    const res = await request(app)
+      .get('/api/v1/schedule-runs')
+      .set('Authorization', adminBearer());
+    expect(res.status).toBe(200);
+    const row = res.body.data[0] as Record<string, unknown>;
+    expect(row.id).toBe('run-heavy');
+    expect(row.config).toBeUndefined();
+    expect(row.history).toBeUndefined();
+    expect(row.preGASummary).toBeUndefined();
+  });
+});
+
+describe('GET /schedule-runs/:id', () => {
+  it('401 without bearer', async () => {
+    const res = await request(app).get('/api/v1/schedule-runs/run-x');
+    expect(res.status).toBe(401);
+  });
+
+  it('200 — owner sees full detail incl. parsed JSON fields and assignments', async () => {
+    seedUser();
+    seedRun({
+      id: 'run-detail',
+      createdById: 7,
+      status: 'COMPLETED',
+      configJson: '{"populationSize":50,"generations":100}',
+      preGASummaryJson: '{"feasible":3,"infeasible":[]}',
+      ssaResultJson: '{"status":"FEASIBLE","totalSessionsRequired":3,"maximumAchievableMatching":3}',
+      historyJson: '[0.1,0.5,0.9]',
+      avgHistoryJson: '[0.05,0.4,0.8]',
+      bestFitness: 0.9,
+      hardViolations: 0,
+      softPenalty: 5,
+      generationsRun: 50,
+      durationMs: 12345,
+    });
+    fixture.insertScheduleAssignment({
+      id: 1,
+      runId: 'run-detail',
+      offeringId: 6,
+      roomId: 3,
+      sessionIndex: 0,
+      isFixedRoom: true,
+      slots: [{ id: 1, day: 'MONDAY', startTime: '08:00', endTime: '08:50' }],
+      offering: {
+        id: 6,
+        courseCode: 'IF301',
+        courseName: 'Rekayasa Perangkat Lunak',
+        lecturers: [{ id: 5, name: 'Eko Prasetyo, M.Sc.' }],
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/v1/schedule-runs/run-detail')
+      .set('Authorization', userBearer());
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('run-detail');
+    expect(res.body.status).toBe('COMPLETED');
+    expect(res.body.config).toEqual({ populationSize: 50, generations: 100 });
+    expect(res.body.preGASummary).toEqual({ feasible: 3, infeasible: [] });
+    expect(res.body.history).toEqual([0.1, 0.5, 0.9]);
+    expect(res.body.avgHistory).toEqual([0.05, 0.4, 0.8]);
+    expect(res.body.assignments).toHaveLength(1);
+    expect(res.body.assignments[0]).toEqual(
+      expect.objectContaining({
+        id: 1,
+        offeringId: 6,
+        roomId: 3,
+        isFixedRoom: true,
+        offering: expect.objectContaining({ courseCode: 'IF301' }),
+      }),
+    );
+  });
+
+  it('404 — `user` requesting another owner\'s run does NOT leak existence', async () => {
+    seedUser();
+    seedRun({ id: 'run-other', createdById: 99, status: 'COMPLETED' });
+
+    const res = await request(app)
+      .get('/api/v1/schedule-runs/run-other')
+      .set('Authorization', userBearer());
+
+    expect(res.status).toBe(404);
+  });
+
+  it('200 — admin can read any run', async () => {
+    seedAdmin();
+    seedRun({ id: 'run-other', createdById: 99, status: 'COMPLETED' });
+
+    const res = await request(app)
+      .get('/api/v1/schedule-runs/run-other')
+      .set('Authorization', adminBearer());
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe('run-other');
+  });
+
+  it('404 when run does not exist', async () => {
+    seedAdmin();
+    const res = await request(app)
+      .get('/api/v1/schedule-runs/run-missing')
+      .set('Authorization', adminBearer());
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('DELETE /schedule-runs/:id', () => {
+  it('401 without bearer', async () => {
+    const res = await request(app).delete('/api/v1/schedule-runs/run-x');
+    expect(res.status).toBe(401);
+  });
+
+  it('204 — owner can hard-delete a COMPLETED run; row gone, audit recorded', async () => {
+    seedUser();
+    seedRun({ id: 'run-del', createdById: 7, status: 'COMPLETED' });
+
+    const res = await request(app)
+      .delete('/api/v1/schedule-runs/run-del')
+      .set('Authorization', userBearer());
+
+    expect(res.status).toBe(204);
+    expect(fixture.scheduleRunStore.has('run-del')).toBe(false);
+    const audit = fixture.auditLogStore.find((a) => a.action === 'schedule_run.delete');
+    expect(audit).toBeDefined();
+    expect(audit?.entityId).toBe('run-del');
+    expect(JSON.parse(audit!.metadata!).status).toBe('COMPLETED');
+  });
+
+  it('204 — admin can delete any run', async () => {
+    seedAdmin();
+    seedRun({ id: 'run-other', createdById: 99, status: 'COMPLETED' });
+
+    const res = await request(app)
+      .delete('/api/v1/schedule-runs/run-other')
+      .set('Authorization', adminBearer());
+    expect(res.status).toBe(204);
+    expect(fixture.scheduleRunStore.has('run-other')).toBe(false);
+  });
+
+  it('409 ILLEGAL_STATE_TRANSITION when status === RUNNING', async () => {
+    seedAdmin();
+    seedRun({ id: 'run-running', createdById: 1, status: 'RUNNING' });
+
+    const res = await request(app)
+      .delete('/api/v1/schedule-runs/run-running')
+      .set('Authorization', adminBearer());
+
+    expect(res.status).toBe(409);
+    expect(res.body.error?.code).toBe('ILLEGAL_STATE_TRANSITION');
+    expect(fixture.scheduleRunStore.has('run-running')).toBe(true);
+  });
+
+  it('404 — `user` deleting another owner\'s run does NOT leak existence', async () => {
+    seedUser();
+    seedRun({ id: 'run-other', createdById: 99, status: 'COMPLETED' });
+
+    const res = await request(app)
+      .delete('/api/v1/schedule-runs/run-other')
+      .set('Authorization', userBearer());
+
+    expect(res.status).toBe(404);
+    // Untouched: the row still exists.
+    expect(fixture.scheduleRunStore.has('run-other')).toBe(true);
+  });
+
+  it('404 when run does not exist', async () => {
+    seedAdmin();
+    const res = await request(app)
+      .delete('/api/v1/schedule-runs/missing')
+      .set('Authorization', adminBearer());
+    expect(res.status).toBe(404);
   });
 });

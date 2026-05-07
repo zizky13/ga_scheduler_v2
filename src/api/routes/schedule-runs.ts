@@ -34,13 +34,19 @@ import {
   AuthError,
   ConflictError,
   DomainError,
+  NotFoundError,
   ServiceUnavailableError,
 } from '../errors';
-import { isPrismaUniqueViolation } from '../lib/prismaErrors';
+import { isPrismaNotFound, isPrismaUniqueViolation } from '../lib/prismaErrors';
 import { getCrudRepositories } from '../lib/crudContext';
+import { buildListResponse } from '../lib/listResponse';
 import { writeAudit } from '../lib/audit';
 import { enqueueGaPipelineRun } from '../../queue/ga-pipeline';
-import type { ScheduleRunRow } from '../../repo/scheduleRunRepo';
+import type {
+  ScheduleRunDetailRecord,
+  ScheduleRunRow,
+  ScheduleRunSummaryRecord,
+} from '../../repo/scheduleRunRepo';
 import { notImplemented } from './_stub';
 
 const IDEMPOTENCY_HEADER = 'Idempotency-Key';
@@ -217,14 +223,232 @@ async function postCreate(
   }
 }
 
+// ─── GET / DELETE handlers (Phase 3 Task 6) ───────────────────────────────
+
+interface ListQuery {
+  page: number;
+  pageSize: number;
+  sort?: string;
+  status?: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'STAGNATED' | 'SSA_INFEASIBLE' | 'PRE_GA_EMPTY' | 'CANCELLED' | 'FAILED';
+  semesterId?: number;
+}
+
+interface ScheduleRunSummaryWire {
+  id: string;
+  status: string;
+  semesterId: number;
+  createdById: number;
+  bestFitness: number;
+  hardViolations: number;
+  softPenalty: number;
+  competencyMismatch: number;
+  generationsRun: number;
+  currentGeneration: number;
+  stagnatedEarly: boolean;
+  durationMs: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+function toSummaryWire(r: ScheduleRunSummaryRecord): ScheduleRunSummaryWire {
+  return {
+    id: r.id,
+    status: r.status,
+    semesterId: r.semesterId,
+    createdById: r.createdById,
+    bestFitness: r.bestFitness,
+    hardViolations: r.hardViolations,
+    softPenalty: r.softPenalty,
+    competencyMismatch: r.competencyMismatch,
+    generationsRun: r.generationsRun,
+    currentGeneration: r.currentGeneration,
+    stagnatedEarly: r.stagnatedEarly,
+    durationMs: r.durationMs,
+    errorCode: r.errorCode,
+    errorMessage: r.errorMessage,
+    startedAt: r.startedAt ? r.startedAt.toISOString() : null,
+    completedAt: r.completedAt ? r.completedAt.toISOString() : null,
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Tolerant JSON parse — the column may already contain `null` (no SSA run yet)
+ * or `[]` (no history yet). Anything malformed returns the raw string so the
+ * audit trail isn't lost; the frontend can fall back gracefully.
+ */
+function parseJsonField(raw: string | null): unknown {
+  if (raw === null) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+async function getList(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) {
+      next(new AuthError('UNAUTHORIZED', 'Authentication required'));
+      return;
+    }
+    const q = req.query as unknown as ListQuery;
+    const repos = getCrudRepositories();
+
+    // Owner-vs-admin filter: `user` callers always see only their own runs.
+    // Admin sees everything. The repo just honours `filter.createdById`.
+    const filter: { status?: ListQuery['status']; semesterId?: number; createdById?: number } = {};
+    if (q.status !== undefined) filter.status = q.status;
+    if (q.semesterId !== undefined) filter.semesterId = q.semesterId;
+    if (req.user.role === 'user') filter.createdById = req.user.id;
+
+    const opts: Parameters<typeof repos.scheduleRuns.list>[0] = {
+      filter,
+      page: q.page,
+      pageSize: q.pageSize,
+    };
+    if (q.sort !== undefined) opts.sort = q.sort;
+
+    const { rows, total } = await repos.scheduleRuns.list(opts);
+    res.status(200).json(
+      buildListResponse(rows.map(toSummaryWire), {
+        page: q.page,
+        pageSize: q.pageSize,
+        total,
+      }),
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+interface IdParams {
+  id: string;
+}
+
+interface ScheduleRunDetailWire extends ScheduleRunSummaryWire {
+  config: unknown;
+  preGASummary: unknown;
+  ssaResult: unknown;
+  history: unknown;
+  avgHistory: unknown;
+  idempotencyKey: string | null;
+  assignments: unknown[];
+}
+
+function toDetailWire(
+  r: ScheduleRunDetailRecord,
+  assignments: unknown[],
+): ScheduleRunDetailWire {
+  return {
+    ...toSummaryWire(r),
+    config: parseJsonField(r.configJson),
+    preGASummary: parseJsonField(r.preGASummaryJson),
+    ssaResult: parseJsonField(r.ssaResultJson),
+    history: parseJsonField(r.historyJson),
+    avgHistory: parseJsonField(r.avgHistoryJson),
+    idempotencyKey: r.idempotencyKey,
+    assignments,
+  };
+}
+
+async function getOne(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) {
+      next(new AuthError('UNAUTHORIZED', 'Authentication required'));
+      return;
+    }
+    const { id } = req.params as unknown as IdParams;
+    const repos = getCrudRepositories();
+    const row = await repos.scheduleRuns.findDetailById(id);
+
+    // Owner-vs-admin: a non-owner `user` gets 404 (api_design §5.2 — never
+    // leak existence). Admin always sees the row.
+    if (!row || (req.user.role === 'user' && row.createdById !== req.user.id)) {
+      next(new NotFoundError('Schedule run not found'));
+      return;
+    }
+
+    const assignments = await repos.scheduleRuns.findAssignments(id);
+    res.status(200).json(toDetailWire(row, assignments));
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function deleteOne(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) {
+      next(new AuthError('UNAUTHORIZED', 'Authentication required'));
+      return;
+    }
+    const { id } = req.params as unknown as IdParams;
+    const repos = getCrudRepositories();
+
+    const existing = await repos.scheduleRuns.findDetailById(id);
+    if (!existing || (req.user.role === 'user' && existing.createdById !== req.user.id)) {
+      next(new NotFoundError('Schedule run not found'));
+      return;
+    }
+
+    // 409 if RUNNING — must cancel first (api_design §5.3.8).
+    if (existing.status === 'RUNNING') {
+      next(
+        new ConflictError(
+          'ILLEGAL_STATE_TRANSITION',
+          'Cannot delete a RUNNING schedule run; cancel it first',
+        ),
+      );
+      return;
+    }
+
+    try {
+      await repos.scheduleRuns.delete(id);
+    } catch (err) {
+      if (isPrismaNotFound(err)) {
+        next(new NotFoundError('Schedule run not found'));
+        return;
+      }
+      throw err;
+    }
+
+    // §8 audit: `schedule_run.delete` carries `{ status }` (the prior status).
+    await writeAudit(req, {
+      action: 'schedule_run.delete',
+      entityType: 'ScheduleRun',
+      entityId: id,
+      metadata: { status: existing.status },
+    });
+
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
 export function createScheduleRunsRouter(): Router {
   const router = Router();
 
-  // TODO Phase 3 Task 6: requireAuth, owner-or-admin filtering on list.
   router.get(
     '/',
+    requireAuth(),
     validate({ query: listScheduleRunsQuerySchema }),
-    notImplemented('GET /schedule-runs'),
+    getList,
   );
 
   router.post(
@@ -235,11 +459,11 @@ export function createScheduleRunsRouter(): Router {
     postCreate,
   );
 
-  // TODO Phase 3 Task 6: requireAuth, requireOwnerOrAdmin
   router.get(
     '/:id',
+    requireAuth(),
     validate({ params: scheduleRunIdParamsSchema }),
-    notImplemented('GET /schedule-runs/:id'),
+    getOne,
   );
 
   // TODO Phase 3 Task 7 (SSE): requireAuth, requireOwnerOrAdmin
@@ -259,11 +483,11 @@ export function createScheduleRunsRouter(): Router {
     notImplemented('POST /schedule-runs/:id/cancel'),
   );
 
-  // TODO Phase 3 Task 6: requireAuth, requireOwnerOrAdmin
   router.delete(
     '/:id',
+    requireAuth(),
     validate({ params: scheduleRunIdParamsSchema }),
-    notImplemented('DELETE /schedule-runs/:id'),
+    deleteOne,
   );
 
   // TODO Phase 3 Task 9 (assignment override): requireAuth, requireOwnerOrAdmin

@@ -55,10 +55,20 @@ import type {
 } from '../../../src/repo/auditLogRepo';
 import type {
   CreateScheduleRunInput,
+  ScheduleRunAssignmentDetail,
+  ScheduleRunDetailRecord,
   ScheduleRunRepository,
   ScheduleRunRow,
+  ScheduleRunSummaryRecord,
 } from '../../../src/repo/scheduleRunRepo';
 import type { CrudRepositories } from '../../../src/api/lib/crudContext';
+
+/**
+ * Full ScheduleRun record stored in the fixture map. The repo's slim/summary/
+ * detail projections are derived from this one record so seeders can stuff
+ * everything in once. Includes a couple of fields the repo may add over time.
+ */
+interface FullScheduleRunRow extends ScheduleRunDetailRecord {}
 
 // ─── Generic helpers ──────────────────────────────────────────────────────
 
@@ -106,8 +116,15 @@ export interface CrudFixture {
   lecturerStore: Map<number, LecturerRecord>;
   courseStore: Map<number, CourseRecord>;
   courseOfferingStore: Map<number, CourseOfferingRecord>;
-  // Schedule runs created via the repo facade — used by Phase 3 task 5.
-  scheduleRunStore: Map<string, ScheduleRunRow>;
+  // Schedule runs created via the repo facade — used by Phase 3 tasks 5 / 6.
+  scheduleRunStore: Map<string, FullScheduleRunRow>;
+  // Per-run assignment rows pre-shaped for the GET /schedule-runs/:id repo
+  // method (`findAssignments`). Tests seed this directly; production hydrates
+  // from joined Prisma queries.
+  scheduleAssignmentStore: Map<
+    number,
+    ScheduleRunAssignmentDetail & { runId: string }
+  >;
   // Audit log captures every state-changing request. Tests assert against
   // this array rather than peeking at the repo internals.
   auditLogStore: AuditLogRecord[];
@@ -155,6 +172,19 @@ export interface CrudFixture {
     roomId: number;
     effectiveStudentCount: number;
   }): CourseOfferingRecord;
+  insertScheduleRun(r: Partial<FullScheduleRunRow> & {
+    id: string;
+    semesterId: number;
+    createdById: number;
+  }): FullScheduleRunRow;
+  insertScheduleAssignment(
+    a: Partial<ScheduleRunAssignmentDetail> & {
+      id: number;
+      runId: string;
+      offeringId: number;
+      roomId: number;
+    },
+  ): ScheduleRunAssignmentDetail & { runId: string };
 }
 
 export function buildCrudFixture(): CrudFixture {
@@ -178,7 +208,11 @@ export function buildCrudFixture(): CrudFixture {
   const lecturerStore = new Map<number, LecturerRecord>();
   const courseStore = new Map<number, CourseRecord>();
   const courseOfferingStore = new Map<number, CourseOfferingRecord>();
-  const scheduleRunStore = new Map<string, ScheduleRunRow>();
+  const scheduleRunStore = new Map<string, FullScheduleRunRow>();
+  const scheduleAssignmentStore = new Map<
+    number,
+    ScheduleRunAssignmentDetail & { runId: string }
+  >();
   let nextScheduleRunSeq = 1;
   const auditLogStore: AuditLogRecord[] = [];
   const auditLogFail = { active: false };
@@ -807,10 +841,43 @@ export function buildCrudFixture(): CrudFixture {
   };
 
   // ── ScheduleRuns ────────────────────────────────────────────────────────
+  function projectSlim(r: FullScheduleRunRow): ScheduleRunRow {
+    return {
+      id: r.id,
+      semesterId: r.semesterId,
+      createdById: r.createdById,
+      status: r.status,
+      configJson: r.configJson,
+      idempotencyKey: r.idempotencyKey,
+      createdAt: r.createdAt,
+    };
+  }
+  function projectSummary(r: FullScheduleRunRow): ScheduleRunSummaryRecord {
+    return {
+      id: r.id,
+      semesterId: r.semesterId,
+      createdById: r.createdById,
+      status: r.status,
+      bestFitness: r.bestFitness,
+      hardViolations: r.hardViolations,
+      softPenalty: r.softPenalty,
+      competencyMismatch: r.competencyMismatch,
+      generationsRun: r.generationsRun,
+      currentGeneration: r.currentGeneration,
+      stagnatedEarly: r.stagnatedEarly,
+      durationMs: r.durationMs,
+      errorCode: r.errorCode,
+      errorMessage: r.errorMessage,
+      startedAt: r.startedAt,
+      completedAt: r.completedAt,
+      createdAt: r.createdAt,
+    };
+  }
+
   const scheduleRuns: ScheduleRunRepository = {
     async findByIdempotencyKey(key) {
       for (const r of scheduleRunStore.values()) {
-        if (r.idempotencyKey === key) return clone(r);
+        if (r.idempotencyKey === key) return clone(projectSlim(r));
       }
       return null;
     },
@@ -830,7 +897,7 @@ export function buildCrudFixture(): CrudFixture {
         }
       }
       const id = `run-${nextScheduleRunSeq++}`;
-      const row: ScheduleRunRow = {
+      const row: FullScheduleRunRow = {
         id,
         semesterId: input.semesterId,
         createdById: input.createdById,
@@ -838,14 +905,106 @@ export function buildCrudFixture(): CrudFixture {
         configJson: input.configJson,
         idempotencyKey: input.idempotencyKey ?? null,
         createdAt: new Date(),
+        bestFitness: 0,
+        hardViolations: 0,
+        softPenalty: 0,
+        competencyMismatch: 0,
+        generationsRun: 0,
+        currentGeneration: 0,
+        stagnatedEarly: false,
+        durationMs: null,
+        errorCode: null,
+        errorMessage: null,
+        startedAt: null,
+        completedAt: null,
+        preGASummaryJson: null,
+        ssaResultJson: null,
+        historyJson: '[]',
+        avgHistoryJson: '[]',
       };
       scheduleRunStore.set(id, row);
-      return clone(row);
+      return clone(projectSlim(row));
     },
-    async markFailed(id, _errorCode, _errorMessage) {
+    async markFailed(id, errorCode, errorMessage) {
       const r = scheduleRunStore.get(id);
       if (!r) throw prismaNotFound();
       r.status = 'FAILED';
+      r.errorCode = errorCode;
+      r.errorMessage = errorMessage;
+      r.completedAt = new Date();
+    },
+    async list({ filter, page, pageSize, sort }) {
+      let rows = Array.from(scheduleRunStore.values());
+      if (filter?.status !== undefined) rows = rows.filter((r) => r.status === filter.status);
+      if (filter?.semesterId !== undefined) rows = rows.filter((r) => r.semesterId === filter.semesterId);
+      if (filter?.createdById !== undefined) rows = rows.filter((r) => r.createdById === filter.createdById);
+
+      // Mirror parseSort in the real repo: support a small allow-list.
+      const SORTABLE = new Set(['createdAt', 'completedAt', 'startedAt', 'bestFitness', 'durationMs', 'status']);
+      if (sort) {
+        const tokens = sort.split(',').map((s) => s.trim()).filter(Boolean);
+        const cmps: ((a: FullScheduleRunRow, b: FullScheduleRunRow) => number)[] = [];
+        for (const token of tokens) {
+          const dir = token.startsWith('-') ? -1 : 1;
+          const field = token.replace(/^[-+]/, '');
+          if (!SORTABLE.has(field)) continue;
+          cmps.push((a, b) => {
+            const av = (a as unknown as Record<string, unknown>)[field];
+            const bv = (b as unknown as Record<string, unknown>)[field];
+            if (av instanceof Date || bv instanceof Date) {
+              const at = av instanceof Date ? av.getTime() : 0;
+              const bt = bv instanceof Date ? bv.getTime() : 0;
+              return dir * (at - bt);
+            }
+            if (typeof av === 'number' && typeof bv === 'number') return dir * (av - bv);
+            return dir * String(av).localeCompare(String(bv));
+          });
+        }
+        if (cmps.length > 0) {
+          rows.sort((a, b) => {
+            for (const cmp of cmps) {
+              const v = cmp(a, b);
+              if (v !== 0) return v;
+            }
+            return 0;
+          });
+        } else {
+          rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+        }
+      } else {
+        rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      }
+
+      const total = rows.length;
+      const sliced = rows.slice((page - 1) * pageSize, page * pageSize);
+      return { rows: sliced.map((r) => clone(projectSummary(r))), total };
+    },
+    async findDetailById(id) {
+      const r = scheduleRunStore.get(id);
+      return r ? clone(r) : null;
+    },
+    async findAssignments(runId) {
+      const rows: Array<ScheduleRunAssignmentDetail & { runId: string }> = [];
+      for (const a of scheduleAssignmentStore.values()) {
+        if (a.runId === runId) rows.push(a);
+      }
+      rows.sort((a, b) => {
+        if (a.offeringId !== b.offeringId) return a.offeringId - b.offeringId;
+        return a.sessionIndex - b.sessionIndex;
+      });
+      return rows.map((a) => {
+        const { runId: _runId, ...rest } = a;
+        return clone(rest);
+      });
+    },
+    async delete(id) {
+      if (!scheduleRunStore.has(id)) throw prismaNotFound();
+      scheduleRunStore.delete(id);
+      // Cascade cleanup for joined assignment rows so subsequent
+      // findAssignments doesn't return orphans.
+      for (const [aid, a] of scheduleAssignmentStore) {
+        if (a.runId === id) scheduleAssignmentStore.delete(aid);
+      }
     },
   };
 
@@ -1048,6 +1207,66 @@ export function buildCrudFixture(): CrudFixture {
     if (id >= nextCourseOfferingId) nextCourseOfferingId = id + 1;
     return clone(row);
   }
+  function insertScheduleRun(r: Partial<FullScheduleRunRow> & {
+    id: string;
+    semesterId: number;
+    createdById: number;
+  }): FullScheduleRunRow {
+    const row: FullScheduleRunRow = {
+      id: r.id,
+      semesterId: r.semesterId,
+      createdById: r.createdById,
+      status: r.status ?? 'COMPLETED',
+      configJson: r.configJson ?? '{}',
+      idempotencyKey: r.idempotencyKey ?? null,
+      createdAt: r.createdAt ?? new Date(),
+      bestFitness: r.bestFitness ?? 0,
+      hardViolations: r.hardViolations ?? 0,
+      softPenalty: r.softPenalty ?? 0,
+      competencyMismatch: r.competencyMismatch ?? 0,
+      generationsRun: r.generationsRun ?? 0,
+      currentGeneration: r.currentGeneration ?? 0,
+      stagnatedEarly: r.stagnatedEarly ?? false,
+      durationMs: r.durationMs ?? null,
+      errorCode: r.errorCode ?? null,
+      errorMessage: r.errorMessage ?? null,
+      startedAt: r.startedAt ?? null,
+      completedAt: r.completedAt ?? null,
+      preGASummaryJson: r.preGASummaryJson ?? null,
+      ssaResultJson: r.ssaResultJson ?? null,
+      historyJson: r.historyJson ?? '[]',
+      avgHistoryJson: r.avgHistoryJson ?? '[]',
+    };
+    scheduleRunStore.set(row.id, row);
+    return clone(row);
+  }
+  function insertScheduleAssignment(
+    a: Partial<ScheduleRunAssignmentDetail> & {
+      id: number;
+      runId: string;
+      offeringId: number;
+      roomId: number;
+    },
+  ): ScheduleRunAssignmentDetail & { runId: string } {
+    const row: ScheduleRunAssignmentDetail & { runId: string } = {
+      runId: a.runId,
+      id: a.id,
+      offeringId: a.offeringId,
+      sessionIndex: a.sessionIndex ?? 0,
+      roomId: a.roomId,
+      isFixedRoom: a.isFixedRoom ?? false,
+      manualOverride: a.manualOverride ?? false,
+      slots: a.slots ?? [],
+      offering: a.offering ?? {
+        id: a.offeringId,
+        courseCode: 'IF000',
+        courseName: 'Course',
+        lecturers: [],
+      },
+    };
+    scheduleAssignmentStore.set(row.id, row);
+    return clone(row);
+  }
 
   return {
     repos: {
@@ -1073,6 +1292,7 @@ export function buildCrudFixture(): CrudFixture {
     courseStore,
     courseOfferingStore,
     scheduleRunStore,
+    scheduleAssignmentStore,
     auditLogStore,
     auditLogFail,
     runningScheduleRunSemesters,
@@ -1085,5 +1305,7 @@ export function buildCrudFixture(): CrudFixture {
     insertLecturer,
     insertCourse,
     insertCourseOffering,
+    insertScheduleRun,
+    insertScheduleAssignment,
   };
 }
