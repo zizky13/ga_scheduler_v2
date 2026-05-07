@@ -9,6 +9,7 @@
     "layer3": "npx tsx src/cli/run-layer3.ts",
     "pipeline": "npx tsx src/cli/run-pipeline.ts",
     "api:dev": "tsx src/api/server.ts",
+    "worker": "tsx src/worker/index.ts",
     "db:seed": "tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest"

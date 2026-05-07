@@ -67,9 +67,9 @@ Express transport over the existing pipeline. No GA logic changes; only routing,
 Long-running GA execution off the request thread, with checkpointing and SSE.
 
 1. [x] `[P0/L]` Add Redis + BullMQ; create the `ga-pipeline` queue and a separate keyspace for GA checkpoints (api_design §7).
-2. [ ] `[P0/L]` Implement the worker process (`src/worker/index.ts`, `npm run worker`) that consumes `ga-pipeline`, calls `runPreGA → runSSA → runGA`, persists `ScheduleRun` / `ScheduleAssignment` / `FitnessHistory` rows, and publishes progress events on `ga-progress:<runId>` (api_design §7, techspec §7.1).
-3. [ ] `[P0/M]` Implement the per-run `CompetencyEligibilityMap` build step between SSA `FEASIBLE` and `runGA(...)` using `isLecturerEligibleForCourse` exclusively (techspec §6.1 step 21a, §4.3; api_design §7.1).
-4. [ ] `[P0/M]` Implement Redis checkpoint writes every 10 generations using the schema in techspec §7.2 (techspec §12 HIGH).
+2. [x] `[P0/L]` Implement the worker process (`src/worker/index.ts`, `npm run worker`) that consumes `ga-pipeline`, calls `runPreGA → runSSA → runGA`, persists `ScheduleRun` / `ScheduleAssignment` / `FitnessHistory` rows, and publishes progress events on `ga-progress:<runId>` (api_design §7, techspec §7.1).
+3. [x] `[P0/M]` Implement the per-run `CompetencyEligibilityMap` build step between SSA `FEASIBLE` and `runGA(...)` using `isLecturerEligibleForCourse` exclusively (techspec §6.1 step 21a, §4.3; api_design §7.1).
+4. [x] `[P0/M]` Implement Redis checkpoint writes every 10 generations using the schema in techspec §7.2 (techspec §12 HIGH).
 5. [ ] `[P0/M]` Implement `POST /schedule-runs` with `Idempotency-Key` support, the 5-runs / 5-min rate limit, and the 422 `NO_ACTIVE_SEMESTER` / 503 `QUEUE_UNAVAILABLE` error paths (api_design §5.3.8, techspec §7.1).
 6. [ ] `[P0/M]` Implement `GET /schedule-runs`, `GET /schedule-runs/:id`, `DELETE /schedule-runs/:id` with the owner-vs-admin filtering rule (api_design §4.5, §5.3.8).
 7. [ ] `[P0/L]` Implement `GET /schedule-runs/:id/stream` (SSE) emitting `progress`, `state`, `error` events with a 15s heartbeat; terminate on COMPLETED / FAILED / CANCELLED / SSA_INFEASIBLE / PRE_GA_EMPTY / STAGNATED (api_design §5.3.8).

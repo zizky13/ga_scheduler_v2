@@ -22,7 +22,7 @@ import type {
 import { runPreGA } from './pre-ga/validator.js';
 import { isLecturerEligibleForCourse } from './pre-ga/checks.js';
 import { runSSA } from './ssa/index.js';
-import { runGA } from './ga/runGA.js';
+import { runGA, type GAHooks } from './ga/runGA.js';
 
 export interface OrchestratorInput {
   offerings: CourseOffering[];
@@ -30,6 +30,7 @@ export interface OrchestratorInput {
   rooms: Room[];
   lecturers: Lecturer[];
   config: GAConfig;
+  hooks?: GAHooks;
 }
 
 export interface OrchestratorContext {
@@ -47,7 +48,7 @@ export interface OrchestratorOutput {
 }
 
 export function runPipeline(input: OrchestratorInput): OrchestratorOutput {
-  const { offerings, timeSlots, rooms, lecturers, config } = input;
+  const { offerings, timeSlots, rooms, lecturers, config, hooks } = input;
   const start = performance.now();
 
   const lecturerStructuralMap = new Map<number, boolean>(
@@ -125,7 +126,8 @@ export function runPipeline(input: OrchestratorInput): OrchestratorOutput {
     lecturerPreferenceMap,
     config,
     competencyEligibilityMap,
-    timeSlots
+    timeSlots,
+    hooks
   );
 
   return {
