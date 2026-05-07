@@ -39,12 +39,96 @@ A core design rule (encoded as a TypeScript discriminated union in `src/types.ts
 ## Prerequisites
 
 - **Node.js** 18+ (LTS recommended)
-- **PostgreSQL** (any recent version)
-- **Redis** 6+ (used by BullMQ and the progress pub/sub channel)
+- **PostgreSQL** 14+ (the Prisma schema uses `TEXT[]` columns -- any Postgres that supports array types works)
+- **Redis** 6+ (used by BullMQ for job queuing and by ioredis for real-time pub/sub progress events)
 
 ---
 
-## Installation
+## Infrastructure Setup
+
+The API server and worker require PostgreSQL and Redis to be running. This section walks through getting both services up from scratch.
+
+### 1. PostgreSQL
+
+**macOS (Homebrew):**
+
+```bash
+brew install postgresql@16
+brew services start postgresql@16
+
+# Create the database
+createdb ga_scheduler_v2
+```
+
+**Ubuntu / Debian:**
+
+```bash
+sudo apt update && sudo apt install postgresql
+sudo systemctl start postgresql
+
+# Create a user and database
+sudo -u postgres createuser --interactive   # follow prompts
+sudo -u postgres createdb ga_scheduler_v2
+```
+
+**Windows:**
+
+Download the installer from https://www.postgresql.org/download/windows/, run through the setup wizard, then create the database via pgAdmin or `psql`:
+
+```sql
+CREATE DATABASE ga_scheduler_v2;
+```
+
+Once the database exists, note your connection string. It follows this format:
+
+```
+postgresql://<user>:<password>@localhost:5432/ga_scheduler_v2?schema=public
+```
+
+### 2. Redis
+
+BullMQ uses Redis as its job queue backend. The SSE progress stream and cooperative cancellation also use Redis pub/sub.
+
+**macOS (Homebrew):**
+
+```bash
+brew install redis
+brew services start redis
+```
+
+**Ubuntu / Debian:**
+
+```bash
+sudo apt update && sudo apt install redis-server
+sudo systemctl start redis-server
+```
+
+**Windows:**
+
+Redis does not officially support Windows. Use one of these options:
+
+- **WSL2** (recommended): install Ubuntu via WSL, then follow the Ubuntu instructions above.
+- **Memurai**: a Redis-compatible Windows-native alternative (https://www.memurai.com/).
+- **Docker**: `docker run -d --name redis -p 6379:6379 redis:7-alpine`
+
+**Docker (any OS):**
+
+If you prefer not to install Redis directly:
+
+```bash
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+```
+
+Verify Redis is running:
+
+```bash
+redis-cli ping
+# Expected: PONG
+```
+
+The application connects to `redis://127.0.0.1:6379` by default. Set `REDIS_URL` in `.env` if your Redis is on a different host or port.
+
+### 3. Node.js dependencies
 
 ```bash
 npm install
@@ -52,9 +136,7 @@ npm install
 
 There is no build step -- `tsx` executes TypeScript sources directly.
 
----
-
-## Configuration
+### 4. Environment configuration
 
 Copy `.env.example` to `.env` and fill in real values:
 
@@ -62,14 +144,20 @@ Copy `.env.example` to `.env` and fill in real values:
 cp .env.example .env
 ```
 
-### Required environment variables
+**Required variables:**
 
-| Variable | Purpose |
-|----------|---------|
-| `DATABASE_URL` | PostgreSQL connection string for Prisma (e.g., `postgresql://user:pass@localhost:5432/ga_scheduler_v2`) |
-| `JWT_SECRET` | HS256 symmetric key for signing access tokens |
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `DATABASE_URL` | PostgreSQL connection string for Prisma | `postgresql://user:pass@localhost:5432/ga_scheduler_v2?schema=public` |
+| `JWT_SECRET` | HS256 symmetric key for signing JWT access tokens | _(see below)_ |
 
-### Optional environment variables
+Generate a `JWT_SECRET`:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+```
+
+**Optional variables:**
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -77,16 +165,95 @@ cp .env.example .env
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Redis connection for BullMQ and pub/sub |
 | `DATABASE_PROVIDER` | _(unset = postgres)_ | Set to `sqlite` only for the thesis-defense fallback build |
 
-### Database setup
+### 5. Database migrations and seed
 
-Run Prisma migrations then seed the database:
+Apply the Prisma schema to your PostgreSQL database and load the fixture data:
 
 ```bash
+# Generate the Prisma client
+npx prisma generate
+
+# Apply all migrations
 npx prisma migrate deploy
+
+# Seed the database with the canonical fixture
+# (1 semester, 6 rooms, 15 time slots, 8 lecturers, 11 courses, 15 offerings)
 npm run db:seed
 ```
 
-Append `-- --with-infeasible` to `db:seed` to also load the 4 intentionally infeasible offerings used by integration tests.
+Append `-- --with-infeasible` to `db:seed` to also load the 4 intentionally infeasible offerings used by integration tests:
+
+```bash
+npm run db:seed -- --with-infeasible
+```
+
+### 6. Verify everything is connected
+
+Start the API server and confirm the readiness probe:
+
+```bash
+npm run api:dev
+```
+
+In another terminal:
+
+```bash
+# Health check (no dependencies needed)
+curl http://localhost:3000/api/v1/health
+# {"status":"ok","uptimeSec":...}
+
+# Readiness probe (verifies both DB and Redis are reachable)
+curl http://localhost:3000/api/v1/ready
+# {"status":"ready","checks":{"db":"ok","redis":"ok"}}
+```
+
+If `db` or `redis` shows `"fail"`, check that the respective service is running and that your `.env` values are correct.
+
+---
+
+## How the Services Fit Together
+
+```
+                 +-----------+
+                 |  Client   |
+                 +-----+-----+
+                       |
+              HTTP REST / SSE
+                       |
+                 +-----v-----+
+                 |  Express   |  npm run api:dev
+                 |  API Server|  (src/api/server.ts)
+                 +--+----+--++
+                    |    |  |
+          Prisma    |    |  |  Enqueue job
+          queries   |    |  +-------------------+
+                    |    |                      |
+              +-----v--+ | SSE subscribe   +----v-----+
+              |Postgres| +---------------->|  Redis   |
+              |  (DB)  |                   | 6379     |
+              +--------+                   +----+-----+
+                                                |
+                                    BullMQ consume
+                                                |
+                                          +-----v------+
+                                          |  BullMQ    |  npm run worker
+                                          |  Worker    |  (src/worker/index.ts)
+                                          +-----+------+
+                                                |
+                                    runPipeline (orchestrator.ts)
+                                    Layer 1 -> Layer 2 -> Layer 3
+                                                |
+                                    Persist results to Postgres
+                                    Publish progress to Redis pub/sub
+```
+
+- **Express API** (`npm run api:dev`): handles authentication, CRUD, schedule run creation, and SSE streaming. Enqueues GA jobs into BullMQ. Reads results from PostgreSQL.
+- **BullMQ Worker** (`npm run worker`): pulls jobs from the `ga-pipeline` Redis queue, runs the three-layer scheduling pipeline, persists results to PostgreSQL, and publishes real-time progress events via Redis pub/sub.
+- **PostgreSQL**: stores all persistent data -- users, semesters, rooms, courses, offerings, schedule runs, assignments, fitness history, and audit logs.
+- **Redis**: serves three roles:
+  1. **Job queue** (BullMQ): reliable job delivery between the API and worker.
+  2. **Pub/Sub**: real-time progress events (`ga-progress:<runId>` channel) consumed by the SSE endpoint.
+  3. **Key-value**: cooperative cancellation flags (`ga:run:<runId>:cancel`, 10-min TTL) and GA checkpoint snapshots (`ga:run:<runId>:checkpoint`, 1-hour TTL).
 
 ### GA hyperparameters
 
