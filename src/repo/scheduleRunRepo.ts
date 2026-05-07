@@ -171,6 +171,28 @@ export interface ListResult<T> {
 
 // ─── Repository interface ────────────────────────────────────────────────
 
+export interface AssignmentWithRun {
+  id: number;
+  runId: string;
+  offeringId: number;
+  sessionIndex: number;
+  roomId: number;
+  isFixedRoom: boolean;
+  manualOverride: boolean;
+  overriddenById: number | null;
+  overriddenAt: Date | null;
+  notes: string | null;
+  timeSlotIds: number[];
+  run: { createdById: number; status: RunStatus };
+}
+
+export interface OverrideAssignmentInput {
+  roomId?: number;
+  timeSlotIds?: number[];
+  notes?: string;
+  overriddenById: number;
+}
+
 export interface ScheduleRunRepository {
   // POST /schedule-runs (Phase 3 Task 5)
   findByIdempotencyKey(key: string): Promise<ScheduleRunRow | null>;
@@ -186,6 +208,10 @@ export interface ScheduleRunRepository {
   findDetailById(id: string): Promise<ScheduleRunDetailRecord | null>;
   findAssignments(runId: string): Promise<ScheduleRunAssignmentDetail[]>;
   delete(id: string): Promise<void>;
+
+  // PUT /schedule-runs/:id/assignments/:assignmentId (Phase 3 Task 9)
+  findAssignmentById(id: number): Promise<AssignmentWithRun | null>;
+  overrideAssignment(id: number, input: OverrideAssignmentInput): Promise<AssignmentWithRun>;
 }
 
 const SORTABLE = new Set([
@@ -331,6 +357,87 @@ export function createScheduleRunRepository(
     },
     async delete(id) {
       await prisma.scheduleRun.delete({ where: { id } });
+    },
+    async findAssignmentById(id) {
+      const row = await prisma.scheduleAssignment.findUnique({
+        where: { id },
+        include: {
+          slots: { select: { timeSlotId: true } },
+          run: { select: { createdById: true, status: true } },
+        },
+      });
+      if (!row) return null;
+      return {
+        id: row.id,
+        runId: row.runId,
+        offeringId: row.offeringId,
+        sessionIndex: row.sessionIndex,
+        roomId: row.roomId,
+        isFixedRoom: row.isFixedRoom,
+        manualOverride: row.manualOverride,
+        overriddenById: row.overriddenById,
+        overriddenAt: row.overriddenAt,
+        notes: row.notes,
+        timeSlotIds: row.slots.map((s) => s.timeSlotId),
+        run: { createdById: row.run.createdById, status: row.run.status },
+      };
+    },
+    async overrideAssignment(id, input) {
+      const now = new Date();
+      const result = await prisma.$transaction(async (tx) => {
+        const data: Record<string, unknown> = {
+          manualOverride: true,
+          overriddenById: input.overriddenById,
+          overriddenAt: now,
+        };
+        if (input.roomId !== undefined) data.roomId = input.roomId;
+        if (input.notes !== undefined) data.notes = input.notes;
+
+        const updated = await tx.scheduleAssignment.update({
+          where: { id },
+          data,
+          include: {
+            slots: { select: { timeSlotId: true } },
+            run: { select: { createdById: true, status: true } },
+          },
+        });
+
+        if (input.timeSlotIds !== undefined) {
+          await tx.scheduleAssignmentSlot.deleteMany({
+            where: { assignmentId: id },
+          });
+          await tx.scheduleAssignmentSlot.createMany({
+            data: input.timeSlotIds.map((timeSlotId) => ({
+              assignmentId: id,
+              timeSlotId,
+            })),
+          });
+        }
+
+        const finalSlots = input.timeSlotIds
+          ? input.timeSlotIds.map((timeSlotId) => ({ timeSlotId }))
+          : updated.slots;
+
+        return {
+          ...updated,
+          slots: finalSlots,
+        };
+      });
+
+      return {
+        id: result.id,
+        runId: result.runId,
+        offeringId: result.offeringId,
+        sessionIndex: result.sessionIndex,
+        roomId: result.roomId,
+        isFixedRoom: result.isFixedRoom,
+        manualOverride: result.manualOverride,
+        overriddenById: result.overriddenById,
+        overriddenAt: result.overriddenAt,
+        notes: result.notes,
+        timeSlotIds: result.slots.map((s) => s.timeSlotId),
+        run: { createdById: result.run.createdById, status: result.run.status },
+      };
     },
   };
 }

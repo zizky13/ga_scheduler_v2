@@ -30,6 +30,7 @@ import {
   scheduleRunIdParamsSchema,
   scheduleRunStreamParamsSchema,
   type CreateScheduleRunBody,
+  type OverrideAssignmentBody,
 } from '../schemas/schedule-runs';
 import {
   AuthError,
@@ -38,12 +39,13 @@ import {
   NotFoundError,
   ServiceUnavailableError,
 } from '../errors';
-import { isPrismaNotFound, isPrismaUniqueViolation } from '../lib/prismaErrors';
+import { isPrismaForeignKeyError, isPrismaNotFound, isPrismaUniqueViolation } from '../lib/prismaErrors';
 import { getCrudRepositories } from '../lib/crudContext';
 import { buildListResponse } from '../lib/listResponse';
-import { writeAudit } from '../lib/audit';
+import { diff, writeAudit } from '../lib/audit';
 import { enqueueGaPipelineRun } from '../../queue/ga-pipeline';
 import type {
+  AssignmentWithRun,
   ScheduleRunDetailRecord,
   ScheduleRunRow,
   ScheduleRunSummaryRecord,
@@ -54,7 +56,6 @@ import {
   type RunStatus,
 } from '../../worker/progressChannel';
 import { requestCancellation } from '../../queue/cancellation';
-import { notImplemented } from './_stub';
 
 const IDEMPOTENCY_HEADER = 'Idempotency-Key';
 
@@ -646,6 +647,140 @@ async function postCancel(
   }
 }
 
+// ─── Manual override handler (Phase 3 Task 9) ──────────────────────────
+
+const OVERRIDABLE_STATUSES: ReadonlySet<string> = new Set([
+  'COMPLETED',
+  'STAGNATED',
+]);
+
+interface AssignmentParams {
+  id: string;
+  assignmentId: number;
+}
+
+function toAssignmentWire(a: AssignmentWithRun) {
+  return {
+    id: a.id,
+    runId: a.runId,
+    offeringId: a.offeringId,
+    sessionIndex: a.sessionIndex,
+    roomId: a.roomId,
+    isFixedRoom: a.isFixedRoom,
+    manualOverride: a.manualOverride,
+    overriddenById: a.overriddenById,
+    overriddenAt: a.overriddenAt ? a.overriddenAt.toISOString() : null,
+    notes: a.notes,
+    timeSlotIds: a.timeSlotIds,
+  };
+}
+
+async function putOverrideAssignment(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    if (!req.user) {
+      next(new AuthError('UNAUTHORIZED', 'Authentication required'));
+      return;
+    }
+    const { id: runId, assignmentId } = req.params as unknown as AssignmentParams;
+    const body = req.body as OverrideAssignmentBody;
+    const repos = getCrudRepositories();
+
+    const existing = await repos.scheduleRuns.findAssignmentById(assignmentId);
+
+    if (!existing || existing.runId !== runId) {
+      next(new NotFoundError('Assignment not found'));
+      return;
+    }
+
+    // Owner-vs-admin gate: admin always allowed; user only when they own the run.
+    if (req.user.role === 'user' && existing.run.createdById !== req.user.id) {
+      next(new NotFoundError('Assignment not found'));
+      return;
+    }
+
+    // Status gate: admin can override any terminal run; user only COMPLETED.
+    if (req.user.role === 'admin') {
+      if (!OVERRIDABLE_STATUSES.has(existing.run.status)) {
+        next(
+          new ConflictError(
+            'ILLEGAL_STATE_TRANSITION',
+            `Cannot override assignments on a run with status ${existing.run.status}`,
+          ),
+        );
+        return;
+      }
+    } else {
+      if (existing.run.status !== 'COMPLETED') {
+        next(
+          new ConflictError(
+            'ILLEGAL_STATE_TRANSITION',
+            `Cannot override assignments on a run with status ${existing.run.status}`,
+          ),
+        );
+        return;
+      }
+    }
+
+    try {
+      const updated = await repos.scheduleRuns.overrideAssignment(assignmentId, {
+        roomId: body.roomId,
+        timeSlotIds: body.timeSlotIds,
+        notes: body.notes,
+        overriddenById: req.user.id,
+      });
+
+      const beforeSnap: Record<string, unknown> = {
+        roomId: existing.roomId,
+        timeSlotIds: existing.timeSlotIds,
+        notes: existing.notes,
+        manualOverride: existing.manualOverride,
+      };
+      const afterSnap: Record<string, unknown> = {
+        roomId: updated.roomId,
+        timeSlotIds: updated.timeSlotIds,
+        notes: updated.notes,
+        manualOverride: updated.manualOverride,
+      };
+
+      await writeAudit(req, {
+        action: 'schedule_run.assignment_override',
+        entityType: 'ScheduleAssignment',
+        entityId: String(assignmentId),
+        metadata: {
+          runId,
+          offeringId: existing.offeringId,
+          sessionIndex: existing.sessionIndex,
+          ...diff(beforeSnap, afterSnap),
+          role: req.user.role,
+        },
+      });
+
+      res.status(200).json(toAssignmentWire(updated));
+    } catch (err) {
+      if (isPrismaNotFound(err)) {
+        next(new NotFoundError('Assignment not found'));
+        return;
+      }
+      if (isPrismaForeignKeyError(err)) {
+        next(
+          new DomainError(
+            'INVALID_REFERENCE',
+            'Referenced room or time slot does not exist',
+          ),
+        );
+        return;
+      }
+      throw err;
+    }
+  } catch (err) {
+    next(err);
+  }
+}
+
 export function createScheduleRunsRouter(): Router {
   const router = Router();
 
@@ -695,14 +830,14 @@ export function createScheduleRunsRouter(): Router {
     deleteOne,
   );
 
-  // TODO Phase 3 Task 9 (assignment override): requireAuth, requireOwnerOrAdmin
   router.put(
     '/:id/assignments/:assignmentId',
+    requireAuth(),
     validate({
       params: scheduleRunAssignmentParamsSchema,
       body: overrideAssignmentBodySchema,
     }),
-    notImplemented('PUT /schedule-runs/:id/assignments/:assignmentId'),
+    putOverrideAssignment,
   );
 
   return router;
