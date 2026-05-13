@@ -87,7 +87,7 @@ The full SPA implementing the design specification in `docs/app-design-spec.md`.
 #### Phase 4a — Project Setup & Design Foundations
 
 1. [x] `[P0/M]` Initialize the frontend project (framework, build tool, dev server, TypeScript config, linting, formatting). Install core dependencies: router, HTTP client, state management, Lucide icons, charting library (Recharts or Chart.js) (design-spec §1, §8).
-2. [ ] `[P0/S]` Set up API client module with base URL configuration, JSON parsing, and centralized error-envelope unwrapping matching the backend's `{ status, data, error }` shape (api_design §6).
+2. [x] `[P0/S]` Set up API client module with base URL configuration, JSON parsing, and centralized error-envelope unwrapping matching the backend's `{ status, data, error }` shape (api_design §6).
 3. [ ] `[P0/M]` Implement the **CSS custom properties** file defining all design tokens: colors (primary, secondary, accent, semantic), typography scale, spacing scale, border-radius, shadows, transition durations, easing functions, and layout variables (design-spec §16).
 4. [ ] `[P0/S]` Configure **font loading** for Inter (400/500/600/700, `font-display: swap`) and JetBrains Mono (400/500, `font-display: optional`) via Google Fonts (design-spec §3.1).
 5. [ ] `[P0/S]` Implement **dark mode** token overrides under `[data-theme="dark"]` covering all color, shadow, and surface tokens (design-spec §2.2, §16).
