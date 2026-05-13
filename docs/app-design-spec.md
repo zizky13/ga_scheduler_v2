@@ -2,8 +2,8 @@
 
 **Product:** GA Scheduler -- Automatic Course Scheduling System for Universitas Pembangunan Jaya
 **Context:** Academic thesis project (Tugas Akhir)
-**Document version:** 1.0
-**Date:** 2026-05-07
+**Document version:** 1.1
+**Date:** 2026-05-13
 **Status:** Ready for implementation
 
 ---
@@ -21,6 +21,22 @@
 9. [Responsive Breakpoints](#9-responsive-breakpoints)
 10. [Application Shell](#10-application-shell)
 11. [Shared Component Library](#11-shared-component-library)
+    - 11.1 [Data Table](#111-data-table) (incl. Bulk Operations)
+    - 11.2 [Form Components](#112-form-components)
+    - 11.3 [Modal / Dialog](#113-modal--dialog)
+    - 11.4 [Buttons](#114-buttons)
+    - 11.5 [Badges / Tags](#115-badges--tags)
+    - 11.6 [Toast / Notification](#116-toast--notification)
+    - 11.7 [Cards](#117-cards)
+    - 11.8 [Charts](#118-charts)
+    - 11.9 [Breadcrumbs](#119-breadcrumbs)
+    - 11.10 [Skeleton Loaders](#1110-skeleton-loaders)
+    - 11.11 [Empty States](#1111-empty-states)
+    - 11.12 [Search / Filter Bar](#1112-search--filter-bar)
+    - 11.13 [Session Management & Auth UX](#1113-session-management--auth-ux)
+    - 11.14 [Rate Limit Feedback](#1114-rate-limit-feedback)
+    - 11.15 [Delete Cascade Warning](#1115-delete-cascade-warning)
+    - 11.16 [Global Run-In-Progress Indicator](#1116-global-run-in-progress-indicator)
 12. [Page Specifications](#12-page-specifications)
     - 12.1 [Login Page](#121-login-page)
     - 12.2 [Dashboard](#122-dashboard)
@@ -31,10 +47,10 @@
     - 12.7 [Lecturer Management](#127-lecturer-management)
     - 12.8 [Course Management](#128-course-management)
     - 12.9 [Course Offering Management](#129-course-offering-management)
-    - 12.10 [Schedule Run](#1210-schedule-run)
-    - 12.11 [Schedule Viewer](#1211-schedule-viewer)
+    - 12.10 [Schedule Run](#1210-schedule-run) (incl. SSA Failure Panel, Pre-GA Failure Panel)
+    - 12.11 [Schedule Viewer](#1211-schedule-viewer) (incl. Export Flow)
     - 12.12 [Manual Override](#1212-manual-override)
-    - 12.13 [User Management](#1213-user-management)
+    - 12.13 [User Management](#1213-user-management) (incl. Password Change)
     - 12.14 [Audit Log Viewer](#1214-audit-log-viewer)
 13. [Special Component: Schedule Timetable Grid](#13-special-component-schedule-timetable-grid)
 14. [Special Component: GA Progress Monitor](#14-special-component-ga-progress-monitor)
@@ -561,7 +577,20 @@ Navigation is grouped into labeled sections.
 |---------|------|----------------------|
 | **Semester selector** | Dropdown/select. Shows active semester code (e.g., "2025-GANJIL"). `--text-body-sm`, weight 500. `--color-primary-500` text. `ChevronDown` icon. Dropdown shows all semesters; active one has checkmark. Clicking another switches context (confirms with dialog). | 1 |
 | **Dark mode toggle** | `Sun` / `Moon` icon button. 36px square, `--radius-md`. Background: transparent. Hover: `--color-secondary-100`. Icon: `--color-secondary-400`. | 2 |
-| **User menu** | 32px avatar circle (same as sidebar). Click opens dropdown: user name, email, role, divider, "Log out". | 3 |
+| **User menu** | 32px avatar circle (same as sidebar). Click opens dropdown: user name, email, role, divider, "Change Password", divider, "Log out". | 3 |
+
+#### Semester Switching Behavior
+
+Clicking a different semester in the selector triggers a confirmation dialog before switching.
+
+| Property | Value |
+|----------|-------|
+| Dialog type | Confirmation (modal-sm). Warning icon. |
+| Title | "Switch Semester?" |
+| Description | "You are about to switch from **[current code]** to **[target code]**. Any unsaved changes on this page will be lost. All data views will reload for the selected semester." |
+| Actions | "Cancel" (secondary) + "Switch" (primary) |
+| After switch | Page reloads data for the new semester. URL does not change (semester context is global state). Toast: "Switched to [semester code]." Sidebar and dashboard reflect new semester data. |
+| Unsaved form data | If a modal/form is open with unsaved edits, the semester selector is disabled (grayed out, tooltip: "Close the current form before switching semesters"). |
 
 #### Dark Mode Top Bar
 
@@ -648,7 +677,7 @@ The primary data display component used across all management pages.
 |---------|----------|------|
 | Search input | Left | 280px width. `Search` icon prefix. Placeholder: "Search [entity]...". `--text-body-sm`. |
 | Filter buttons | Left (after search) | Secondary button style. `Filter` icon. Dropdown with filter options. Active filter count shown as badge. |
-| Bulk actions | Left (visible when rows selected) | "X selected" label + action buttons (delete, export). |
+| Bulk actions | Left (visible when rows selected) | "X selected" label + action buttons (delete, export). See bulk operations spec below. |
 | Pagination info | Right | "Showing 1-10 of 42" in `--text-body-sm`, `--color-secondary-400`. |
 | View toggle | Right | Icon buttons: list view / compact view. |
 
@@ -710,6 +739,19 @@ Tables convert to a **card list**:
 - Key-value pairs below in two columns. Key: `--text-caption`, `--color-secondary-400`. Value: `--text-body-sm`, `--color-secondary-700`.
 - Actions: `MoreHorizontal` icon top-right of card.
 - Cards stacked vertically with `--space-3` gap.
+
+#### Bulk Operations
+
+Bulk actions are available on the following pages: **Rooms**, **Lecturers**, **Courses**, **Course Offerings**. Not available on Semesters (too few rows), Timeslots (visual grid primary), Users (sensitive), or Audit Log (read-only).
+
+| Property | Value |
+|----------|-------|
+| Selection | Checkbox in first column of each row. Header row checkbox toggles "select all on current page." |
+| Selection indicator | When ≥ 1 row selected, a toolbar strip replaces the search/filter bar. Background: `--color-primary-50`. `--radius-md`. Padding: 8px 16px. |
+| Strip content | Left: "[N] selected" in `--text-body-sm` weight 600. "Select all [total]" ghost link if current page is subset. Right: action buttons. |
+| Bulk Delete | Danger button, `Trash2` icon. Opens confirmation dialog: "Delete [N] [entity]s? This action cannot be undone." If any item has dependents, list the blocked items and allow partial delete. |
+| Bulk Export | Secondary button, `Download` icon. Exports selected rows as CSV. Immediate download, no modal needed. |
+| Deselect | `X` icon button at far-left of strip. Clears all selections. |
 
 ---
 
@@ -1123,6 +1165,103 @@ Used when a data list has no items.
 
 ---
 
+### 11.13 Session Management & Auth UX
+
+The API uses short-lived JWT access tokens (15-minute expiry) with HTTP-only refresh token cookies (7-day expiry). The frontend must handle token lifecycle transparently.
+
+#### Silent Refresh
+
+| Property | Value |
+|----------|-------|
+| Trigger | Any API response returning 401 `ACCESS_TOKEN_EXPIRED`. |
+| Behavior | Interceptor automatically calls `POST /auth/refresh`. If refresh succeeds, retry the original request with the new token. No user-visible interruption. |
+| Token buffer | Proactively refresh when the access token has < 60 seconds remaining (avoid mid-request expiry). |
+
+#### Session Expired Modal
+
+Shown when the refresh token itself is invalid or expired (401 `REFRESH_TOKEN_INVALID`).
+
+| Property | Value |
+|----------|-------|
+| Type | Modal (modal-sm). No backdrop dismiss. No close button. |
+| Icon | `Lock` icon in `--color-warning-50` circle container, `--color-warning-500` icon |
+| Title | "Session Expired" |
+| Description | "Your session has expired. Please sign in again to continue." `--text-body` (16px, 400), `--color-secondary-500`. |
+| Action | Single primary button, full-width: "Sign In". Navigates to `/login`. |
+| Behavior | All background API calls are paused. Any in-flight requests are cancelled. After redirect, the user returns to the page they were on after successful login. |
+
+#### Account Disabled Notification
+
+Shown when any API response returns 403 `ACCOUNT_DISABLED`.
+
+| Property | Value |
+|----------|-------|
+| Type | Modal (modal-sm). No backdrop dismiss. |
+| Icon | `AlertCircle` in `--color-error-50` circle, `--color-error-500` icon |
+| Title | "Account Disabled" |
+| Description | "Your account has been deactivated by an administrator. Contact your admin for assistance." |
+| Action | "Sign Out" primary button. Clears local tokens and redirects to `/login`. |
+
+---
+
+### 11.14 Rate Limit Feedback
+
+The API enforces rate limits on authentication (login attempts) and GA run creation (5 runs per 5 minutes).
+
+| Property | Value |
+|----------|-------|
+| Trigger | Any API response returning 429 `Too Many Requests`. |
+| Display | Toast notification (error variant, manual dismiss). |
+| Title | "Too many requests" |
+| Message | "Please wait before trying again. You can retry in [Retry-After] seconds." The `Retry-After` header value from the API response populates the countdown. |
+| Button disable | The triggering button (e.g., "Start Run") is disabled with a countdown timer label: "Retry in [N]s". Re-enables when the countdown reaches 0. |
+| Run creation specific | On the `/runs/new` page, the "Start Run" button shows `Clock` icon + "Rate limited — retry in [N]s" in `--color-secondary-400` text while blocked. |
+
+---
+
+### 11.15 Delete Cascade Warning
+
+When deleting an entity that has dependent records, the confirmation dialog must show the impact before proceeding.
+
+#### Cascade Warning Dialog (extends Confirmation Dialog)
+
+| Property | Value |
+|----------|-------|
+| Type | Confirmation dialog (modal-sm). Danger variant. |
+| Icon | `AlertTriangle` in `--color-error-50` circle |
+| Title | "Delete [Entity Name]?" |
+| Impact section | Below the description. `--color-warning-50` bg. `--radius-md`. Padding: 12px 16px. Border: 1px solid `--color-warning-500` at 30% opacity. |
+| Impact header | `--text-caption` (12px, 600), `--color-warning-700`. "This will also affect:" |
+| Impact list | Bulleted list in `--text-body-sm`, `--color-secondary-700`. Each line: "[count] [dependent entity type]". E.g., "3 course offerings", "1 locked room". |
+| Blocked delete | If the entity cannot be deleted (API returns 409), show the dialog without the delete button. Replace with: "This [entity] cannot be deleted because it has active dependencies. Remove the dependencies first." Info banner style (`--color-info-50`). |
+| Actions | "Cancel" (secondary) + "Delete Anyway" (danger). |
+
+#### Per-Entity Cascade Rules
+
+| Entity | Dependents Shown |
+|--------|-----------------|
+| Facility | "[N] rooms with this facility", "[N] courses requiring this facility" |
+| Room | "[N] course offerings in this room", "[N] locked rooms" |
+| Lecturer | "[N] course offerings assigned to this lecturer" (blocked — API returns 409) |
+| Course | "[N] course offerings for this course" |
+| Course Offering | "[N] locked rooms for this offering" |
+| Semester | Blocked if any related data exists. Show: "[N] rooms, [N] timeslots, [N] courses, [N] offerings" |
+
+---
+
+### 11.16 Global Run-In-Progress Indicator
+
+When any GA schedule run has status `RUNNING` for the active semester, certain destructive or conflicting actions must be disabled across the application.
+
+| Property | Value |
+|----------|-------|
+| Indicator | Subtle banner below the top bar, full content width. Height: 36px. Background: `--color-info-50`. Border-bottom: 1px solid `--color-info-500` at 30% opacity. |
+| Content | `Play` icon (14px, `--color-info-500`) + "Schedule run in progress..." in `--text-body-sm` weight 500, `--color-info-700`. Right side: "View" ghost link navigating to `/runs/:id`. |
+| Disabled actions | Locked room create/edit/delete. Semester activation. Course offering delete (data integrity during run). Each disabled button shows tooltip: "Unavailable while a schedule run is in progress." |
+| Polling | The frontend checks `GET /schedule-runs?status=RUNNING&semesterId=[active]` every 30 seconds while any run is active. Banner auto-dismisses when no RUNNING runs remain. |
+
+---
+
 ## 12. Page Specifications
 
 ### 12.1 Login Page
@@ -1324,9 +1463,21 @@ Title: "Facilities". Description: "Manage room facility types (LAB, PROJECTOR, S
 |--------|-------|---------|
 | Code | 200px | `--text-mono` (13px, 600). E.g., "LAB" |
 | Label | flex | E.g., "Computer Laboratory" |
-| Rooms Using | 120px | Count of rooms with this facility |
-| Courses Requiring | 140px | Count of courses requiring this facility |
+| Rooms Using | 120px | Count of rooms with this facility. Clickable — opens drill-down popover. |
+| Courses Requiring | 140px | Count of courses requiring this facility. Clickable — opens drill-down popover. |
 | Actions | 80px | Edit, Delete |
+
+#### Drill-Down Popover
+
+Clicking the "Rooms Using" or "Courses Requiring" count opens a popover anchored to the count cell.
+
+| Property | Value |
+|----------|-------|
+| Container | `--color-surface` bg. `--shadow-lg`. `--radius-lg`. Max-width: 320px. Max-height: 280px, overflow-y: auto. Padding: 12px. |
+| Header | `--text-body-sm` (14px, 600). "Rooms with [FACILITY_CODE]" or "Courses requiring [FACILITY_CODE]". `--color-secondary-900`. |
+| List items | `--text-body-sm` (14px, 400). Each item is a clickable link (`--color-primary-500` on hover) navigating to the respective entity's management page with a pre-applied filter. |
+| Empty | "None" in `--text-body-sm`, `--color-secondary-400`, italic. |
+| Footer | Ghost link: "View all in [Rooms/Courses]" → navigates to `/rooms?facility=[code]` or `/courses?facility=[code]`. |
 
 #### Create/Edit Modal (modal-sm)
 
@@ -1337,7 +1488,7 @@ Title: "Facilities". Description: "Manage room facility types (LAB, PROJECTOR, S
 
 #### Delete Confirmation
 
-If facility is in use by rooms or courses, show warning: "This facility is assigned to X rooms and required by Y courses. Removing it may affect scheduling."
+Uses the Delete Cascade Warning pattern (section 11.15). Shows: "[N] rooms with this facility" and "[N] courses requiring this facility" as impact items. If either count > 0, warn before proceeding.
 
 ---
 
@@ -1462,6 +1613,10 @@ Search by name. Filter by competency (multi-select). Filter by structural (toggl
 
 Within the modal, preferred slots are shown as a mini-grid (days as columns, available slots as rows, checkboxes to select). This gives a visual overview.
 
+#### Delete Confirmation
+
+Uses the Delete Cascade Warning pattern (section 11.15). The API returns 409 if the lecturer is referenced by any course offering. The dialog shows: "[N] course offerings assigned to this lecturer" and uses the **blocked delete** variant — the delete button is replaced with a message directing the admin to remove the offerings first.
+
 ---
 
 ### 12.8 Course Management
@@ -1498,6 +1653,10 @@ Search by code or name. Filter by SKS (select: 1, 2, 3, 4). Filter by required f
 | SKS | Number input | Yes | Min: 1, Max: 6 |
 | Required Competencies | Multi-select / tag input | No | Free-text or from existing competency strings |
 | Required Facilities | Multi-select | No | Select from facility list |
+
+#### Delete Confirmation
+
+Uses the Delete Cascade Warning pattern (section 11.15). Shows: "[N] course offerings for this course" as the impact line. All child offerings are cascade-deleted with the course.
 
 ---
 
@@ -1546,7 +1705,28 @@ This modal has multiple sections, visually separated by dividers.
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| Lecturers | Multi-select with search | Yes (at least 1) | Shows lecturer name + competencies as sub-text. Multiple for team teaching. |
+| Lecturers | Multi-select with search | Yes (at least 1) | Shows lecturer name + competencies as sub-text. Multiple for team teaching. See competency match indicator below. |
+
+##### Competency Match Indicator
+
+When both a **course** and **lecturer(s)** are selected, the modal displays a real-time competency compatibility check.
+
+| Property | Value |
+|----------|-------|
+| Position | Below the Lecturers field, inline feedback area. Margin-top: 8px. |
+| Match (all required competencies covered) | `--color-success-50` bg. `--radius-md`. Padding: 8px 12px. `Check` icon (14px, `--color-success-500`) + `--text-body-sm` (14px, 400), `--color-success-700`: "All required competencies covered." |
+| Partial mismatch | `--color-warning-50` bg. `--radius-md`. Padding: 8px 12px. `AlertTriangle` icon (14px, `--color-warning-500`) + `--text-body-sm`, `--color-warning-700`: "Missing competencies: [list of unmatched tags]." Each missing competency shown as a tag in `--color-warning-50` bg, `--color-warning-700` text, `--radius-sm`. |
+| No required competencies on course | No indicator shown (open assignment — any lecturer is valid). |
+| Behavior | The check is purely client-side (compare `course.requiredCompetencies` against the union of all selected `lecturer.competencies`). This is a soft warning — the user can still save the offering. The Pre-GA layer will reject it at run time if the mismatch persists. |
+| Team teaching | Competencies from all selected lecturers are pooled. The indicator checks if the union covers all required competencies. |
+
+##### Lecturer Dropdown Item Enhancement
+
+| Property | Value |
+|----------|-------|
+| Primary text | Lecturer name. `--text-body-sm` (14px, 500). |
+| Sub-text | Competency tags below name. `--text-caption` (12px, 400), `--color-secondary-400`. Tags use `--color-secondary-100` bg. |
+| Match icon | If a course is already selected: green `Check` icon (12px) on lecturers who cover all required competencies. Orange `AlertTriangle` (12px) on those who don't. |
 
 **Section 3: Fixed Schedule** (collapsible, default collapsed)
 
@@ -1573,6 +1753,31 @@ When a parentOfferingId is set, show an info banner at the top of the modal:
 | Border | 1px solid `--color-info-500` at 30% opacity |
 | Icon | `Info`, `--color-info-500` |
 | Text | "This is a parallel split of [parent course code]. The GA will schedule this session independently." |
+
+#### Room Lock Interaction Detail
+
+The Room Lock in Section 4 of the modal writes to the `/locked-rooms` API. Additional behaviors:
+
+| Scenario | Behavior |
+|----------|----------|
+| Room lock toggle enabled | Room dropdown becomes read-only (displays current selection with `Lock` icon). The "Reason" text input appears with slide-down animation (`--duration-slow`). |
+| Room changed after lock exists | If the user changes the Room field (Section 1) while a lock is active, show warning: "Changing the room will update the existing room lock." The lock follows the new room selection on save. |
+| GA run in progress | The Room Lock toggle is disabled. Tooltip: "Room locks cannot be changed while a schedule run is in progress." Gray `Lock` icon shown. Uses the Global Run-In-Progress state (section 11.16). |
+| Room compatibility | When locking, the Room dropdown filters to rooms that have compatible facilities for the selected course's `requiredFacilities` and sufficient capacity for `effectiveStudentCount`. Non-compatible rooms are shown grayed out with tooltip: "Insufficient capacity" or "Missing required facility: [name]." |
+
+#### Locked Room Summary View
+
+Accessible from the Course Offerings table toolbar via a secondary button: `Lock` icon + "Locked Rooms ([count])". Opens a slide-over panel from the right side.
+
+| Property | Value |
+|----------|-------|
+| Panel type | Slide-over (not a modal). Width: 480px. Full height. `--color-surface` bg. `--shadow-xl`. Z-index: 35. |
+| Header | "Locked Rooms" title. `--text-subtitle` (18px, 600). `X` close button. Badge showing total lock count. |
+| List | Each lock displayed as a card. `--color-secondary-50` bg. `--radius-md`. Padding: 12px. Margin-bottom: 8px. |
+| Card content | **Course**: code + name (mono + caption). **Room**: room name + capacity. **Locked by**: user name + relative time. **Reason**: italic, `--color-secondary-500` (or "No reason provided" in `--color-secondary-400`). |
+| Card actions | `Unlock` ghost button (danger color). `Pencil` icon for editing (opens the offering modal with Section 4 focused). |
+| Empty state | `Unlock` icon (48px, `--color-secondary-300`). "No room locks." `--text-body-sm`, `--color-secondary-400`. |
+| GA run active | All unlock/edit actions disabled. Info banner at top: "Room locks are frozen while a schedule run is in progress." |
 
 #### Empty State
 
@@ -1698,6 +1903,101 @@ When the run completes (COMPLETED/STAGNATED/FAILED):
 4. Success: green confetti-like brief animation (subtle dots, 1 second). Button "View Schedule" becomes primary.
 5. Failure: red pulse on status badge. Error message card appears below chart.
 6. Stagnated: warning banner: "The GA stagnated at generation [N]. Results may not be optimal."
+7. SSA_INFEASIBLE: replaces the progress view with the SSA Failure Panel (see below).
+8. PRE_GA_EMPTY: replaces the progress view with the Pre-GA Failure Panel (see below).
+
+##### SSA Failure Panel
+
+Displayed when a run terminates with status `SSA_INFEASIBLE`. Replaces the chart and progress bar with a structured diagnostic view.
+
+| Property | Value |
+|----------|-------|
+| Container | Full content width, centered. Max-width: 720px. Margin: 24px auto. |
+
+**Header Card:**
+
+| Property | Value |
+|----------|-------|
+| Background | `--color-error-50` |
+| Border | 1px solid `--color-error-500` at 30% opacity |
+| Border-radius | `--radius-lg` |
+| Padding | 24px |
+| Icon | `AlertTriangle` (24px, `--color-error-500`) left of title |
+| Title | `--text-subtitle` (18px, 700), `--color-error-700`: "Structural Infeasibility Detected — GA Not Executed" |
+| Description | `--text-body` (16px, 400), `--color-secondary-500`. Margin-top: 8px. "The current configuration cannot produce a valid schedule. The Genetic Algorithm was not run to prevent wasted computation." |
+
+**Stats Triad (3-column grid, gap 12px):**
+
+| Stat | Label | Value Font | Color |
+|------|-------|-----------|-------|
+| Sessions Required | "Sessions Required" | `--text-card-title` (20px, 700), mono | `--color-secondary-900` |
+| Max Schedulable | "Max Schedulable" | `--text-card-title`, mono | `--color-success-500` |
+| Unresolvable Gap | "Unresolvable" | `--text-card-title`, mono | `--color-error-500` |
+
+Each stat is a card: `--color-surface` bg, 1px `--color-border` border, `--radius-lg`, padding 16px, centered content. Label is `--text-caption` (12px, 500), `--color-secondary-400`.
+
+**Deadlock Report Card** (shown only when `ssaResult.deadlockReport` exists):
+
+| Property | Value |
+|----------|-------|
+| Container | `--color-surface` bg. `--radius-lg`. 1px `--color-border` border. Padding: 20px. Margin-top: 16px. |
+| Message | `--text-body-sm` (14px, 400), `--color-secondary-500`. The `deadlockReport.message` text. |
+| Affected offerings | Flex-wrap row of pills. Each pill: `--text-mono-sm` (12px), `--color-error-50` bg, 1px solid `--color-error-500` at 30% opacity, `--color-error-700` text. `--radius-pill`. Padding: 4px 10px. Content: "Offering #[id]". |
+| Recommendation box | `--color-primary-50` bg. 1px solid `--color-primary-500` at 20% opacity. `--radius-lg`. Padding: 16px. Margin-top: 12px. Header: `--text-caption` (12px, 600), `--color-primary-500`: "Recommended Action". Body: `--text-body-sm`, `--color-secondary-700`. Content: `deadlockReport.recommendation`. |
+
+**Action Bar (below panel):**
+
+| Button | Style | Label |
+|--------|-------|-------|
+| "Edit Offerings" | Primary | Navigates to `/offerings` with the affected offering IDs highlighted |
+| "Back to Runs" | Secondary | Navigates to `/runs` |
+
+##### Pre-GA Failure Panel
+
+Displayed when a run terminates with status `PRE_GA_EMPTY`. Replaces the chart and progress bar.
+
+| Property | Value |
+|----------|-------|
+| Container | Same as SSA Failure Panel. Max-width: 720px. |
+
+**Header Card:**
+
+| Property | Value |
+|----------|-------|
+| Background | `--color-error-50` |
+| Border | 1px solid `--color-error-500` at 30% opacity |
+| Border-radius | `--radius-lg` |
+| Padding | 24px |
+| Icon | `AlertCircle` (24px, `--color-error-500`) |
+| Title | `--text-subtitle` (18px, 700), `--color-error-700`: "No Feasible Candidates — GA Not Executed" |
+| Description | `--text-body`, `--color-secondary-500`. "All course offerings were rejected during pre-validation. The Genetic Algorithm cannot run without at least one valid candidate." |
+
+**Pre-GA Summary (2-column grid):**
+
+| Stat | Label | Value Color |
+|------|-------|------------|
+| Feasible | "Passed Validation" | `--color-success-500` (will be "0" in this state) |
+| Infeasible | "Rejected" | `--color-error-500` |
+
+Same card styling as SSA stats.
+
+**Rejection Breakdown Table:**
+
+| Property | Value |
+|----------|-------|
+| Container | `--color-surface` bg. `--radius-lg`. 1px `--color-border` border. Margin-top: 16px. |
+| Table | Compact table (40px rows). No pagination needed (usually < 30 rows). |
+| Columns | **Offering** (course code + name, `--text-mono` + caption), **Reason** (rejection reason badge), **Details** (human-readable explanation) |
+| Reason badges | `COMPETENCY_MISMATCH`: `--color-warning-50` bg, `--color-warning-700` text. `MISSING_ROOM`: `--color-error-50` bg, `--color-error-700` text. `NO_TIMESLOTS`: `--color-error-50` bg. Other: `--color-secondary-100` bg. |
+| Row click | Navigates to the offering's edit modal (if the user has edit permissions). |
+
+**Action Bar:**
+
+| Button | Style | Label |
+|--------|-------|-------|
+| "Fix Offerings" | Primary | Navigates to `/offerings` |
+| "Fix Lecturers" | Secondary | Navigates to `/lecturers` (useful for competency mismatches) |
+| "Back to Runs" | Secondary | Navigates to `/runs` |
 
 ---
 
@@ -1723,8 +2023,8 @@ No "create" action. Instead, a "Select Run" dropdown if multiple completed runs 
 | Filter: Day | Left | Multi-select. Show only selected days (columns). |
 | Filter: Course | Left | Searchable select. Filter to a specific course. |
 | Density toggle | Right | "Compact" / "Comfortable" toggle. Affects cell height. |
-| Export button | Right | Secondary button. `Download` icon. Exports to PDF or CSV. |
-| Print button | Right | Ghost button. `Printer` icon. Opens print view. |
+| Export button | Right | Secondary button. `Download` icon. Opens export dropdown. See Export Flow below. |
+| Print button | Right | Ghost button. `Printer` icon. Opens browser print dialog with print stylesheet. |
 
 #### Timetable Grid
 
@@ -1757,6 +2057,39 @@ The timetable grid is not suitable for small screens. Two fallback options:
 **Option B: Card-based view** -- Switch to a filterable list of cards. Each card = one assignment. Shows: Course code, name, room, lecturer, day, time, session index. Grouped by day. Sortable by time.
 
 A toggle between grid and list view is available in the toolbar on mobile.
+
+#### Export Flow
+
+Clicking the Export button opens a dropdown menu (not a modal) anchored below the button.
+
+| Property | Value |
+|----------|-------|
+| Dropdown | `--color-surface` bg. `--shadow-lg`. `--radius-md`. Width: 240px. Padding: 4px. |
+
+**Export Options:**
+
+| Option | Icon | Label | Behavior |
+|--------|------|-------|----------|
+| CSV | `FileSpreadsheet` | "Export as CSV" | Immediate download. Generates a flat CSV with columns: Day, Time Start, Time End, Course Code, Course Name, Room, Lecturer(s), Session. Respects active filters. |
+| PDF | `FileText` | "Export as PDF" | Shows a brief loading state (button text changes to "Generating PDF..." with spinner). Generates a PDF with the timetable grid rendered as a table, semester header, run metadata footer. Landscape orientation. Download triggers automatically when ready. |
+
+**PDF Generation States:**
+
+| State | Visual |
+|-------|--------|
+| Generating | Export button replaced with: `Loader2` spinning icon + "Generating..." in `--color-secondary-400`. Button disabled. |
+| Success | Toast (success): "Schedule exported as PDF." File downloads automatically. |
+| Error | Toast (error): "Export failed. Please try again." Button re-enabled. |
+
+**Print Behavior:**
+
+| Property | Value |
+|----------|-------|
+| Trigger | Click "Print" or `Ctrl/Cmd + P` |
+| Print stylesheet | `@media print` hides: sidebar, top bar, toolbar, action buttons, tooltips. Grid renders full-width. White background, black text. Course block colors preserved at 50% saturation. Font: 10px for block content. |
+| Header | "GA Scheduler — [Semester Code] — Generated [Date]" centered at top of page. `--text-body-sm`. |
+| Footer | "Page [N] of [M]" + "Best Fitness: [value] | Hard Violations: [count] | Run: [date]" at bottom. |
+| Orientation | Landscape (set via `@page { size: landscape }`). |
 
 ---
 
@@ -1850,9 +2183,43 @@ Search by name or email. Filter by role (select). Filter by status (toggle).
 |-------|------|----------|-------|
 | Full Name | Text input | Yes | |
 | Email | Email input | Yes | Must be unique |
-| Password | Password input | Yes (create only) | Min 8 characters. Shown only on create, not edit. |
+| Password | Password input | Yes (create only) | Min 8 characters. Shown only on create, not edit. See Reset Password below for edit mode. |
 | Role | Select | Yes | ADMIN or USER |
 | Is Active | Toggle | No | Default: active |
+
+#### Admin Reset Password (within Edit Modal)
+
+When editing an existing user, the Password field is replaced with a reset action.
+
+| Property | Value |
+|----------|-------|
+| Display | Ghost button: `Key` icon + "Reset Password". `--color-warning-500` text. |
+| Click behavior | Replaces the button with two fields: "New Password" + "Confirm Password". Both password inputs, min 8 characters. |
+| Cancel | `X` icon to collapse back to the ghost button (discard password fields). |
+| Save | The new password is included in the `PATCH /users/:id` request body alongside other field changes. |
+
+#### Self-Service Change Password (User Menu)
+
+Accessible from the top bar user menu dropdown → "Change Password". Available to all authenticated users for their own account.
+
+| Property | Value |
+|----------|-------|
+| Modal | modal-sm. Title: "Change Password". |
+| Fields | |
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| Current Password | Password input | Yes | Validates against current password server-side. |
+| New Password | Password input | Yes | Min 8 characters. Strength indicator below (weak/fair/strong). |
+| Confirm New Password | Password input | Yes | Must match "New Password". |
+
+| Element | Spec |
+|---------|------|
+| Password strength indicator | Bar below "New Password". 4 segments. Colors: 1 segment = `--color-error-500` (weak), 2 = `--color-warning-500` (fair), 3-4 = `--color-success-500` (strong). Label below: "Weak" / "Fair" / "Strong". `--text-caption` (12px). |
+| Mismatch error | Shown inline below "Confirm" field: "Passwords do not match." `--color-error-500`. |
+| Success | Toast (success): "Password changed successfully." Modal closes. |
+| Error (wrong current) | Inline error below "Current Password": "Current password is incorrect." `--color-error-500`. Field gets error border. |
+| Actions | "Cancel" (secondary) + "Change Password" (primary). |
 
 #### Deactivate Confirmation
 
@@ -2377,4 +2744,4 @@ Complete token set for implementation.
 
 ---
 
-*End of specification. This document provides all values needed for a developer to implement the full GA Scheduler application interface without design ambiguity. All color combinations have been validated against WCAG AA contrast requirements. All spacing derives from the 4px base unit. All components include light and dark mode variants. Every page includes specifications for empty states, loading states, error states, interactive states, and responsive behavior.*
+*End of specification. This document provides all values needed for a developer to implement the full GA Scheduler application interface without design ambiguity. All color combinations have been validated against WCAG AA contrast requirements. All spacing derives from the 4px base unit. All components include light and dark mode variants. Every page includes specifications for empty states, loading states, error states, interactive states, and responsive behavior. Version 1.1 additions: session management and auth UX (11.13), rate limit feedback (11.14), delete cascade warnings (11.15), global run-in-progress indicator (11.16), bulk operations, semester switching behavior, SSA failure panel, Pre-GA failure panel, competency match indicator, locked room summary view, export/print flow, and password change flows.*
