@@ -1,0 +1,210 @@
+:root {
+  /* ── Primary ── */
+  --color-primary-50: #EEF2FF;
+  --color-primary-100: #D8E0FC;
+  --color-primary-200: #B0C1F9;
+  --color-primary-400: #6382E8;
+  --color-primary-500: #4361D0;
+  --color-primary-600: #3349A8;
+  --color-primary-700: #273882;
+  --color-primary-900: #141D42;
+
+  /* ── Secondary (neutral) ── */
+  --color-secondary-50: #F8FAFC;
+  --color-secondary-100: #F1F5F9;
+  --color-secondary-200: #E2E8F0;
+  --color-secondary-300: #CBD5E1;
+  --color-secondary-400: #94A3B8;
+  --color-secondary-500: #64748B;
+  --color-secondary-700: #334155;
+  --color-secondary-900: #0F172A;
+
+  /* ── Accent ── */
+  --color-accent-400: #38BDF8;
+  --color-accent-500: #0EA5E9;
+
+  /* ── Semantic ── */
+  --color-success-50: #F0FDF4;
+  --color-success-500: #22C55E;
+  --color-success-700: #15803D;
+  --color-warning-50: #FFFBEB;
+  --color-warning-500: #F59E0B;
+  --color-warning-700: #A16207;
+  --color-error-50: #FEF2F2;
+  --color-error-500: #EF4444;
+  --color-error-700: #B91C1C;
+  --color-info-50: #EFF6FF;
+  --color-info-500: #3B82F6;
+
+  /* ── Backgrounds & Surfaces ── */
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #F8FAFC;
+  --color-surface: #FFFFFF;
+  --color-border: #E2E8F0;
+
+  /* ── Schedule Block Colors (Light) ── */
+  --block-a-bg: #EEF2FF;
+  --block-a-text: #3349A8;
+  --block-a-border: #4361D0;
+  --block-b-bg: #F0FDF4;
+  --block-b-text: #15803D;
+  --block-b-border: #22C55E;
+  --block-c-bg: #FFF7ED;
+  --block-c-text: #9A3412;
+  --block-c-border: #F97316;
+  --block-d-bg: #FDF4FF;
+  --block-d-text: #7E22CE;
+  --block-d-border: #A855F7;
+  --block-e-bg: #FFF1F2;
+  --block-e-text: #BE123C;
+  --block-e-border: #F43F5E;
+  --block-f-bg: #FEFCE8;
+  --block-f-text: #854D0E;
+  --block-f-border: #EAB308;
+  --block-g-bg: #F0FDFA;
+  --block-g-text: #115E59;
+  --block-g-border: #14B8A6;
+  --block-fixed-bg: #F1F5F9;
+  --block-fixed-text: #334155;
+  --block-fixed-border: #CBD5E1;
+
+  /* ── Typography ── */
+  --font-family-primary: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-family-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --text-page-title: clamp(1.5rem, 1.25rem + 1vw, 1.875rem);
+  --text-section-title: clamp(1.25rem, 1.125rem + 0.5vw, 1.5rem);
+  --text-card-title: 1.25rem;
+  --text-subtitle: 1.125rem;
+  --text-body-lg: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  --text-body: 1rem;
+  --text-body-sm: 0.875rem;
+  --text-caption: 0.75rem;
+  --text-overline: 0.75rem;
+  --text-button: 0.875rem;
+  --text-button-lg: 1rem;
+  --text-mono: 0.8125rem;
+  --text-mono-sm: 0.75rem;
+  --text-table-header: 0.75rem;
+
+  /* ── Spacing ── */
+  --space-0: 0;
+  --space-0-5: 0.125rem;
+  --space-1: 0.25rem;
+  --space-1-5: 0.375rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ── Border Radius ── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 9999px;
+  --radius-full: 50%;
+
+  /* ── Shadows ── */
+  --shadow-xs: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.06), 0 1px 2px -1px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+  --shadow-ring: 0 0 0 3px rgba(67, 97, 208, 0.15);
+  --shadow-ring-error: 0 0 0 3px rgba(239, 68, 68, 0.15);
+
+  /* ── Transitions ── */
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 350ms;
+  --duration-slower: 500ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Layout ── */
+  --sidebar-width: 256px;
+  --sidebar-width-collapsed: 64px;
+  --topbar-height: 56px;
+  --content-max-width: 1440px;
+}
+
+/* ── Dark Mode ── */
+[data-theme="dark"] {
+  --color-primary-50: #1A2240;
+  --color-primary-100: #1E2A52;
+  --color-primary-400: #7B9AEF;
+  --color-primary-500: #6382E8;
+  --color-primary-600: #7B9AEF;
+  --color-primary-700: #93AAFF;
+
+  --color-secondary-50: #0D1117;
+  --color-secondary-100: #161B22;
+  --color-secondary-200: #21262D;
+  --color-secondary-300: #30363D;
+  --color-secondary-400: #7D8590;
+  --color-secondary-500: #9CA3AF;
+  --color-secondary-700: #D1D5DB;
+  --color-secondary-900: #F0F6FC;
+
+  --color-accent-400: #38BDF8;
+  --color-accent-500: #38BDF8;
+
+  --color-success-50: #0D2818;
+  --color-success-500: #4ADE80;
+  --color-success-700: #4ADE80;
+  --color-warning-50: #2D1F04;
+  --color-warning-500: #FBBF24;
+  --color-warning-700: #FBBF24;
+  --color-error-50: #2D0F0F;
+  --color-error-500: #F87171;
+  --color-error-700: #F87171;
+  --color-info-50: #0C1D36;
+  --color-info-500: #60A5FA;
+
+  --color-bg-primary: #0D1117;
+  --color-bg-secondary: #161B22;
+  --color-surface: #1C2128;
+  --color-border: #30363D;
+
+  /* ── Schedule Block Colors (Dark) ── */
+  --block-a-bg: #1A2240;
+  --block-a-text: #93AAFF;
+  --block-a-border: #6382E8;
+  --block-b-bg: #0D2818;
+  --block-b-text: #4ADE80;
+  --block-b-border: #22C55E;
+  --block-c-bg: #2D1A04;
+  --block-c-text: #FDBA74;
+  --block-c-border: #F97316;
+  --block-d-bg: #2D1040;
+  --block-d-text: #C084FC;
+  --block-d-border: #A855F7;
+  --block-e-bg: #2D0F18;
+  --block-e-text: #FDA4AF;
+  --block-e-border: #F43F5E;
+  --block-f-bg: #2D2504;
+  --block-f-text: #FDE047;
+  --block-f-border: #EAB308;
+  --block-g-bg: #0D2D26;
+  --block-g-text: #5EEAD4;
+  --block-g-border: #14B8A6;
+  --block-fixed-bg: #161B22;
+  --block-fixed-text: #9CA3AF;
+  --block-fixed-border: #30363D;
+
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.45), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  --shadow-ring: 0 0 0 3px rgba(99, 130, 232, 0.25);
+  --shadow-ring-error: 0 0 0 3px rgba(248, 113, 113, 0.25);
+}

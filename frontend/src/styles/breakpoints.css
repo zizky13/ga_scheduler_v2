@@ -1,0 +1,56 @@
+/* ── Responsive Breakpoints ──
+   Mobile:  < 640px
+   Tablet:  640px – 1024px
+   Desktop: > 1024px
+*/
+
+/* ── Mobile-only utilities ── */
+@media (max-width: 639px) {
+  .hide-mobile { display: none !important; }
+}
+
+/* ── Tablet-only utilities ── */
+@media (min-width: 640px) and (max-width: 1024px) {
+  .hide-tablet { display: none !important; }
+}
+
+/* ── Desktop-only utilities ── */
+@media (min-width: 1025px) {
+  .hide-desktop { display: none !important; }
+}
+
+/* ── Show-at-breakpoint utilities ── */
+.show-mobile { display: none !important; }
+@media (max-width: 639px) {
+  .show-mobile { display: block !important; }
+}
+
+.show-tablet { display: none !important; }
+@media (min-width: 640px) and (max-width: 1024px) {
+  .show-tablet { display: block !important; }
+}
+
+.show-desktop { display: none !important; }
+@media (min-width: 1025px) {
+  .show-desktop { display: block !important; }
+}
+
+/* ── Responsive content padding ── */
+.content-padding {
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
+}
+
+@media (min-width: 640px) {
+  .content-padding {
+    padding-left: var(--space-6);
+    padding-right: var(--space-6);
+  }
+}
+
+@media (min-width: 1025px) {
+  .content-padding {
+    padding-left: var(--space-8);
+    padding-right: var(--space-8);
+  }
+}
