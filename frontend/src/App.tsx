@@ -6,6 +6,7 @@ import { runPipeline, getDefaultInput, getDefaultConfig, rooms, timeSlots, lectu
 import type { GAConfig } from './lib/pipeline';
 import { ScheduleGrid } from './components/ScheduleGrid';
 import { Sidebar } from './components/Sidebar';
+import { TopBar } from './components/TopBar';
 import styles from './App.module.css';
 
 const STATUS_LABEL: Record<PipelineStatus, string> = {
@@ -63,6 +64,12 @@ function App() {
   return (
     <>
     <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
+    <TopBar
+      sidebarCollapsed={sidebarCollapsed}
+      theme={theme}
+      onToggleTheme={toggleTheme}
+      onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
+    />
     <div
       className={styles.page}
       style={{ marginLeft: sidebarCollapsed ? 'var(--sidebar-width-collapsed)' : 'var(--sidebar-width)' }}
@@ -74,14 +81,6 @@ function App() {
             Proof-of-concept: run the GA pipeline in-browser against the seed dataset.
           </p>
         </div>
-        <button
-          className={styles.themeToggle}
-          onClick={toggleTheme}
-          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-          type="button"
-        >
-          {theme === 'light' ? '☽' : '☀'}
-        </button>
       </header>
 
       {/* Task 7: Re-run controls */}

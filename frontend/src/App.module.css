@@ -1,8 +1,9 @@
 .page {
-  min-height: 100vh;
+  min-height: calc(100vh - var(--topbar-height));
+  margin-top: var(--topbar-height);
   background: var(--color-bg-secondary);
   max-width: var(--content-max-width);
-  padding: var(--space-10) var(--space-8) var(--space-8);
+  padding: var(--space-8);
   font-family: var(--font-family-primary);
   transition: margin-left var(--duration-slow) var(--ease-in-out);
 }
@@ -27,33 +28,6 @@
   font-size: var(--text-body-sm);
   color: var(--color-secondary-500);
   margin: var(--space-1) 0 0;
-}
-
-.themeToggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  color: var(--color-secondary-500);
-  font-size: 1.25rem;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out),
-              border-color var(--duration-fast) var(--ease-out);
-  flex-shrink: 0;
-}
-
-.themeToggle:hover {
-  background: var(--color-secondary-100);
-  border-color: var(--color-secondary-300);
-}
-
-.themeToggle:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-ring);
 }
 
 /* ── Controls row ── */

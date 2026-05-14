@@ -1,0 +1,319 @@
+.topBar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: var(--topbar-height);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--color-border);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  transition: left var(--duration-slow) var(--ease-in-out);
+}
+
+[data-theme="dark"] .topBar {
+  background: rgba(13, 17, 23, 0.85);
+}
+
+/* ── Left Section ── */
+.leftSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  color: var(--color-secondary-700);
+  flex-shrink: 0;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.hamburger:hover {
+  background: var(--color-secondary-100);
+}
+
+.hamburger:focus-visible {
+  box-shadow: var(--shadow-ring);
+}
+
+@media (max-width: 639px) {
+  .hamburger {
+    display: flex;
+  }
+}
+
+/* ── Breadcrumbs ── */
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-body-sm);
+  font-weight: 400;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.breadcrumbLink {
+  color: var(--color-secondary-400);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.breadcrumbLink:hover {
+  color: var(--color-secondary-700);
+}
+
+.breadcrumbLink:focus-visible {
+  box-shadow: var(--shadow-ring);
+  border-radius: var(--radius-sm);
+}
+
+.breadcrumbSeparator {
+  flex-shrink: 0;
+  color: var(--color-secondary-300);
+}
+
+.breadcrumbCurrent {
+  color: var(--color-secondary-900);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Right Section ── */
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Semester Selector ── */
+.semesterSelector {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--color-primary-500);
+  position: relative;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.semesterSelector:hover {
+  background: var(--color-secondary-100);
+}
+
+.semesterSelector:focus-visible {
+  box-shadow: var(--shadow-ring);
+}
+
+.semesterSelectorIcon {
+  flex-shrink: 0;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.semesterSelectorOpen .semesterSelectorIcon {
+  transform: rotate(180deg);
+}
+
+.semesterDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 200px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  z-index: 50;
+}
+
+.semesterOption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-body-sm);
+  font-weight: 400;
+  color: var(--color-secondary-700);
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.semesterOption:hover {
+  background: var(--color-secondary-100);
+}
+
+.semesterOptionActive {
+  font-weight: 500;
+  color: var(--color-primary-500);
+}
+
+.checkIcon {
+  color: var(--color-primary-500);
+  flex-shrink: 0;
+}
+
+/* ── Dark Mode Toggle ── */
+.themeToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--color-secondary-400);
+  flex-shrink: 0;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+
+.themeToggle:hover {
+  background: var(--color-secondary-100);
+  color: var(--color-secondary-700);
+}
+
+.themeToggle:focus-visible {
+  box-shadow: var(--shadow-ring);
+}
+
+/* ── User Menu ── */
+.userMenuWrapper {
+  position: relative;
+}
+
+.userAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  flex-shrink: 0;
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.userAvatar:hover {
+  box-shadow: 0 0 0 2px var(--color-primary-200);
+}
+
+.userAvatar:focus-visible {
+  box-shadow: var(--shadow-ring);
+}
+
+.userDropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  z-index: 50;
+}
+
+.userInfo {
+  padding: 12px;
+}
+
+.userName {
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--color-secondary-900);
+}
+
+.userEmail {
+  font-size: var(--text-caption);
+  color: var(--color-secondary-400);
+  margin-top: 2px;
+}
+
+.userRole {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+
+.roleAdmin {
+  background: var(--color-primary-50);
+  color: var(--color-primary-500);
+}
+
+.roleUser {
+  background: var(--color-secondary-100);
+  color: var(--color-secondary-500);
+}
+
+.dropdownDivider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
+
+.dropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-700);
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.dropdownItem:hover {
+  background: var(--color-secondary-100);
+}
+
+.dropdownItemDanger:hover {
+  background: var(--color-error-50);
+  color: var(--color-error-700);
+}
+
+/* ── Responsive padding ── */
+@media (min-width: 640px) and (max-width: 1024px) {
+  .topBar {
+    padding: 0 24px;
+  }
+}
+
+@media (max-width: 639px) {
+  .topBar {
+    padding: 0 16px;
+    left: 0 !important;
+  }
+
+  .semesterSelector span {
+    display: none;
+  }
+}
