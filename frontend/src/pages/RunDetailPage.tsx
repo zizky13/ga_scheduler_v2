@@ -127,6 +127,7 @@ export function RunDetailPage() {
 
   const [chartData, setChartData] = useState<FitnessDataPoint[]>([]);
   const [hasAvgData, setHasAvgData] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -193,14 +194,19 @@ export function RunDetailPage() {
   }, []);
 
   const handleSSEState = useCallback((data: SSEStatePayload) => {
+    const newStatus = data.status as RunStatus;
     setRun((prev) => {
       if (!prev) return prev;
-      return { ...prev, status: data.status as RunStatus };
+      return { ...prev, status: newStatus };
     });
-    if (TERMINAL_STATUSES.has(data.status as RunStatus)) {
+    if (newStatus === 'COMPLETED') {
+      addToast({ type: 'success', title: 'Run completed', message: 'Schedule optimization completed successfully.' });
+      setShowConfetti(true);
+    }
+    if (TERMINAL_STATUSES.has(newStatus)) {
       fetchRun();
     }
-  }, [fetchRun]);
+  }, [fetchRun, addToast]);
 
   const handleSSEError = useCallback((data: SSEErrorPayload) => {
     addToast({ type: 'error', title: 'Stream error', message: data.message });
@@ -216,6 +222,14 @@ export function RunDetailPage() {
     onError: handleSSEError,
     onReconnected: handleSSEReconnected,
   });
+
+  /* ── Confetti auto-dismiss ── */
+
+  useEffect(() => {
+    if (!showConfetti) return;
+    const timer = setTimeout(() => setShowConfetti(false), 1500);
+    return () => clearTimeout(timer);
+  }, [showConfetti]);
 
   /* ── Elapsed timer ── */
 
@@ -320,18 +334,24 @@ export function RunDetailPage() {
   }
 
   const shortId = run.id.slice(0, 8);
-  const progressPercent = run.generationsRun > 0
-    ? Math.round((run.currentGeneration / run.generationsRun) * 100)
-    : 0;
-  const progressWidth = run.generationsRun > 0
-    ? (run.currentGeneration / run.generationsRun) * 100
-    : 0;
+  const isCompleted = run.status === 'COMPLETED';
+  const progressPercent = isCompleted
+    ? 100
+    : run.generationsRun > 0
+      ? Math.round((run.currentGeneration / run.generationsRun) * 100)
+      : 0;
+  const progressWidth = isCompleted
+    ? 100
+    : run.generationsRun > 0
+      ? (run.currentGeneration / run.generationsRun) * 100
+      : 0;
   const isActive = run.status === 'RUNNING' || run.status === 'QUEUED';
   const isQueued = run.status === 'QUEUED';
   const showViewSchedule = run.status === 'COMPLETED' || run.status === 'STAGNATED';
 
   return (
     <div className={styles.page}>
+      {showConfetti && <ConfettiDots />}
       <ConnectionBanner status={connectionStatus} />
 
       <div className={styles.header}>
@@ -460,6 +480,39 @@ export function RunDetailPage() {
         cancelLabel="Keep Running"
         loading={cancelling}
       />
+    </div>
+  );
+}
+
+/* ── Confetti Dots ── */
+
+function ConfettiDots() {
+  const dots = useRef(
+    Array.from({ length: 20 }, () => ({
+      x: Math.random() * 100,
+      top: 5 + Math.random() * 40,
+      delay: Math.random() * 300,
+      drift: (Math.random() - 0.5) * 80,
+      size: 4 + Math.random() * 5,
+    })),
+  ).current;
+
+  return (
+    <div className={styles.confetti} aria-hidden="true">
+      {dots.map((dot, i) => (
+        <span
+          key={i}
+          className={styles.confettiDot}
+          style={{
+            left: `${dot.x}%`,
+            top: `${dot.top}%`,
+            width: dot.size,
+            height: dot.size,
+            animationDelay: `${dot.delay}ms`,
+            '--drift': `${dot.drift}px`,
+          } as React.CSSProperties}
+        />
+      ))}
     </div>
   );
 }
