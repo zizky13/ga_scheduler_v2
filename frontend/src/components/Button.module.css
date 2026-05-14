@@ -1,0 +1,224 @@
+/* ── Base ── */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-family-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  border: none;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out),
+              opacity var(--duration-fast) var(--ease-out);
+}
+
+.button:focus-visible {
+  outline: none;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+}
+
+/* ── Sizes ── */
+.sm {
+  height: 32px;
+  padding: 6px 12px;
+  font-size: var(--text-caption);
+  border-radius: var(--radius-md);
+}
+
+.md {
+  height: 36px;
+  padding: 8px 16px;
+  font-size: var(--text-button);
+  border-radius: var(--radius-md);
+}
+
+.lg {
+  height: 44px;
+  padding: 10px 20px;
+  font-size: var(--text-button-lg);
+  border-radius: var(--radius-md);
+}
+
+/* ── Primary (filled) ── */
+.primary {
+  background: var(--color-primary-500);
+  color: #ffffff;
+  box-shadow: var(--shadow-xs);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--color-primary-600);
+  box-shadow: var(--shadow-sm);
+}
+
+.primary:active:not(:disabled) {
+  background: var(--color-primary-700);
+  box-shadow: none;
+}
+
+.primary:focus-visible {
+  box-shadow: var(--shadow-ring);
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.primary:disabled > * {
+  opacity: 0.7;
+}
+
+/* ── Secondary (outlined) ── */
+.secondary {
+  background: transparent;
+  color: var(--color-secondary-700);
+  border: 1px solid var(--color-border);
+  box-shadow: none;
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--color-secondary-50);
+  color: var(--color-secondary-900);
+  border-color: var(--color-secondary-300);
+  box-shadow: var(--shadow-xs);
+}
+
+.secondary:active:not(:disabled) {
+  background: var(--color-secondary-100);
+  color: var(--color-secondary-900);
+  border-color: var(--color-secondary-400);
+  box-shadow: none;
+}
+
+.secondary:focus-visible {
+  box-shadow: var(--shadow-ring);
+}
+
+.secondary:disabled {
+  color: var(--color-secondary-400);
+  border-color: var(--color-secondary-200);
+}
+
+/* ── Ghost (text-only) ── */
+.ghost {
+  background: transparent;
+  color: var(--color-primary-500);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--color-primary-50);
+  color: var(--color-primary-600);
+}
+
+.ghost:active:not(:disabled) {
+  background: var(--color-primary-100);
+  color: var(--color-primary-700);
+}
+
+.ghost:focus-visible {
+  box-shadow: var(--shadow-ring);
+}
+
+.ghost:disabled {
+  opacity: 0.5;
+}
+
+/* ── Danger (filled) ── */
+.danger {
+  background: var(--color-error-500);
+  color: #ffffff;
+  box-shadow: var(--shadow-xs);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--color-error-700);
+  box-shadow: var(--shadow-sm);
+}
+
+.danger:active:not(:disabled) {
+  background: #991B1B;
+  box-shadow: none;
+}
+
+.danger:focus-visible {
+  box-shadow: var(--shadow-ring-error);
+}
+
+.danger:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+[data-theme="dark"] .danger {
+  color: #0D1117;
+}
+
+/* ── Icon-only (square) ── */
+.iconOnly {
+  background: transparent;
+  color: var(--color-secondary-500);
+  padding: 0;
+}
+
+.iconOnly.sm {
+  width: 32px;
+  height: 32px;
+}
+
+.iconOnly.md {
+  width: 36px;
+  height: 36px;
+}
+
+.iconOnly:hover:not(:disabled) {
+  background: var(--color-secondary-100);
+  color: var(--color-secondary-700);
+}
+
+.iconOnly:focus-visible {
+  box-shadow: var(--shadow-ring);
+}
+
+.iconOnly:disabled {
+  opacity: 0.5;
+}
+
+/* ── Icon sizing within buttons ── */
+.iconSm {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.iconMd {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.iconLg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* Icon sizes for icon-only buttons (spec: sm=16px, md=18px) */
+.iconOnlySm {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.iconOnlyMd {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
