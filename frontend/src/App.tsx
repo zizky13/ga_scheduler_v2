@@ -6,6 +6,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { ContentArea } from './components/ContentArea';
 import { ProtectedRoute, RoleGuard } from './components/ProtectedRoute';
+import { ToastContainer } from './components/Toast';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
@@ -42,6 +43,8 @@ function AppShell() {
 
 function App() {
   return (
+    <>
+    <ToastContainer />
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 
@@ -75,6 +78,7 @@ function App() {
         </Route>
       </Route>
     </Routes>
+    </>
   );
 }
 
