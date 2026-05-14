@@ -1,13 +1,16 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+// Smoke-test: verifies the @pipeline alias and resolver are wired correctly.
+// runPipeline is imported but not called here — actual execution is in Phase 4-POC.2.
+import { runPipeline, getDefaultInput } from './lib/pipeline'
+
+console.log('[POC smoke-test] runPipeline imported:', typeof runPipeline)
+console.log('[POC smoke-test] getDefaultInput imported:', typeof getDefaultInput)
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<div>Dashboard</div>} />
-      </Routes>
-    </BrowserRouter>
+    <div>
+      <h1>UPJ Scheduler — POC</h1>
+      <p>Phase 4-POC.1: Pipeline bridge wired. Check console for smoke-test output.</p>
+    </div>
   )
 }
 

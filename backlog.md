@@ -80,11 +80,50 @@ Long-running GA execution off the request thread, with checkpointing and SSE.
 12. [x] `[P1/S]` **SKS Blocks (Worker):** Update the worker's `ScheduleAssignmentSlot` persistence loop to write the contiguous `timeSlotIds` block for each `sessionIndex` row, matching the new nested gene structure.
 13. [x] `[P1/S]` **SKS Blocks (API):** Update `GET /schedule-runs/:id` response serializer to group `ScheduleAssignment` rows by `offeringId` and expose sessions as a nested array (e.g., `sessions: [{ sessionIndex, roomId, timeSlots }]`) so the frontend can render each parallel session correctly.
 
-### Phase 4 — Frontend
+### Phase 4 — POC: In-Browser Pipeline Demo
 
-The full SPA implementing the design specification in `docs/app-design-spec.md`. Depends on Phases 0–3 (all backend APIs, persistence, queue, and SSE must be operational). Sub-phases are roughly sequential; items within a sub-phase are ordered by dependency.
+**Goal.** Click a button in the browser, watch `runPipeline` execute against the in-memory seed, and see the resulting GA chromosome rendered as a weekly Mon–Fri schedule grid. No backend call, no DB, no auth, no SSE — the pipeline runs entirely in client JS via Vite's bundler.
 
-#### Phase 4a — Project Setup & Design Foundations
+**Why this exists.** Phases 0–3 already produced a working pipeline behind a Node API. For the thesis demo we don't need the full SPA; we need a self-contained artifact that proves the GA produces a coherent timetable. Anything beyond that has been pushed to Phase 5 (Production Frontend).
+
+**Out of scope for the POC.** API client, login, CRUD pages, persistence wiring, SSE streaming, manual override, exports, mobile/print, full a11y pass, dark-mode polish across every page.
+
+**Carried over (already complete from old Phase 4a).** Vite/React scaffold, design tokens, font loading, CSS reset, schedule-block color tokens, dark-mode toggle, responsive breakpoints. These all still apply and need no re-work.
+
+#### Phase 4-POC.1 — Pipeline bridge (P0)
+
+1. [x] `[P0/S]` **Wire Vite to consume `src/orchestrator.ts` from the frontend.** Add a `@pipeline` alias in `frontend/vite.config.ts` pointing at `../src`, plus a resolver tweak so `.js`-suffixed imports inside the pipeline source resolve to the `.ts` files (Vite/esbuild handles this when `resolve.extensions` lists the TS extensions; otherwise add a tiny resolver plugin). Smoke-test by importing `runPipeline` in `App.tsx` and logging the returned `SchedulerResponse` shape.
+2. [x] `[P0/S]` **Sanitize pipeline output for the browser.** Confirm the only Node-isms in the GA hot path are three `console.log/warn` calls in `src/ga/runGA.ts` and one `process.env.NODE_ENV` guard in `src/ga/crossover.ts` (Vite's `define` substitutes the latter). Decide policy on the `console.*` lines: either keep as dev-console noise or temporarily swap `console` for the run; do not touch `runGA.ts` itself.
+3. [x] `[P0/S]` **Frontend seed adapter.** Create `frontend/src/lib/pipeline.ts` that re-exports `runPipeline` and exposes `getDefaultInput(): OrchestratorInput`. Internally it imports `rooms`, `timeSlots`, `lecturers`, `courseOfferings` from `@pipeline/db/seed` and bundles them with a default `GAConfig` (populationSize 50, generations 200, mutationRate 0.05, elitismCount 2, tournamentSize 5, crossoverType `'uniform'`, noiseRate 0.1, hardPenaltyWeight 100, softPenaltyWeight 1).
+4. [ ] `[P1/S]` **Optional Web Worker.** Wrap `runPipeline` in `frontend/src/workers/ga.worker.ts` only if main-thread freezes on 200-generation runs are noticeable; otherwise defer.
+
+#### Phase 4-POC.2 — Minimal dashboard shell (P0)
+
+5. [ ] `[P0/S]` **Strip `App.tsx` to a single-page POC layout.** Title "UPJ Scheduler — POC", a `[Run Pipeline]` button, a status pill (Idle / Running / Success / Failed / Infeasible), and four stat tiles (Best Fitness / Hard Violations / Soft Penalty / Duration ms). Reuse existing tokens; no sidebar, no top bar, no router.
+6. [ ] `[P0/S]` **Wire the run.** Button click calls `runPipeline(getDefaultInput())`; pending state disables the button; on resolve, push the `SchedulerResponse` into a small Zustand store; on `status !== 'SUCCESS'` render an explanation card covering `NO_FEASIBLE_CANDIDATES`, SSA `INFEASIBLE`, and any thrown error.
+7. [ ] `[P2/S]` **Re-run controls.** Inline inputs for `GAConfig.populationSize` and `generations` (plus crossoverType select) so reviewers can probe behavior without editing code.
+
+#### Phase 4-POC.3 — Weekly schedule grid (P0)
+
+8. [ ] `[P0/M]` **Build `<ScheduleGrid />`.** Pure component with props `{ response, offerings, timeSlots, rooms, lecturers }`. CSS Grid: one time-label column (80px) + five day columns (Mon–Fri, `minmax(160px, 1fr)`), one row per unique `startTime` derived from `timeSlots`. Sticky header row, sticky time column.
+9. [ ] `[P0/M]` **Render assignments as blocks.** For each `gene` in `response.gaResult.bestChromosome` iterate `gene.sessions[]`; each session contributes one block. Position via `grid-column: <dayIndex+2>` and `grid-row: <startSlot> / span <session.timeSlotIds.length>`. Block content: course code (mono), course name (truncated), lecturer name(s), room name, "Session A/B/…" label when `parallelSessionCount > 1`.
+10. [ ] `[P0/S]` **Color and decorate blocks.** Use the schedule-color tokens already in `frontend/src/styles/tokens.css` keyed off a deterministic mapping of `course.requiredCompetencies[0]` (or a small category map). Fixed offerings get a dashed left border + Lucide `Lock` icon.
+11. [ ] `[P0/S]` **Conflict overlay.** If two blocks share `(day, slotRange, room)` or `(day, slotRange, lecturer)`, render both with a red outline so reviewers can eyeball GA quality. Clean seed runs should show none.
+12. [ ] `[P1/S]` **Hover tooltip.** 500ms-delayed popover showing full lecturer list + slot start/end times. Pure CSS or lightweight popover — no extra library.
+
+#### Phase 4-POC.4 — Acceptance criteria (P0)
+
+13. [ ] `[P0/S]` `cd frontend && npm run dev` → browser → click "Run Pipeline" → within a few seconds a 15-block weekly grid renders from the seed (Phase 0 already validated SUCCESS on this seed).
+14. [ ] `[P0/S]` Best run on the seed at default config produces `hardViolations === 0` (confirms in-browser GA reaches the same quality as the CLI).
+15. [ ] `[P0/S]` Changing `crossoverType` or `populationSize` and re-running yields a visibly different schedule (proves the GA is actually running in the browser, not echoing fixtures).
+
+---
+
+### Phase 5 — Production Frontend (deferred — post-POC)
+
+**Status.** Paused. The items below define the full SPA spec'd in `docs/app-design-spec.md` — auth, CRUD across every entity, SSE-driven live progress, exports, manual override, admin tooling, mobile, full a11y. Resume only after the POC has been demonstrated and a decision is made to ship a production scheduler UI. Until then, treat these as backlog, not active work. Item numbers are preserved from the original Phase 4 ordering so design-spec cross-references stay valid.
+
+**Sub-phase 5a — Project Setup & Design Foundations (complete; carried into POC)**
 
 1. [x] `[P0/M]` Initialize the frontend project (framework, build tool, dev server, TypeScript config, linting, formatting). Install core dependencies: router, HTTP client, state management, Lucide icons, charting library (Recharts or Chart.js) (design-spec §1, §8).
 2. [x] `[P0/S]` Set up API client module with base URL configuration, JSON parsing, and centralized error-envelope unwrapping matching the backend's `{ status, data, error }` shape (api_design §6).
@@ -96,9 +135,9 @@ The full SPA implementing the design specification in `docs/app-design-spec.md`.
 8. [x] `[P1/S]` Implement **responsive breakpoint** utility/CSS (mobile < 640px, tablet 640–1024px, desktop > 1024px) and responsive typography using `clamp()` (design-spec §9, §3.3).
 9. [x] `[P0/S]` Create global CSS reset / base styles: box-sizing, default font family, body background, text color, `@media (prefers-reduced-motion)` wrapper for all transitions (design-spec §7, §15).
 
-#### Phase 4b — Tier 1: Critical Path (Login → Run → View Schedule)
+**Sub-phase 5b — Tier 1: Critical Path (Login → Run → View Schedule) — deferred**
 
-_Minimum viable path: log in, create a GA run, watch it execute, view the resulting timetable._
+_Original goal: log in, create a GA run, watch it execute via SSE, view the resulting timetable. Superseded by the POC for thesis-defense purposes; revisit only if a production deploy is approved._
 
 **Shell (minimal)**
 10. [ ] `[P0/L]` Build the **Sidebar Navigation** component: fixed-left, 256px expanded / 64px collapsed, grouped nav items (Data Management, Scheduling, Administration), active-state highlighting, collapse toggle with animated width transition, group labels in overline style (design-spec §10.1).
@@ -134,9 +173,9 @@ _Minimum viable path: log in, create a GA run, watch it execute, view the result
 62. [ ] `[P0/L]` Build the **Course Blocks** within the timetable grid: positioned via `grid-row` spanning for multi-slot sessions, category-colored backgrounds with 3px left border, content (course code mono, course name, lecturer, room, session label for parallel splits), block states (default, hover with shadow, fixed/dashed border + Lock icon, manual-override with Pencil icon, conflict with red pulse, selected with primary border, filtered-out at 20% opacity), tooltip on 500ms hover delay (full details) (design-spec §13.5).
 63. [ ] `[P0/L]` Build the **Schedule Viewer** page (`/schedule`): page header with run selector dropdown (completed runs, format: date + fitness + status), toolbar (room multi-select filter, lecturer search filter, day filter, course filter, density toggle, export button, print button), timetable grid, run summary panel below grid (best fitness, hard violations, soft penalty, total assignments, duration, generations), empty state when no completed runs, skeleton loading (design-spec §12.11).
 
-#### Phase 4c — Tier 2: Essential CRUD, Error Handling & Data Management
+**Sub-phase 5c — Tier 2: Essential CRUD, Error Handling & Data Management — deferred**
 
-_Complete the workflow: manage data entities, handle failure states, dashboard overview._
+_Original goal: full CRUD across every entity, failure panels, dashboard overview. Out of scope for the POC._
 
 **Remaining shell & shared components**
 11. [ ] `[P0/M]` Build the **Sidebar Footer** showing user avatar (initials), name, role badge, and logout button; collapsed mode shows avatar only with popover (design-spec §10.1).
@@ -167,9 +206,9 @@ _Complete the workflow: manage data entities, handle failure states, dashboard o
 **Manual override**
 69. [ ] `[P0/L]` Build the **Manual Override** modal (modal-lg): accessed by clicking a course block in the grid (ADMIN only), header with course code and session, current assignment display card, override form (searchable room select, timeslot multi-select grouped by day matching session duration, required reason textarea min 10 chars), real-time conflict detection (room conflict warning, lecturer conflict warning, no-conflict success), force-override capability, post-save grid update with "Manual Override" badge on block + toast + audit log entry (design-spec §12.12).
 
-#### Phase 4d — Tier 3: Nice to Have (Polish, UX, Non-Functional)
+**Sub-phase 5d — Tier 3: Nice to Have (Polish, UX, Non-Functional) — deferred**
 
-_Enhancements, mobile, accessibility hardening, exports, animations. Implement after Tiers 1 & 2 are working._
+_Enhancements, mobile, accessibility hardening, exports, animations. Out of scope for the POC; revisit alongside 5b/5c._
 
 **Deferred shell & components**
 14. [ ] `[P1/M]` Implement **Semester Selector** dropdown in the top bar with confirmation dialog on switch, unsaved-form guard that disables the selector, and post-switch toast notification (design-spec §10.2).
@@ -209,9 +248,9 @@ _Enhancements, mobile, accessibility hardening, exports, animations. Implement a
 81. [ ] `[P2/M]` Add optional **celebration animation** on run completion: subtle confetti-like dot burst (1 second, muted colors) when status transitions to COMPLETED (design-spec §12.10.3).
 82. [ ] `[P2/S]` Add **login card shake animation** on wrong credentials (subtle horizontal shake, reduced-motion aware) (design-spec §12.1).
 
-### Phase 5 — Thesis Empirical Validation
+### Phase 6 — Thesis Empirical Validation
 
-Drives Chapter 4 of the thesis. Depends on Phases 0–3.
+Drives Chapter 4 of the thesis. Depends on Phases 0–3; independent of the POC (Phase 4) and the deferred production frontend (Phase 5).
 
 1. [ ] `[P1/M]` Implement the eleven black-box scenarios from techspec §10.2 as runnable integration tests (Feasible simple, SSA Phase 0 trigger, AC-3 abort, Hopcroft–Karp abort, Partial infeasibility, Parallel class, Team teaching, Fixed Room invariant, Competency mismatch (Pre-GA), Competency open assignment, Crossover comparison).
 2. [ ] `[P1/M]` Run the crossover comparison sweep (`singlePoint` vs `uniform` vs `pmx`) on a fixed dataset and export fitness curves to CSV for the thesis table (techspec §10.2 last row).
