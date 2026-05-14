@@ -1,0 +1,73 @@
+.contentArea {
+  margin-top: var(--topbar-height);
+  min-height: calc(100vh - var(--topbar-height));
+  background: var(--color-bg-primary);
+  overflow-y: auto;
+  transition: margin-left var(--duration-slow) var(--ease-in-out);
+}
+
+.inner {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 32px;
+}
+
+@media (min-width: 640px) and (max-width: 1024px) {
+  .inner {
+    padding: 24px;
+  }
+}
+
+@media (max-width: 639px) {
+  .contentArea {
+    margin-left: 0 !important;
+  }
+
+  .inner {
+    padding: 16px;
+  }
+}
+
+/* ── Page Header Pattern ── */
+.pageHeader {
+  margin-bottom: 24px;
+}
+
+.pageHeaderRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.pageHeaderText {
+  min-width: 0;
+}
+
+.pageTitle {
+  font-size: var(--text-page-title);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-secondary-900);
+  margin: 0;
+}
+
+.pageDescription {
+  font-size: var(--text-body);
+  font-weight: 400;
+  color: var(--color-secondary-500);
+  margin: 4px 0 0;
+}
+
+.pageActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pageDivider {
+  height: 1px;
+  background: var(--color-border);
+  margin-top: 24px;
+}

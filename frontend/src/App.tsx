@@ -7,6 +7,7 @@ import type { GAConfig } from './lib/pipeline';
 import { ScheduleGrid } from './components/ScheduleGrid';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
+import { ContentArea, PageHeader } from './components/ContentArea';
 import styles from './App.module.css';
 
 const STATUS_LABEL: Record<PipelineStatus, string> = {
@@ -70,20 +71,12 @@ function App() {
       onToggleTheme={toggleTheme}
       onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
     />
-    <div
-      className={styles.page}
-      style={{ marginLeft: sidebarCollapsed ? 'var(--sidebar-width-collapsed)' : 'var(--sidebar-width)' }}
-    >
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>UPJ Scheduler — POC</h1>
-          <p className={styles.subtitle}>
-            Proof-of-concept: run the GA pipeline in-browser against the seed dataset.
-          </p>
-        </div>
-      </header>
+    <ContentArea sidebarCollapsed={sidebarCollapsed}>
+      <PageHeader
+        title="UPJ Scheduler — POC"
+        description="Proof-of-concept: run the GA pipeline in-browser against the seed dataset."
+      />
 
-      {/* Task 7: Re-run controls */}
       <div className={styles.configPanel}>
         <div className={styles.configField}>
           <label className={styles.configLabel} htmlFor="cfg-pop">
@@ -245,7 +238,7 @@ function App() {
           <p className={styles.explanationBody}>{error}</p>
         </div>
       )}
-    </div>
+    </ContentArea>
     </>
   );
 }
