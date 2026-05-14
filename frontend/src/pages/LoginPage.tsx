@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import styles from './LoginPage.module.css';
 
@@ -11,15 +12,23 @@ export function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [shaking, setShaking] = useState(false);
+
+  const emailRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/dashboard';
 
-  if (isAuthenticated) {
-    navigate(from, { replace: true });
-    return null;
-  }
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, navigate, from]);
+
+  if (isAuthenticated) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,6 +46,10 @@ export function LoginPage() {
         navigate(from, { replace: true });
       } else {
         setError('Invalid email or password.');
+        setPassword('');
+        setShaking(true);
+        setTimeout(() => setShaking(false), 400);
+        emailRef.current?.focus();
       }
     } finally {
       setLoading(false);
@@ -45,48 +58,83 @@ export function LoginPage() {
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.card}>
-        <h1 className={styles.title}>GA Scheduler</h1>
-        <p className={styles.subtitle}>Sign in to your account</p>
+      <div
+        ref={cardRef}
+        className={`${styles.card} ${shaking ? styles.shake : ''}`}
+      >
+        <h1 className={styles.logo}>GA Scheduler</h1>
+        <p className={styles.institution}>Universitas Pembangunan Jaya</p>
 
-        {error && <div className={styles.error}>{error}</div>}
+        <h2 className={styles.heading}>Sign in to your account</h2>
+        <p className={styles.description}>Enter your credentials below.</p>
 
         <form className={styles.form} onSubmit={handleSubmit}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="login-email">
-              Email
+              Email address
             </label>
             <input
+              ref={emailRef}
               id="login-email"
               className={styles.input}
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@upj.ac.id"
               required
+              disabled={loading}
               autoComplete="email"
               autoFocus
             />
           </div>
+
           <div className={styles.field}>
             <label className={styles.label} htmlFor="login-password">
               Password
             </label>
-            <input
-              id="login-password"
-              className={styles.input}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
+            <div className={styles.passwordWrapper}>
+              <input
+                id="login-password"
+                className={styles.input}
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                disabled={loading}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                className={styles.passwordToggle}
+                onClick={() => setShowPassword((p) => !p)}
+                tabIndex={-1}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
+
+          {error && (
+            <div className={styles.error} role="alert">
+              <AlertCircle className={styles.errorIcon} />
+              {error}
+            </div>
+          )}
+
           <button
             className={styles.submitButton}
             type="submit"
             disabled={loading}
           >
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? (
+              <>
+                <span className={styles.spinner} />
+                Signing in…
+              </>
+            ) : (
+              'Sign in'
+            )}
           </button>
         </form>
       </div>
