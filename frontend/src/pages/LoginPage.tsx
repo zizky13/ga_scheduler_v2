@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AlertCircle, Eye, EyeOff } from 'lucide-react';
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore, getErrorMessage } from '../store/authStore';
 import styles from './LoginPage.module.css';
 
 export function LoginPage() {
@@ -18,7 +18,6 @@ export function LoginPage() {
   const [shaking, setShaking] = useState(false);
 
   const emailRef = useRef<HTMLInputElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
 
   const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/dashboard';
 
@@ -36,21 +35,14 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      await new Promise((r) => setTimeout(r, 300));
-
-      if (email === 'admin@upj.ac.id' && password === 'admin') {
-        login({ id: '1', name: 'Admin User', email, role: 'ADMIN' });
-        navigate(from, { replace: true });
-      } else if (email === 'user@upj.ac.id' && password === 'user') {
-        login({ id: '2', name: 'Regular User', email, role: 'USER' });
-        navigate(from, { replace: true });
-      } else {
-        setError('Invalid email or password.');
-        setPassword('');
-        setShaking(true);
-        setTimeout(() => setShaking(false), 400);
-        emailRef.current?.focus();
-      }
+      await login(email, password);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(getErrorMessage(err));
+      setPassword('');
+      setShaking(true);
+      setTimeout(() => setShaking(false), 400);
+      emailRef.current?.focus();
     } finally {
       setLoading(false);
     }
@@ -58,10 +50,7 @@ export function LoginPage() {
 
   return (
     <div className={styles.wrapper}>
-      <div
-        ref={cardRef}
-        className={`${styles.card} ${shaking ? styles.shake : ''}`}
-      >
+      <div className={`${styles.card} ${shaking ? styles.shake : ''}`}>
         <h1 className={styles.logo}>GA Scheduler</h1>
         <p className={styles.institution}>Universitas Pembangunan Jaya</p>
 
