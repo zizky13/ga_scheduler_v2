@@ -109,7 +109,7 @@ Long-running GA execution off the request thread, with checkpointing and SSE.
 9. [x] `[P0/M]` **Render assignments as blocks.** For each `gene` in `response.gaResult.bestChromosome` iterate `gene.sessions[]`; each session contributes one block. Position via `grid-column: <dayIndex+2>` and `grid-row: <startSlot> / span <session.timeSlotIds.length>`. Block content: course code (mono), course name (truncated), lecturer name(s), room name, "Session A/B/…" label when `parallelSessionCount > 1`.
 10. [x] `[P0/S]` **Color and decorate blocks.** Use the schedule-color tokens already in `frontend/src/styles/tokens.css` keyed off a deterministic mapping of `course.requiredCompetencies[0]` (or a small category map). Fixed offerings get a dashed left border + Lucide `Lock` icon.
 11. [x] `[P0/S]` **Conflict overlay.** If two blocks share `(day, slotRange, room)` or `(day, slotRange, lecturer)`, render both with a red outline so reviewers can eyeball GA quality. Clean seed runs should show none.
-12. [ ] `[P1/S]` **Hover tooltip.** 500ms-delayed popover showing full lecturer list + slot start/end times. Pure CSS or lightweight popover — no extra library.
+12. [x] `[P1/S]` **Hover tooltip.** 500ms-delayed popover showing full lecturer list + slot start/end times. Pure CSS or lightweight popover — no extra library.
 
 #### Phase 4-POC.4 — Acceptance criteria (P0)
 

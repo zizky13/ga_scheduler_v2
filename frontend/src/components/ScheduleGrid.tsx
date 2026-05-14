@@ -111,6 +111,63 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
     return conflicts
   }, [response.gaResult?.bestChromosome, offerings])
 
+  const overlapInfo = useMemo(() => {
+    const chromosome = response.gaResult?.bestChromosome
+    if (!chromosome) return new Map<string, { index: number; total: number }>()
+
+    type BlockPos = { key: string; dayIdx: number; rowStart: number; rowEnd: number }
+    const blocks: BlockPos[] = []
+
+    for (let geneIdx = 0; geneIdx < chromosome.length; geneIdx++) {
+      const gene = chromosome[geneIdx]
+      for (let sessionIdx = 0; sessionIdx < gene.sessions.length; sessionIdx++) {
+        const session = gene.sessions[sessionIdx]
+        const first = slotMap.get(session.timeSlotIds[0])
+        if (!first) continue
+        const dayIdx = DAYS.indexOf(first.day as (typeof DAYS)[number])
+        const rowStart = startTimeToRow.get(first.startTime)
+        if (dayIdx === -1 || rowStart === undefined) continue
+        blocks.push({
+          key: `${geneIdx}-${sessionIdx}`,
+          dayIdx,
+          rowStart,
+          rowEnd: rowStart + session.timeSlotIds.length - 1,
+        })
+      }
+    }
+
+    const byDay = new Map<number, BlockPos[]>()
+    for (const b of blocks) {
+      const arr = byDay.get(b.dayIdx)
+      if (arr) arr.push(b)
+      else byDay.set(b.dayIdx, [b])
+    }
+
+    const result = new Map<string, { index: number; total: number }>()
+    for (const dayBlocks of byDay.values()) {
+      dayBlocks.sort((a, b) => a.rowStart - b.rowStart)
+      const groups: BlockPos[][] = []
+      for (const block of dayBlocks) {
+        let placed = false
+        for (const group of groups) {
+          if (group.some((g) => g.rowStart <= block.rowEnd && block.rowStart <= g.rowEnd)) {
+            group.push(block)
+            placed = true
+            break
+          }
+        }
+        if (!placed) groups.push([block])
+      }
+      for (const group of groups) {
+        if (group.length <= 1) continue
+        for (let i = 0; i < group.length; i++) {
+          result.set(group[i].key, { index: i, total: group.length })
+        }
+      }
+    }
+    return result
+  }, [response.gaResult?.bestChromosome, slotMap, startTimeToRow])
+
   const rowCount = uniqueStartTimes.length
   const gridTemplateRows = `48px repeat(${rowCount}, 60px)`
 
@@ -178,6 +235,10 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
               ].filter(Boolean).join(' ')
               const lastSlot = slotMap.get(session.timeSlotIds[session.timeSlotIds.length - 1])
               const timeRange = `${firstSlot.startTime} – ${lastSlot?.endTime ?? firstSlot.endTime}`
+              const overlap = overlapInfo.get(`${geneIdx}-${sessionIdx}`)
+              const overlapStyle: React.CSSProperties = overlap
+                ? { marginLeft: `${overlap.index * 18}px`, width: `calc(100% - ${overlap.index * 18}px)` }
+                : {}
               return (
                 <div
                   key={`block-${geneIdx}-${sessionIdx}`}
@@ -186,6 +247,7 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
                     gridColumn: dayIdx + 2,
                     gridRow: `${rowIdx + 2} / span ${session.timeSlotIds.length}`,
                     ...blockColorVars(colorLetter),
+                    ...overlapStyle,
                   }}
                 >
                   {isFixed && <Lock size={10} className={styles.lockIcon} />}
