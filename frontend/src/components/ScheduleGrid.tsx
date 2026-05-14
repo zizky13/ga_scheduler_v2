@@ -1,4 +1,5 @@
 import { Fragment, useMemo } from 'react'
+import { Lock } from 'lucide-react'
 import type { SchedulerResponse, CourseOffering, TimeSlot, Room, Lecturer } from '@pipeline/types'
 import styles from './ScheduleGrid.module.css'
 
@@ -11,6 +12,34 @@ interface ScheduleGridProps {
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const
+
+const CATEGORY_LETTERS = ['a', 'b', 'c', 'd', 'e', 'f', 'g'] as const
+
+const COMPETENCY_TO_CATEGORY: Record<string, typeof CATEGORY_LETTERS[number]> = {
+  'algorithms': 'a',
+  'databases': 'b',
+  'networks': 'c',
+  'software-engineering': 'd',
+  'ai-ml': 'e',
+  'visual-design': 'f',
+  'os': 'g',
+  'security': 'a',
+  'cloud': 'b',
+  'math': 'c',
+}
+
+function getCategoryLetter(competencies: string[]): typeof CATEGORY_LETTERS[number] {
+  if (competencies.length === 0) return 'a'
+  return COMPETENCY_TO_CATEGORY[competencies[0]] ?? CATEGORY_LETTERS[competencies[0].length % CATEGORY_LETTERS.length]
+}
+
+function blockColorVars(letter: string): React.CSSProperties {
+  return {
+    '--block-bg': `var(--block-${letter}-bg)`,
+    '--block-text': `var(--block-${letter}-text)`,
+    '--block-border': `var(--block-${letter}-border)`,
+  } as React.CSSProperties
+}
 
 export function ScheduleGrid({ response, offerings, timeSlots, rooms }: ScheduleGridProps) {
   // Derive unique start times sorted chronologically
@@ -86,6 +115,8 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
             const offering = offerings.find((o) => o.id === gene.offeringId)
             if (!offering) return null
             const isParallel = gene.sessions.length > 1
+            const isFixed = gene.kind === 'FIXED'
+            const colorLetter = isFixed ? 'fixed' : getCategoryLetter(offering.course.requiredCompetencies)
             return gene.sessions.map((session, sessionIdx) => {
               const firstSlot = slotMap.get(session.timeSlotIds[0])
               if (!firstSlot) return null
@@ -96,15 +127,22 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
               const roomName = room?.name ?? `Room ${session.roomId}`
               const lecturerNames = offering.lecturers.map((l) => l.name).join(', ')
               const isSingleSlot = session.timeSlotIds.length === 1
+              const blockClass = [
+                styles.block,
+                isSingleSlot && styles.blockCompact,
+                isFixed && styles.blockFixed,
+              ].filter(Boolean).join(' ')
               return (
                 <div
                   key={`block-${geneIdx}-${sessionIdx}`}
-                  className={isSingleSlot ? `${styles.block} ${styles.blockCompact}` : styles.block}
+                  className={blockClass}
                   style={{
                     gridColumn: dayIdx + 2,
                     gridRow: `${rowIdx + 2} / span ${session.timeSlotIds.length}`,
+                    ...blockColorVars(colorLetter),
                   }}
                 >
+                  {isFixed && <Lock size={10} className={styles.lockIcon} />}
                   {isSingleSlot ? (
                     <span className={styles.blockCodeInline}>
                       {offering.course.code}
