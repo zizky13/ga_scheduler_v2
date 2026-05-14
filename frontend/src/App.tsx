@@ -11,6 +11,7 @@ import { SessionExpiredModal } from './components/SessionExpiredModal';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
+import { RunHistoryPage } from './pages/RunHistoryPage';
 
 function AppShell() {
   const { theme, toggleTheme } = useTheme();
@@ -64,7 +65,7 @@ function App() {
           <Route path="offerings" element={<PlaceholderPage title="Offerings" />} />
 
           {/* Scheduling */}
-          <Route path="runs" element={<PlaceholderPage title="Run Schedule" />} />
+          <Route path="runs" element={<RunHistoryPage />} />
           <Route path="schedule" element={<PlaceholderPage title="View Schedule" />} />
 
           {/* ADMIN-only routes */}
