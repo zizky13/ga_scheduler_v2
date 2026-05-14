@@ -4,6 +4,7 @@ import type { GAConfig } from '@pipeline/types'
 
 export { runPipeline }
 export type { OrchestratorInput }
+export type { GAConfig }
 
 const DEFAULT_CONFIG: GAConfig = {
   populationSize: 50,
@@ -17,12 +18,16 @@ const DEFAULT_CONFIG: GAConfig = {
   softPenaltyWeight: 1,
 }
 
-export function getDefaultInput(): OrchestratorInput {
+export function getDefaultConfig(): GAConfig {
+  return { ...DEFAULT_CONFIG }
+}
+
+export function getDefaultInput(configOverride?: Partial<GAConfig>): OrchestratorInput {
   return {
     offerings: courseOfferings,
     timeSlots,
     rooms,
     lecturers,
-    config: DEFAULT_CONFIG,
+    config: configOverride ? { ...DEFAULT_CONFIG, ...configOverride } : DEFAULT_CONFIG,
   }
 }

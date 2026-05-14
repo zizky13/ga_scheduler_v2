@@ -99,9 +99,9 @@ Long-running GA execution off the request thread, with checkpointing and SSE.
 
 #### Phase 4-POC.2 — Minimal dashboard shell (P0)
 
-5. [ ] `[P0/S]` **Strip `App.tsx` to a single-page POC layout.** Title "UPJ Scheduler — POC", a `[Run Pipeline]` button, a status pill (Idle / Running / Success / Failed / Infeasible), and four stat tiles (Best Fitness / Hard Violations / Soft Penalty / Duration ms). Reuse existing tokens; no sidebar, no top bar, no router.
-6. [ ] `[P0/S]` **Wire the run.** Button click calls `runPipeline(getDefaultInput())`; pending state disables the button; on resolve, push the `SchedulerResponse` into a small Zustand store; on `status !== 'SUCCESS'` render an explanation card covering `NO_FEASIBLE_CANDIDATES`, SSA `INFEASIBLE`, and any thrown error.
-7. [ ] `[P2/S]` **Re-run controls.** Inline inputs for `GAConfig.populationSize` and `generations` (plus crossoverType select) so reviewers can probe behavior without editing code.
+5. [x] `[P0/S]` **Strip `App.tsx` to a single-page POC layout.** Title "UPJ Scheduler — POC", a `[Run Pipeline]` button, a status pill (Idle / Running / Success / Failed / Infeasible), and four stat tiles (Best Fitness / Hard Violations / Soft Penalty / Duration ms). Reuse existing tokens; no sidebar, no top bar, no router.
+6. [x] `[P0/S]` **Wire the run.** Button click calls `runPipeline(getDefaultInput())`; pending state disables the button; on resolve, push the `SchedulerResponse` into a small Zustand store; on `status !== 'SUCCESS'` render an explanation card covering `NO_FEASIBLE_CANDIDATES`, SSA `INFEASIBLE`, and any thrown error.
+7. [x] `[P2/S]` **Re-run controls.** Inline inputs for `GAConfig.populationSize` and `generations` (plus crossoverType select) so reviewers can probe behavior without editing code.
 
 #### Phase 4-POC.3 — Weekly schedule grid (P0)
 

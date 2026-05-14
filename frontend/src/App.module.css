@@ -1,0 +1,294 @@
+.page {
+  min-height: 100vh;
+  background: var(--color-bg-secondary);
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-10) var(--space-8) var(--space-8);
+  font-family: var(--font-family-primary);
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-8);
+}
+
+.title {
+  font-size: var(--text-page-title);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--color-secondary-900);
+  margin: 0;
+}
+
+.subtitle {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-500);
+  margin: var(--space-1) 0 0;
+}
+
+.themeToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-secondary-500);
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+
+.themeToggle:hover {
+  background: var(--color-secondary-100);
+  border-color: var(--color-secondary-300);
+}
+
+.themeToggle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring);
+}
+
+/* ── Controls row ── */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+/* ── Run Pipeline Button ── */
+.runButton {
+  height: 44px;
+  padding: 10px 20px;
+  font-family: var(--font-family-primary);
+  font-size: var(--text-button-lg);
+  font-weight: 500;
+  background: var(--color-primary-500);
+  color: #ffffff;
+  border: none;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.runButton:hover {
+  background: var(--color-primary-600);
+  box-shadow: var(--shadow-sm);
+}
+
+.runButton:active {
+  background: var(--color-primary-700);
+}
+
+.runButton:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring);
+}
+
+.runButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Status Pill ── */
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.statusIdle {
+  background: var(--color-secondary-100);
+  color: var(--color-secondary-500);
+}
+
+.statusRunning {
+  background: var(--color-info-50);
+  color: var(--color-info-500);
+}
+
+.statusSuccess {
+  background: var(--color-success-50);
+  color: var(--color-success-700);
+}
+
+.statusFailed {
+  background: var(--color-error-50);
+  color: var(--color-error-700);
+}
+
+.statusInfeasible {
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
+}
+
+/* ── Stat Tiles Grid ── */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.statCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6);
+}
+
+.statLabel {
+  font-size: var(--text-body-sm);
+  font-weight: 400;
+  color: var(--color-secondary-500);
+  margin: 0 0 4px;
+}
+
+.statValue {
+  font-size: var(--text-section-title);
+  font-weight: 600;
+  color: var(--color-secondary-900);
+  margin: 0;
+}
+
+.statValueSuccess {
+  color: var(--color-success-700);
+}
+
+.statValueError {
+  color: var(--color-error-700);
+}
+
+/* ── Config Panel (Task 7: Re-run controls) ── */
+.configPanel {
+  display: flex;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.configField {
+  display: flex;
+  flex-direction: column;
+}
+
+.configLabel {
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--color-secondary-700);
+  margin-bottom: 6px;
+}
+
+.configInput {
+  height: 40px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-secondary-200);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
+  font-family: var(--font-family-primary);
+  background: var(--color-bg-primary);
+  color: var(--color-secondary-900);
+  width: 140px;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.configInput:focus {
+  border-color: var(--color-primary-500);
+  box-shadow: var(--shadow-ring);
+  outline: none;
+}
+
+.configInput:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.configSelect {
+  height: 40px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-secondary-200);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
+  font-family: var(--font-family-primary);
+  background: var(--color-bg-primary);
+  color: var(--color-secondary-900);
+  width: 160px;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.configSelect:focus {
+  border-color: var(--color-primary-500);
+  box-shadow: var(--shadow-ring);
+  outline: none;
+}
+
+.configSelect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Explanation Card (Task 6: Error / Infeasible) ── */
+.explanationCard {
+  margin-top: var(--space-6);
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  border: 1px solid;
+}
+
+.explanationError {
+  border-color: var(--color-error-500);
+  background: var(--color-error-50);
+}
+
+.explanationWarning {
+  border-color: var(--color-warning-500);
+  background: var(--color-warning-50);
+}
+
+.explanationTitle {
+  font-size: var(--text-subtitle);
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.explanationTitleError {
+  color: var(--color-error-700);
+}
+
+.explanationTitleWarning {
+  color: var(--color-warning-700);
+}
+
+.explanationBody {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-700);
+  margin: 0;
+}
+
+.explanationDetail {
+  font-size: var(--text-caption);
+  font-family: var(--font-family-mono);
+  color: var(--color-secondary-500);
+  margin-top: var(--space-2);
+  margin-bottom: 0;
+  white-space: pre-wrap;
+}
