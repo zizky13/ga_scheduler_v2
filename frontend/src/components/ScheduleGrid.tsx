@@ -85,6 +85,7 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
           {response.gaResult?.bestChromosome.map((gene, geneIdx) => {
             const offering = offerings.find((o) => o.id === gene.offeringId)
             if (!offering) return null
+            const isParallel = gene.sessions.length > 1
             return gene.sessions.map((session, sessionIdx) => {
               const firstSlot = slotMap.get(session.timeSlotIds[0])
               if (!firstSlot) return null
@@ -92,19 +93,35 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
               const rowIdx = startTimeToRow.get(firstSlot.startTime)
               if (dayIdx === -1 || rowIdx === undefined) return null
               const room = rooms.find((r) => r.id === session.roomId)
+              const roomName = room?.name ?? `Room ${session.roomId}`
+              const lecturerNames = offering.lecturers.map((l) => l.name).join(', ')
+              const isSingleSlot = session.timeSlotIds.length === 1
               return (
                 <div
                   key={`block-${geneIdx}-${sessionIdx}`}
-                  className={styles.block}
+                  className={isSingleSlot ? `${styles.block} ${styles.blockCompact}` : styles.block}
                   style={{
                     gridColumn: dayIdx + 2,
                     gridRow: `${rowIdx + 2} / span ${session.timeSlotIds.length}`,
                   }}
                 >
-                  <span className={styles.blockCode}>{offering.course.code}</span>
-                  <span className={styles.blockRoom}>{room?.name ?? `Room ${session.roomId}`}</span>
-                  <span>{offering.lecturers.map((l) => l.name).join(', ')}</span>
-                  <span>{offering.course.name}</span>
+                  {isSingleSlot ? (
+                    <span className={styles.blockCodeInline}>
+                      {offering.course.code}
+                      <span className={styles.blockRoomInline}>{roomName}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <span className={styles.blockCode}>{offering.course.code}</span>
+                      <span className={styles.blockName}>{offering.course.name}</span>
+                      <span className={styles.blockMeta}>{roomName} · {lecturerNames}</span>
+                      {isParallel && (
+                        <span className={styles.blockSession}>
+                          Sesi {String.fromCharCode(65 + sessionIdx)}
+                        </span>
+                      )}
+                    </>
+                  )}
                 </div>
               )
             })

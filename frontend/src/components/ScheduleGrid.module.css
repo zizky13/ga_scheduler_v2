@@ -82,7 +82,7 @@
   min-height: 60px;
 }
 
-/* ── Course block (basic placeholder for task 8) ── */
+/* ── Course blocks (§13.5) ── */
 .block {
   background: var(--color-secondary-50);
   border-left: 3px solid var(--color-secondary-300);
@@ -90,15 +90,30 @@
   padding: 8px 10px;
   border-radius: var(--radius-md);
   overflow: hidden;
-  text-overflow: ellipsis;
   display: flex;
   flex-direction: column;
   gap: 2px;
   z-index: 1;
+  min-height: 56px;
+  transition: box-shadow var(--duration-normal) var(--ease-out);
 }
 
+.block:hover {
+  box-shadow: var(--shadow-md);
+  filter: brightness(1.02);
+}
+
+.blockCompact {
+  min-height: auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+}
+
+/* Line 1: course code */
 .blockCode {
-  font-size: var(--text-body-sm);
+  font-size: var(--text-mono);
+  font-family: var(--font-family-mono);
   font-weight: 600;
   color: var(--color-secondary-900);
   white-space: nowrap;
@@ -106,10 +121,51 @@
   text-overflow: ellipsis;
 }
 
-.blockRoom {
+/* Line 2: course name */
+.blockName {
   font-size: var(--text-caption);
-  color: var(--color-secondary-500);
+  font-weight: 400;
+  color: var(--color-secondary-700);
+  opacity: 0.8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Line 3: room + lecturer */
+.blockMeta {
+  font-size: var(--text-caption);
+  font-weight: 400;
+  color: var(--color-secondary-700);
+  opacity: 0.6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Line 4: session label for parallel splits */
+.blockSession {
+  font-size: var(--text-mono-sm);
+  font-family: var(--font-family-mono);
+  color: var(--color-secondary-500);
+  white-space: nowrap;
+}
+
+/* Single-slot compact: code + room inline */
+.blockCodeInline {
+  font-size: var(--text-mono);
+  font-family: var(--font-family-mono);
+  font-weight: 600;
+  color: var(--color-secondary-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.blockRoomInline {
+  font-weight: 400;
+  color: var(--color-secondary-500);
+  margin-left: 6px;
+  font-size: var(--text-caption);
+  font-family: var(--font-family-primary);
 }
