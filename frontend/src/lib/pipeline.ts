@@ -31,3 +31,5 @@ export function getDefaultInput(configOverride?: Partial<GAConfig>): Orchestrato
     config: configOverride ? { ...DEFAULT_CONFIG, ...configOverride } : DEFAULT_CONFIG,
   }
 }
+
+export { rooms, timeSlots, lecturers, courseOfferings }

@@ -2,8 +2,9 @@ import { useState, useCallback } from 'react';
 import { useTheme } from './lib/useTheme';
 import { usePipelineStore } from './store/pipelineStore';
 import type { PipelineStatus } from './store/pipelineStore';
-import { runPipeline, getDefaultInput, getDefaultConfig } from './lib/pipeline';
+import { runPipeline, getDefaultInput, getDefaultConfig, rooms, timeSlots, lecturers, courseOfferings } from './lib/pipeline';
 import type { GAConfig } from './lib/pipeline';
+import { ScheduleGrid } from './components/ScheduleGrid';
 import styles from './App.module.css';
 
 const STATUS_LABEL: Record<PipelineStatus, string> = {
@@ -177,6 +178,19 @@ function App() {
           </p>
         </div>
       </div>
+
+      {/* Task 8: Schedule Grid */}
+      {status === 'success' && response?.gaResult && (
+        <div className={styles.scheduleGridWrapper}>
+          <ScheduleGrid
+            response={response}
+            offerings={courseOfferings}
+            timeSlots={timeSlots}
+            rooms={rooms}
+            lecturers={lecturers}
+          />
+        </div>
+      )}
 
       {/* Task 6: Explanation cards for non-success results */}
       {status === 'failed' && response?.status === 'NO_FEASIBLE_CANDIDATES' && (

@@ -105,7 +105,7 @@ Long-running GA execution off the request thread, with checkpointing and SSE.
 
 #### Phase 4-POC.3 — Weekly schedule grid (P0)
 
-8. [ ] `[P0/M]` **Build `<ScheduleGrid />`.** Pure component with props `{ response, offerings, timeSlots, rooms, lecturers }`. CSS Grid: one time-label column (80px) + five day columns (Mon–Fri, `minmax(160px, 1fr)`), one row per unique `startTime` derived from `timeSlots`. Sticky header row, sticky time column.
+8. [x] `[P0/M]` **Build `<ScheduleGrid />`.** Pure component with props `{ response, offerings, timeSlots, rooms, lecturers }`. CSS Grid: one time-label column (80px) + five day columns (Mon–Fri, `minmax(160px, 1fr)`), one row per unique `startTime` derived from `timeSlots`. Sticky header row, sticky time column.
 9. [ ] `[P0/M]` **Render assignments as blocks.** For each `gene` in `response.gaResult.bestChromosome` iterate `gene.sessions[]`; each session contributes one block. Position via `grid-column: <dayIndex+2>` and `grid-row: <startSlot> / span <session.timeSlotIds.length>`. Block content: course code (mono), course name (truncated), lecturer name(s), room name, "Session A/B/…" label when `parallelSessionCount > 1`.
 10. [ ] `[P0/S]` **Color and decorate blocks.** Use the schedule-color tokens already in `frontend/src/styles/tokens.css` keyed off a deterministic mapping of `course.requiredCompetencies[0]` (or a small category map). Fixed offerings get a dashed left border + Lucide `Lock` icon.
 11. [ ] `[P0/S]` **Conflict overlay.** If two blocks share `(day, slotRange, room)` or `(day, slotRange, lecturer)`, render both with a red outline so reviewers can eyeball GA quality. Clean seed runs should show none.

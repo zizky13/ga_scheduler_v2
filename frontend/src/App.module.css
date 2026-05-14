@@ -246,6 +246,11 @@
   cursor: not-allowed;
 }
 
+/* ── Schedule Grid Wrapper (Task 8) ── */
+.scheduleGridWrapper {
+  margin-top: var(--space-6);
+}
+
 /* ── Explanation Card (Task 6: Error / Infeasible) ── */
 .explanationCard {
   margin-top: var(--space-6);
