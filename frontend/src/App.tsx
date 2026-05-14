@@ -5,6 +5,7 @@ import type { PipelineStatus } from './store/pipelineStore';
 import { runPipeline, getDefaultInput, getDefaultConfig, rooms, timeSlots, lecturers, courseOfferings } from './lib/pipeline';
 import type { GAConfig } from './lib/pipeline';
 import { ScheduleGrid } from './components/ScheduleGrid';
+import { Sidebar } from './components/Sidebar';
 import styles from './App.module.css';
 
 const STATUS_LABEL: Record<PipelineStatus, string> = {
@@ -28,8 +29,8 @@ const CROSSOVER_OPTIONS: GAConfig['crossoverType'][] = ['singlePoint', 'uniform'
 function App() {
   const { theme, toggleTheme } = useTheme();
   const { status, response, error, setRunning, setResult, setError } = usePipelineStore();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Task 7: Re-run config controls
   const defaults = getDefaultConfig();
   const [populationSize, setPopulationSize] = useState(defaults.populationSize);
   const [generations, setGenerations] = useState(defaults.generations);
@@ -60,7 +61,12 @@ function App() {
   }, [populationSize, generations, crossoverType, setRunning, setResult, setError]);
 
   return (
-    <div className={styles.page}>
+    <>
+    <Sidebar collapsed={sidebarCollapsed} onToggleCollapse={setSidebarCollapsed} />
+    <div
+      className={styles.page}
+      style={{ marginLeft: sidebarCollapsed ? 'var(--sidebar-width-collapsed)' : 'var(--sidebar-width)' }}
+    >
       <header className={styles.header}>
         <div>
           <h1 className={styles.title}>UPJ Scheduler — POC</h1>
@@ -241,6 +247,7 @@ function App() {
         </div>
       )}
     </div>
+    </>
   );
 }
 

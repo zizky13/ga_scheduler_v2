@@ -2,9 +2,9 @@
   min-height: 100vh;
   background: var(--color-bg-secondary);
   max-width: var(--content-max-width);
-  margin: 0 auto;
   padding: var(--space-10) var(--space-8) var(--space-8);
   font-family: var(--font-family-primary);
+  transition: margin-left var(--duration-slow) var(--ease-in-out);
 }
 
 /* ── Header ── */
