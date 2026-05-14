@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import api, { setAccessToken, ApiRequestError } from '../lib/api';
+import api, { setAccessToken, setOnSessionExpired, ApiRequestError } from '../lib/api';
 
 export type UserRole = 'ADMIN' | 'USER';
 
@@ -20,10 +20,11 @@ interface AuthState {
   user: AuthUser | null;
   isAuthenticated: boolean;
   loading: boolean;
+  sessionExpired: boolean;
 
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  setUser: (user: AuthUser, accessToken: string) => void;
+  setUser: (user: AuthUser, accessToken: string, expiresIn?: number) => void;
   clearAuth: () => void;
 }
 
@@ -36,48 +37,58 @@ function mapUser(raw: LoginResponse['user']): AuthUser {
   };
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  isAuthenticated: false,
-  loading: false,
-
-  login: async (email, password) => {
-    set({ loading: true });
-    try {
-      const res = await api.post<LoginResponse>('/auth/login', { email, password });
-      const data = res.data;
-      setAccessToken(data.accessToken);
-      set({
-        user: mapUser(data.user),
-        isAuthenticated: true,
-        loading: false,
-      });
-    } catch (err) {
-      set({ loading: false });
-      throw err;
-    }
-  },
-
-  logout: async () => {
-    try {
-      await api.post('/auth/logout');
-    } catch {
-      // best-effort; clear local state regardless
-    }
+export const useAuthStore = create<AuthState>((set) => {
+  const clearAuth = () => {
     setAccessToken(null);
-    set({ user: null, isAuthenticated: false });
-  },
+    set({ user: null, isAuthenticated: false, sessionExpired: false });
+  };
 
-  setUser: (user, accessToken) => {
-    setAccessToken(accessToken);
-    set({ user, isAuthenticated: true });
-  },
+  setOnSessionExpired(() => {
+    set({ sessionExpired: true });
+  });
 
-  clearAuth: () => {
-    setAccessToken(null);
-    set({ user: null, isAuthenticated: false });
-  },
-}));
+  return {
+    user: null,
+    isAuthenticated: false,
+    loading: false,
+    sessionExpired: false,
+
+    login: async (email, password) => {
+      set({ loading: true });
+      try {
+        const res = await api.post<LoginResponse>('/auth/login', { email, password });
+        const data = res.data;
+        setAccessToken(data.accessToken, data.expiresIn);
+        set({
+          user: mapUser(data.user),
+          isAuthenticated: true,
+          loading: false,
+          sessionExpired: false,
+        });
+      } catch (err) {
+        set({ loading: false });
+        throw err;
+      }
+    },
+
+    logout: async () => {
+      try {
+        await api.post('/auth/logout');
+      } catch {
+        // best-effort; clear local state regardless
+      }
+      setAccessToken(null);
+      set({ user: null, isAuthenticated: false, sessionExpired: false });
+    },
+
+    setUser: (user, accessToken, expiresIn) => {
+      setAccessToken(accessToken, expiresIn);
+      set({ user, isAuthenticated: true, sessionExpired: false });
+    },
+
+    clearAuth,
+  };
+});
 
 export function getErrorMessage(err: unknown): string {
   if (err instanceof ApiRequestError) {
