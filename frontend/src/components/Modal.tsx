@@ -1,10 +1,11 @@
 import { useEffect, useRef, useId } from 'react';
 import type { ReactNode, MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { X, AlertTriangle } from 'lucide-react';
+import { Button } from './Button';
 import styles from './Modal.module.css';
 
-type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl';
 
 interface ModalProps {
   open: boolean;
@@ -14,6 +15,7 @@ interface ModalProps {
   dismissable?: boolean;
   children: ReactNode;
   footer?: ReactNode;
+  noPadding?: boolean;
 }
 
 export function Modal({
@@ -24,6 +26,7 @@ export function Modal({
   dismissable = true,
   children,
   footer,
+  noPadding,
 }: ModalProps) {
   const titleId = useId();
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -106,11 +109,70 @@ export function Modal({
           </div>
         )}
 
-        <div className={styles.body}>{children}</div>
+        <div className={noPadding ? undefined : styles.body}>{children}</div>
 
         {footer && <div className={styles.footer}>{footer}</div>}
       </div>
     </div>,
     document.body,
+  );
+}
+
+/* ══════════════════════════════════════════
+   ConfirmDialog — danger / warning variant
+   ══════════════════════════════════════════ */
+
+type ConfirmVariant = 'danger' | 'warning';
+
+interface ConfirmDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  variant?: ConfirmVariant;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  loading?: boolean;
+}
+
+const VARIANT_ICON_CLASS: Record<ConfirmVariant, string> = {
+  danger: styles.confirmIconDanger,
+  warning: styles.confirmIconWarning,
+};
+
+export function ConfirmDialog({
+  open,
+  onClose,
+  onConfirm,
+  variant = 'danger',
+  title,
+  description,
+  confirmLabel = 'Delete',
+  cancelLabel = 'Cancel',
+  loading,
+}: ConfirmDialogProps) {
+  return (
+    <Modal open={open} onClose={onClose} size="sm" dismissable={false} noPadding>
+      <div className={styles.confirmBody}>
+        <div className={`${styles.confirmIcon} ${VARIANT_ICON_CLASS[variant]}`}>
+          <AlertTriangle size={24} />
+        </div>
+        <h2 className={styles.confirmTitle}>{title}</h2>
+        {description && <p className={styles.confirmDescription}>{description}</p>}
+      </div>
+      <div className={styles.confirmActions}>
+        <Button variant="secondary" onClick={onClose} disabled={loading}>
+          {cancelLabel}
+        </Button>
+        <Button
+          variant={variant === 'danger' ? 'danger' : 'primary'}
+          onClick={onConfirm}
+          disabled={loading}
+        >
+          {confirmLabel}
+        </Button>
+      </div>
+    </Modal>
   );
 }

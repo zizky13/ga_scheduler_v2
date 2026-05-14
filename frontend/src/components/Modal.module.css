@@ -112,6 +112,71 @@
   flex-shrink: 0;
 }
 
+/* ── Confirmation Dialog ── */
+.confirmBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  padding: 32px 24px 24px;
+}
+
+.confirmIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.confirmIconDanger {
+  background: var(--color-error-50);
+  color: var(--color-error-500);
+}
+
+.confirmIconWarning {
+  background: var(--color-warning-50);
+  color: var(--color-warning-500);
+}
+
+.confirmTitle {
+  font-size: var(--text-subtitle);
+  font-weight: 600;
+  color: var(--color-secondary-900);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.confirmDescription {
+  font-size: var(--text-body);
+  font-weight: 400;
+  color: var(--color-secondary-500);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.confirmActions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 24px 24px;
+}
+
+@media (max-width: 639px) {
+  .confirmActions {
+    flex-direction: column-reverse;
+    padding: 16px 24px 24px;
+  }
+
+  .confirmActions > * {
+    width: 100%;
+  }
+}
+
 /* ── Mobile: full-screen ── */
 @media (max-width: 639px) {
   .backdrop {
