@@ -12,36 +12,40 @@
 -- This repository has no production data yet (only seed/test fixtures), so
 -- we use a forgiving USING clause that:
 --   1. Treats `''` or NULL-equivalent values as the empty array.
---   2. Parses any valid JSON array via `::jsonb` → `text[]` for forward
---      compatibility with previously-seeded JSON values.
+--   2. Parses any valid JSON array via `::jsonb` → `jsonb_to_text_array()`
+--      for forward compatibility with previously-seeded JSON values.
 --   3. Otherwise falls back to a single-element array containing the raw
 --      text — defensive against any non-JSON data that may have been
 --      inserted ad-hoc during early development.
 --
--- For the SQLite target (OQ-3 fallback), this migration is skipped because
--- the SQLite-portable variant keeps the columns as `TEXT`. The runtime
--- codec at `src/repo/competencyCodec.ts` handles both forms.
+-- PG 16+ disallows subqueries inside ALTER COLUMN ... TYPE ... USING, so
+-- we use a two-step approach: first convert to jsonb, then cast to text[].
 
-ALTER TABLE "lecturers"
-    ALTER COLUMN "competencies" DROP DEFAULT,
-    ALTER COLUMN "competencies" TYPE TEXT[] USING (
-        CASE
-            WHEN "competencies" IS NULL OR "competencies" = '' THEN ARRAY[]::TEXT[]
-            WHEN "competencies" ~ '^\[' THEN ARRAY(SELECT jsonb_array_elements_text("competencies"::jsonb))
-            ELSE ARRAY["competencies"]::TEXT[]
-        END
-    ),
-    ALTER COLUMN "competencies" SET DEFAULT '{}',
-    ALTER COLUMN "competencies" SET NOT NULL;
+-- Step 1: Add temporary jsonb columns and populate them
+ALTER TABLE "lecturers" ADD COLUMN "competencies_new" TEXT[] NOT NULL DEFAULT '{}';
+UPDATE "lecturers" SET "competencies_new" = (
+    CASE
+        WHEN "competencies" IS NULL OR "competencies" = '' THEN ARRAY[]::TEXT[]
+        WHEN "competencies" ~ '^\[' THEN (
+            SELECT array_agg(elem)
+            FROM jsonb_array_elements_text("competencies"::jsonb) AS elem
+        )
+        ELSE ARRAY["competencies"]::TEXT[]
+    END
+);
+ALTER TABLE "lecturers" DROP COLUMN "competencies";
+ALTER TABLE "lecturers" RENAME COLUMN "competencies_new" TO "competencies";
 
-ALTER TABLE "courses"
-    ALTER COLUMN "requiredCompetencies" DROP DEFAULT,
-    ALTER COLUMN "requiredCompetencies" TYPE TEXT[] USING (
-        CASE
-            WHEN "requiredCompetencies" IS NULL OR "requiredCompetencies" = '' THEN ARRAY[]::TEXT[]
-            WHEN "requiredCompetencies" ~ '^\[' THEN ARRAY(SELECT jsonb_array_elements_text("requiredCompetencies"::jsonb))
-            ELSE ARRAY["requiredCompetencies"]::TEXT[]
-        END
-    ),
-    ALTER COLUMN "requiredCompetencies" SET DEFAULT '{}',
-    ALTER COLUMN "requiredCompetencies" SET NOT NULL;
+ALTER TABLE "courses" ADD COLUMN "requiredCompetencies_new" TEXT[] NOT NULL DEFAULT '{}';
+UPDATE "courses" SET "requiredCompetencies_new" = (
+    CASE
+        WHEN "requiredCompetencies" IS NULL OR "requiredCompetencies" = '' THEN ARRAY[]::TEXT[]
+        WHEN "requiredCompetencies" ~ '^\[' THEN (
+            SELECT array_agg(elem)
+            FROM jsonb_array_elements_text("requiredCompetencies"::jsonb) AS elem
+        )
+        ELSE ARRAY["requiredCompetencies"]::TEXT[]
+    END
+);
+ALTER TABLE "courses" DROP COLUMN "requiredCompetencies";
+ALTER TABLE "courses" RENAME COLUMN "requiredCompetencies_new" TO "requiredCompetencies";
