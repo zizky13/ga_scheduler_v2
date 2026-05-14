@@ -12,6 +12,7 @@ import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { RunHistoryPage } from './pages/RunHistoryPage';
+import { RunCreationPage } from './pages/RunCreationPage';
 
 function AppShell() {
   const { theme, toggleTheme } = useTheme();
@@ -66,6 +67,7 @@ function App() {
 
           {/* Scheduling */}
           <Route path="runs" element={<RunHistoryPage />} />
+          <Route path="runs/new" element={<RunCreationPage />} />
           <Route path="schedule" element={<PlaceholderPage title="View Schedule" />} />
 
           {/* ADMIN-only routes */}
