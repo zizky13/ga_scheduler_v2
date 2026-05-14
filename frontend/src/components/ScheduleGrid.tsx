@@ -176,6 +176,8 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
                 isFixed && styles.blockFixed,
                 hasConflict && styles.blockConflict,
               ].filter(Boolean).join(' ')
+              const lastSlot = slotMap.get(session.timeSlotIds[session.timeSlotIds.length - 1])
+              const timeRange = `${firstSlot.startTime} – ${lastSlot?.endTime ?? firstSlot.endTime}`
               return (
                 <div
                   key={`block-${geneIdx}-${sessionIdx}`}
@@ -204,6 +206,29 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
                       )}
                     </>
                   )}
+                  <div className={styles.tooltip}>
+                    <p className={styles.tooltipCode}>{offering.course.code}</p>
+                    <p className={styles.tooltipName}>{offering.course.name}</p>
+                    <p className={styles.tooltipRow}>
+                      <span className={styles.tooltipLabel}>Lecturer: </span>
+                      {offering.lecturers.map((l) => l.name).join(', ')}
+                    </p>
+                    <p className={styles.tooltipRow}>
+                      <span className={styles.tooltipLabel}>Room: </span>
+                      {roomName}{room ? ` (cap. ${room.capacity})` : ''}
+                    </p>
+                    <p className={styles.tooltipRow}>
+                      <span className={styles.tooltipLabel}>Time: </span>
+                      {timeRange}
+                    </p>
+                    {isParallel && (
+                      <p className={styles.tooltipRow}>
+                        <span className={styles.tooltipLabel}>Session: </span>
+                        {String.fromCharCode(65 + sessionIdx)}
+                      </p>
+                    )}
+                    {isFixed && <span className={styles.tooltipFixed}>Fixed</span>}
+                  </div>
                 </div>
               )
             })

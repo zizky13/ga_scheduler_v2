@@ -89,7 +89,7 @@
   margin: 2px;
   padding: 8px 10px;
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -102,6 +102,7 @@
 .block:hover {
   box-shadow: var(--shadow-md);
   filter: brightness(1.02);
+  z-index: 21;
 }
 
 .blockCompact {
@@ -197,4 +198,67 @@
   margin-left: 6px;
   font-size: var(--text-caption);
   font-family: var(--font-family-primary);
+}
+
+/* ── Hover tooltip (§13.5) ── */
+.tooltip {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  margin-left: 6px;
+  z-index: 20;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 12px;
+  max-width: 280px;
+  min-width: 180px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out);
+  transition-delay: 0ms;
+  white-space: normal;
+}
+
+.block:hover .tooltip {
+  opacity: 1;
+  transition-delay: 500ms;
+}
+
+.tooltipCode {
+  font-size: var(--text-mono);
+  font-family: var(--font-family-mono);
+  font-weight: 600;
+  color: var(--color-secondary-900);
+  margin: 0;
+}
+
+.tooltipName {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-700);
+  margin: 2px 0 8px;
+}
+
+.tooltipRow {
+  font-size: var(--text-caption);
+  color: var(--color-secondary-500);
+  margin: 2px 0;
+}
+
+.tooltipLabel {
+  font-weight: 600;
+  color: var(--color-secondary-600);
+}
+
+.tooltipFixed {
+  display: inline-block;
+  font-size: var(--text-mono-sm);
+  font-family: var(--font-family-mono);
+  font-weight: 600;
+  color: var(--color-warning-700);
+  background: var(--color-warning-50);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  margin-top: 6px;
 }
