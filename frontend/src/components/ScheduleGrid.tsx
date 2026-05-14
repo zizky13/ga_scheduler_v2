@@ -69,6 +69,48 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
     return map
   }, [uniqueStartTimes])
 
+  // Conflict detection: find blocks that share (day, slot, room) or (day, slot, lecturer)
+  const conflictingBlocks = useMemo(() => {
+    const chromosome = response.gaResult?.bestChromosome
+    if (!chromosome) return new Set<string>()
+
+    // Track which block keys occupy each (slotId, roomId) and (slotId, lecturerId)
+    const roomOccupancy = new Map<string, string[]>()
+    const lecturerOccupancy = new Map<string, string[]>()
+
+    for (let geneIdx = 0; geneIdx < chromosome.length; geneIdx++) {
+      const gene = chromosome[geneIdx]
+      const offering = offerings.find((o) => o.id === gene.offeringId)
+      if (!offering) continue
+      for (let sessionIdx = 0; sessionIdx < gene.sessions.length; sessionIdx++) {
+        const session = gene.sessions[sessionIdx]
+        const blockKey = `${geneIdx}-${sessionIdx}`
+        for (const slotId of session.timeSlotIds) {
+          const roomKey = `${slotId}:r${session.roomId}`
+          const existing = roomOccupancy.get(roomKey)
+          if (existing) existing.push(blockKey)
+          else roomOccupancy.set(roomKey, [blockKey])
+
+          for (const lecturerId of offering.lecturers.map((l) => l.id)) {
+            const lecKey = `${slotId}:l${lecturerId}`
+            const lexisting = lecturerOccupancy.get(lecKey)
+            if (lexisting) lexisting.push(blockKey)
+            else lecturerOccupancy.set(lecKey, [blockKey])
+          }
+        }
+      }
+    }
+
+    const conflicts = new Set<string>()
+    for (const keys of roomOccupancy.values()) {
+      if (keys.length > 1) for (const k of keys) conflicts.add(k)
+    }
+    for (const keys of lecturerOccupancy.values()) {
+      if (keys.length > 1) for (const k of keys) conflicts.add(k)
+    }
+    return conflicts
+  }, [response.gaResult?.bestChromosome, offerings])
+
   const rowCount = uniqueStartTimes.length
   const gridTemplateRows = `48px repeat(${rowCount}, 60px)`
 
@@ -127,10 +169,12 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
               const roomName = room?.name ?? `Room ${session.roomId}`
               const lecturerNames = offering.lecturers.map((l) => l.name).join(', ')
               const isSingleSlot = session.timeSlotIds.length === 1
+              const hasConflict = conflictingBlocks.has(`${geneIdx}-${sessionIdx}`)
               const blockClass = [
                 styles.block,
                 isSingleSlot && styles.blockCompact,
                 isFixed && styles.blockFixed,
+                hasConflict && styles.blockConflict,
               ].filter(Boolean).join(' ')
               return (
                 <div
