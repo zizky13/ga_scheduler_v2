@@ -7,6 +7,7 @@ import { TopBar } from './components/TopBar';
 import { ContentArea } from './components/ContentArea';
 import { ProtectedRoute, RoleGuard } from './components/ProtectedRoute';
 import { ToastContainer } from './components/Toast';
+import { SessionExpiredModal } from './components/SessionExpiredModal';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
@@ -45,6 +46,7 @@ function App() {
   return (
     <>
     <ToastContainer />
+    <SessionExpiredModal />
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 
