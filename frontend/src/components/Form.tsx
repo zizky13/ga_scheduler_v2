@@ -10,7 +10,7 @@ import type {
   ReactNode,
   ChangeEvent,
 } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, Check, X, Search } from 'lucide-react';
 import styles from './Form.module.css';
 
 /* ══════════════════════════════════════════
@@ -175,6 +175,185 @@ export function Select({
                 {opt.value === value && <Check className={styles.selectCheckIcon} />}
               </button>
             ))}
+          </div>
+        )}
+      </div>
+    </FormField>
+  );
+}
+
+/* ══════════════════════════════════════════
+   MultiSelect
+   ══════════════════════════════════════════ */
+
+interface MultiSelectProps {
+  label?: string;
+  helperText?: string;
+  error?: string;
+  required?: boolean;
+  placeholder?: string;
+  options: SelectOption[];
+  value: string[];
+  onChange: (value: string[]) => void;
+  disabled?: boolean;
+  id?: string;
+}
+
+export function MultiSelect({
+  label,
+  helperText,
+  error,
+  required,
+  placeholder = 'Select…',
+  options,
+  value,
+  onChange,
+  disabled,
+  id,
+}: MultiSelectProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const inputId = id ?? (label ? `multiselect-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
+
+  const handleClose = useCallback(() => {
+    setOpen(false);
+    setSearch('');
+  }, []);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        handleClose();
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [handleClose]);
+
+  useEffect(() => {
+    if (open && searchRef.current) {
+      searchRef.current.focus();
+    }
+  }, [open]);
+
+  const filteredOptions = options.filter((opt) =>
+    opt.label.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  function toggleOption(optValue: string) {
+    if (value.includes(optValue)) {
+      onChange(value.filter((v) => v !== optValue));
+    } else {
+      onChange([...value, optValue]);
+    }
+  }
+
+  function removeTag(optValue: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!disabled) {
+      onChange(value.filter((v) => v !== optValue));
+    }
+  }
+
+  const selectedOptions = value
+    .map((v) => options.find((o) => o.value === v))
+    .filter(Boolean) as SelectOption[];
+
+  return (
+    <FormField label={label} htmlFor={inputId} required={required} helperText={helperText} error={error}>
+      <div className={styles.multiSelectWrapper} ref={wrapperRef}>
+        <div
+          id={inputId}
+          className={`${styles.multiSelectTrigger} ${error ? styles.multiSelectTriggerError : ''} ${disabled ? styles.multiSelectTriggerDisabled : ''} ${open ? styles.multiSelectTriggerFocused : ''}`}
+          onClick={() => !disabled && setOpen((p) => !p)}
+          role="combobox"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          tabIndex={disabled ? -1 : 0}
+          onKeyDown={(e) => {
+            if (disabled) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setOpen((p) => !p);
+            } else if (e.key === 'Escape') {
+              handleClose();
+            }
+          }}
+        >
+          {selectedOptions.length > 0 ? (
+            <div className={styles.multiSelectTags}>
+              {selectedOptions.map((opt) => (
+                <span key={opt.value} className={styles.multiSelectTag}>
+                  <span className={styles.multiSelectTagLabel}>{opt.label}</span>
+                  <button
+                    type="button"
+                    className={styles.multiSelectTagRemove}
+                    onClick={(e) => removeTag(opt.value, e)}
+                    aria-label={`Remove ${opt.label}`}
+                    tabIndex={-1}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className={styles.multiSelectPlaceholder}>{placeholder}</span>
+          )}
+          <ChevronDown
+            size={16}
+            className={`${styles.multiSelectChevron} ${open ? styles.multiSelectChevronOpen : ''}`}
+          />
+        </div>
+
+        {open && (
+          <div className={styles.multiSelectDropdown} role="listbox" aria-multiselectable="true">
+            <div className={styles.multiSelectSearchWrapper}>
+              <Search size={14} className={styles.multiSelectSearchIcon} />
+              <input
+                ref={searchRef}
+                type="text"
+                className={styles.multiSelectSearchInput}
+                placeholder="Search…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    handleClose();
+                  }
+                }}
+              />
+            </div>
+            <div className={styles.multiSelectOptionsList}>
+              {filteredOptions.length === 0 ? (
+                <div className={styles.multiSelectNoResults}>No results found</div>
+              ) : (
+                filteredOptions.map((opt) => {
+                  const isSelected = value.includes(opt.value);
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      className={`${styles.multiSelectOption} ${isSelected ? styles.multiSelectOptionSelected : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleOption(opt.value);
+                      }}
+                    >
+                      <span className={styles.multiSelectCheckboxBox}>
+                        {isSelected && <Check size={12} className={styles.multiSelectCheckIcon} />}
+                      </span>
+                      <span className={styles.multiSelectOptionLabel}>{opt.label}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
         )}
       </div>
