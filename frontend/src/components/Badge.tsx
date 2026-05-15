@@ -63,6 +63,11 @@ const ROLE_CLASS: Record<UserRole, string> = {
   USER: styles.user,
 };
 
+const ROLE_LABEL: Record<UserRole, string> = {
+  ADMIN: 'admin',
+  USER: 'user',
+};
+
 interface RoleBadgeProps {
   role: UserRole;
 }
@@ -70,7 +75,7 @@ interface RoleBadgeProps {
 export function RoleBadge({ role }: RoleBadgeProps) {
   return (
     <span className={`${styles.badge} ${ROLE_CLASS[role]}`}>
-      {role}
+      {ROLE_LABEL[role] ?? role.toLowerCase()}
     </span>
   );
 }

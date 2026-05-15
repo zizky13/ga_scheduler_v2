@@ -33,7 +33,7 @@ function mapUser(raw: LoginResponse['user']): AuthUser {
     id: String(raw.id),
     name: raw.fullName,
     email: raw.email,
-    role: raw.role as UserRole,
+    role: raw.role.toUpperCase() as UserRole,
   };
 }
 
