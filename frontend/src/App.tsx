@@ -17,6 +17,8 @@ import { RunDetailPage } from './pages/RunDetailPage';
 import { ScheduleViewerPage } from './pages/ScheduleViewerPage';
 import { SemesterManagementPage } from './pages/SemesterManagementPage';
 import { FacilityManagementPage } from './pages/FacilityManagementPage';
+import { RoomManagementPage } from './pages/RoomManagementPage';
+import { TimeslotManagementPage } from './pages/TimeslotManagementPage';
 
 type Breakpoint = 'mobile' | 'tablet' | 'desktop';
 
@@ -114,8 +116,8 @@ function App() {
 
           {/* Data Management */}
           <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="rooms" element={<PlaceholderPage title="Rooms" />} />
-          <Route path="timeslots" element={<PlaceholderPage title="Timeslots" />} />
+          <Route path="rooms" element={<RoomManagementPage />} />
+          <Route path="timeslots" element={<TimeslotManagementPage />} />
           <Route path="lecturers" element={<PlaceholderPage title="Lecturers" />} />
           <Route path="courses" element={<PlaceholderPage title="Courses" />} />
           <Route path="offerings" element={<PlaceholderPage title="Offerings" />} />

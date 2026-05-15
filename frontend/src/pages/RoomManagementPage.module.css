@@ -1,0 +1,143 @@
+/* ── Tag list in table cells ── */
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--color-primary-700);
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-100);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.tagEmpty {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-400);
+  font-style: italic;
+}
+
+/* ── Capacity cell (right-aligned) ── */
+.capacityCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Offerings count ── */
+.offeringCount {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Filter panel inside toolbar dropdown ── */
+.filterPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 240px;
+}
+
+.filterLabel {
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--color-secondary-700);
+  margin: 0 0 4px;
+}
+
+.filterCheckboxGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.filterCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-700);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.filterCheckbox:hover {
+  background: var(--color-secondary-50);
+}
+
+.filterCheckbox input[type="checkbox"] {
+  accent-color: var(--color-primary-500);
+}
+
+.capacityRange {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.capacityRangeInput {
+  width: 80px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--color-secondary-200);
+  border-radius: var(--radius-md);
+  font-size: var(--text-body-sm);
+  font-family: var(--font-family-primary);
+  color: var(--color-secondary-900);
+  background: var(--color-bg-primary);
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.capacityRangeInput::placeholder {
+  color: var(--color-secondary-400);
+}
+
+.capacityRangeInput:focus {
+  outline: none;
+  border-color: var(--color-primary-500);
+  box-shadow: var(--shadow-ring);
+}
+
+.capacityRangeSep {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-400);
+}
+
+.filterDivider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 2px 0;
+}
+
+.filterActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.filterClearButton {
+  border: none;
+  background: none;
+  font-size: var(--text-body-sm);
+  font-family: var(--font-family-primary);
+  color: var(--color-primary-500);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.filterClearButton:hover {
+  color: var(--color-primary-700);
+  background: var(--color-primary-50);
+}
