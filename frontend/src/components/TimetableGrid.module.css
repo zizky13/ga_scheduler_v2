@@ -1,0 +1,158 @@
+/* ══════════════════════════════════════════════
+   TimetableGrid — Schedule Timetable (§13.1–§13.4)
+   ══════════════════════════════════════════════ */
+
+/* ── Container (§13.1) ── */
+
+.container {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  padding: 0;
+  overflow: hidden;
+  min-height: 480px;
+}
+
+/* Inner scroll wrapper for horizontal overflow on narrow viewports */
+.scrollWrapper {
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Grid (§13.2) ── */
+
+.grid {
+  display: grid;
+  gap: 1px;
+  background: var(--color-border);
+  min-width: fit-content;
+  position: relative;
+}
+
+/* ── Corner cell (top-left intersection) ── */
+
+.corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 15;
+  background: var(--color-secondary-50);
+  border-right: 2px solid var(--color-border);
+  border-bottom: 2px solid var(--color-border);
+  grid-column: 1;
+  grid-row: 1;
+}
+
+/* ── Day Header Row (§13.3) ── */
+
+.dayHeader {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-secondary-50);
+  font-size: var(--text-table-header);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-secondary-400);
+  text-align: center;
+  height: 48px;
+  border-bottom: 2px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-row: 1;
+}
+
+/* ── Time Label Column (§13.4) ── */
+
+.timeLabel {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  width: 80px;
+  background: var(--color-surface);
+  font-size: var(--text-mono);
+  font-family: var(--font-family-mono);
+  color: var(--color-secondary-400);
+  text-align: right;
+  padding-top: 4px;
+  padding-right: 12px;
+  border-right: 2px solid var(--color-border);
+  box-sizing: border-box;
+}
+
+/* ── Empty body cells ── */
+
+.cell {
+  background: var(--color-surface);
+}
+
+/* ── Density: Comfortable (§13.7) ── */
+
+.comfortable .cell {
+  min-height: 60px;
+}
+
+/* ── Density: Compact (§13.7) ── */
+
+.compact .cell {
+  min-height: 44px;
+}
+
+/* ── Mobile (§13.10) ── */
+
+@media (max-width: 639px) {
+  .container {
+    min-height: 320px;
+  }
+
+  .dayHeader {
+    min-width: 140px;
+  }
+}
+
+/* ── Print View (§13.8) ── */
+
+@media print {
+  .container {
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .scrollWrapper {
+    overflow: visible;
+  }
+
+  .grid {
+    gap: 1px;
+    background: #ccc;
+  }
+
+  .corner,
+  .dayHeader {
+    position: static;
+    background: #f0f0f0;
+    color: #333;
+    border-bottom: 1px solid #ccc;
+  }
+
+  .timeLabel {
+    position: static;
+    color: #333;
+    border-right: 1px solid #ccc;
+    font-size: 10px;
+  }
+
+  .cell {
+    background: #fff;
+  }
+
+  .corner {
+    border-right: 1px solid #ccc;
+  }
+}
