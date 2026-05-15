@@ -361,6 +361,276 @@
   gap: var(--space-3);
 }
 
+/* ── SSA Failure Panel ── */
+
+.ssaPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.ssaHeader {
+  background: var(--color-error-50);
+  border: 1px solid color-mix(in srgb, var(--color-error-500) 30%, transparent);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+.ssaHeaderTop {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.ssaHeaderIcon {
+  flex-shrink: 0;
+  color: var(--color-error-500);
+  margin-top: 2px;
+}
+
+.ssaHeaderTitle {
+  font-size: var(--text-subtitle);
+  font-weight: 700;
+  color: var(--color-error-700);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.ssaHeaderDescription {
+  font-size: var(--text-body);
+  font-weight: 400;
+  color: var(--color-secondary-500);
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.ssaStatsTriad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .ssaStatsTriad {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ssaStatCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--space-1);
+}
+
+.ssaStatLabel {
+  font-size: var(--text-caption);
+  font-weight: 500;
+  color: var(--color-secondary-400);
+  margin: 0;
+}
+
+.ssaStatValue {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-card-title);
+  font-weight: 700;
+  color: var(--color-secondary-900);
+  margin: 0;
+}
+
+.ssaStatSuccess {
+  color: var(--color-success-500);
+}
+
+.ssaStatError {
+  color: var(--color-error-500);
+}
+
+.ssaDeadlockCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+.ssaDeadlockMessage {
+  font-size: var(--text-body-sm);
+  font-weight: 400;
+  color: var(--color-secondary-500);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.ssaOfferingPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ssaOfferingPill {
+  display: inline-block;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-mono-sm);
+  color: var(--color-error-700);
+  background: var(--color-error-50);
+  border: 1px solid color-mix(in srgb, var(--color-error-500) 30%, transparent);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.ssaRecommendation {
+  background: var(--color-primary-50);
+  border: 1px solid color-mix(in srgb, var(--color-primary-500) 20%, transparent);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.ssaRecommendationLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--color-primary-500);
+  margin: 0 0 6px;
+}
+
+.ssaRecommendationBody {
+  font-size: var(--text-body-sm);
+  font-weight: 400;
+  color: var(--color-secondary-700);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Pre-GA Failure Panel ── */
+
+.preGAStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .preGAStatsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rejectionTable {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.rejectionTableInner {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rejectionTheadRow {
+  background: var(--color-secondary-50);
+}
+
+.rejectionTh {
+  padding: 10px 16px;
+  height: 40px;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-secondary-400);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.rejectionTr {
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.rejectionTr:hover {
+  background: var(--color-secondary-50);
+}
+
+.rejectionTr:not(:last-child) .rejectionTd {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rejectionTd {
+  padding: 8px 16px;
+  height: 40px;
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-700);
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.rejectionOfferingId {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-mono-sm);
+  font-weight: 500;
+  color: var(--color-secondary-900);
+}
+
+.reasonBadge {
+  display: inline-block;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.reasonBadgeWarning {
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
+}
+
+.reasonBadgeError {
+  background: var(--color-error-50);
+  color: var(--color-error-700);
+}
+
+.reasonBadgeDefault {
+  background: var(--color-secondary-100);
+  color: var(--color-secondary-700);
+}
+
+.rejectionDetails {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-500);
+  line-height: 1.4;
+}
+
+.preGAActionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.preGAActionBarRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 /* ── Loading Skeleton ── */
 
 .skeleton {

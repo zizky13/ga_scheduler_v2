@@ -5,12 +5,14 @@ import {
   XCircle,
   CalendarDays,
   CheckCircle,
+  AlertCircle,
   AlertTriangle,
   XOctagon,
   Info,
   ArrowLeft,
   FileQuestion,
   WifiOff,
+  Lightbulb,
 } from 'lucide-react';
 import { StatusBadge } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -64,12 +66,37 @@ interface ScheduleRunDetail {
   completedAt: string | null;
   createdAt: string;
   config: RunConfig | null;
-  preGASummary: unknown;
-  ssaResult: unknown;
+  preGASummary: PreGASummaryPayload | null;
+  ssaResult: SSAResultPayload | null;
   history: number[] | null;
   avgHistory: number[] | null;
   idempotencyKey: string | null;
   assignments: unknown[];
+}
+
+interface DeadlockReportPayload {
+  code: string;
+  message: string;
+  affectedOfferingIds: number[];
+  recommendation: string;
+}
+
+interface SSAResultPayload {
+  status: string;
+  totalSessionsRequired: number;
+  maximumAchievableMatching: number;
+  deadlockReport?: DeadlockReportPayload;
+}
+
+interface PreGAInfeasibleEntry {
+  offeringId: number;
+  code: string;
+  message: string;
+}
+
+interface PreGASummaryPayload {
+  feasible: number;
+  infeasible: PreGAInfeasibleEntry[];
 }
 
 interface FitnessDataPoint {
@@ -380,93 +407,101 @@ export function RunDetailPage() {
         </div>
       </div>
 
-      <div className={styles.statsGrid}>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Generation</p>
-          <p className={styles.statValue}>
-            {run.currentGeneration} / {run.generationsRun}
-          </p>
-        </div>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Best Fitness</p>
-          <p className={`${styles.statValue} ${fitnessColorClass(run.bestFitness)}`}>
-            {run.bestFitness.toFixed(4)}
-          </p>
-        </div>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Hard Violations</p>
-          <p className={`${styles.statValue} ${run.hardViolations === 0 ? styles.statGreen : styles.statRed}`}>
-            {run.hardViolations}
-          </p>
-        </div>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Soft Penalty</p>
-          <p className={styles.statValue}>
-            {run.softPenalty.toFixed(2)}
-          </p>
-        </div>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Competency Mismatch</p>
-          <p className={`${styles.statValue} ${run.competencyMismatch === 0 ? styles.statGreen : styles.statRed}`}>
-            {run.competencyMismatch}
-          </p>
-        </div>
-      </div>
+      {run.status === 'SSA_INFEASIBLE' && run.ssaResult ? (
+        <SSAFailurePanel ssaResult={run.ssaResult} onNavigate={navigate} />
+      ) : run.status === 'PRE_GA_EMPTY' && run.preGASummary ? (
+        <PreGAFailurePanel preGASummary={run.preGASummary} onNavigate={navigate} />
+      ) : (
+        <>
+          <div className={styles.statsGrid}>
+            <div className={styles.statCard}>
+              <p className={styles.statLabel}>Generation</p>
+              <p className={styles.statValue}>
+                {run.currentGeneration} / {run.generationsRun}
+              </p>
+            </div>
+            <div className={styles.statCard}>
+              <p className={styles.statLabel}>Best Fitness</p>
+              <p className={`${styles.statValue} ${fitnessColorClass(run.bestFitness)}`}>
+                {run.bestFitness.toFixed(4)}
+              </p>
+            </div>
+            <div className={styles.statCard}>
+              <p className={styles.statLabel}>Hard Violations</p>
+              <p className={`${styles.statValue} ${run.hardViolations === 0 ? styles.statGreen : styles.statRed}`}>
+                {run.hardViolations}
+              </p>
+            </div>
+            <div className={styles.statCard}>
+              <p className={styles.statLabel}>Soft Penalty</p>
+              <p className={styles.statValue}>
+                {run.softPenalty.toFixed(2)}
+              </p>
+            </div>
+            <div className={styles.statCard}>
+              <p className={styles.statLabel}>Competency Mismatch</p>
+              <p className={`${styles.statValue} ${run.competencyMismatch === 0 ? styles.statGreen : styles.statRed}`}>
+                {run.competencyMismatch}
+              </p>
+            </div>
+          </div>
 
-      <div className={styles.progressSection}>
-        <div className={styles.progressTrack}>
-          {isQueued ? (
-            <div className={styles.progressFillIndeterminate} />
-          ) : (
-            <div
-              className={styles.progressFill}
-              style={{ width: `${progressWidth}%` }}
-            />
+          <div className={styles.progressSection}>
+            <div className={styles.progressTrack}>
+              {isQueued ? (
+                <div className={styles.progressFillIndeterminate} />
+              ) : (
+                <div
+                  className={styles.progressFill}
+                  style={{ width: `${progressWidth}%` }}
+                />
+              )}
+            </div>
+            <p className={styles.progressLabel}>
+              {run.currentGeneration} / {run.generationsRun} ({progressPercent}%)
+            </p>
+          </div>
+
+          {chartData.length > 0 && (
+            <div className={styles.chartSection}>
+              <h3 className={styles.chartTitle}>Fitness Curve</h3>
+              <FitnessChart
+                data={chartData}
+                showAverage={hasAvgData}
+                showViolations={false}
+              />
+            </div>
           )}
-        </div>
-        <p className={styles.progressLabel}>
-          {run.currentGeneration} / {run.generationsRun} ({progressPercent}%)
-        </p>
-      </div>
 
-      {chartData.length > 0 && (
-        <div className={styles.chartSection}>
-          <h3 className={styles.chartTitle}>Fitness Curve</h3>
-          <FitnessChart
-            data={chartData}
-            showAverage={hasAvgData}
-            showViolations={false}
-          />
-        </div>
-      )}
+          <StatusBanner run={run} />
 
-      <StatusBanner run={run} />
-
-      {(isActive || showViewSchedule) && (
-        <div className={styles.actionBar}>
-          <div className={styles.actionBarLeft}>
-            {isActive && (
-              <Button
-                variant="danger"
-                icon={<XCircle size={16} />}
-                onClick={() => setCancelOpen(true)}
-              >
-                Cancel Run
-              </Button>
-            )}
-          </div>
-          <div className={styles.actionBarRight}>
-            {showViewSchedule && (
-              <Button
-                variant="primary"
-                icon={<CalendarDays size={16} />}
-                onClick={() => navigate(`/schedule?runId=${run.id}`)}
-              >
-                View Schedule
-              </Button>
-            )}
-          </div>
-        </div>
+          {(isActive || showViewSchedule) && (
+            <div className={styles.actionBar}>
+              <div className={styles.actionBarLeft}>
+                {isActive && (
+                  <Button
+                    variant="danger"
+                    icon={<XCircle size={16} />}
+                    onClick={() => setCancelOpen(true)}
+                  >
+                    Cancel Run
+                  </Button>
+                )}
+              </div>
+              <div className={styles.actionBarRight}>
+                {showViewSchedule && (
+                  <Button
+                    variant="primary"
+                    icon={<CalendarDays size={16} />}
+                    onClick={() => navigate(`/schedule?runId=${run.id}`)}
+                  >
+                    View Schedule
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <ConfirmDialog
@@ -480,6 +515,210 @@ export function RunDetailPage() {
         cancelLabel="Keep Running"
         loading={cancelling}
       />
+    </div>
+  );
+}
+
+/* ── SSA Failure Panel ── */
+
+function SSAFailurePanel({
+  ssaResult,
+  onNavigate,
+}: {
+  ssaResult: SSAResultPayload;
+  onNavigate: (path: string) => void;
+}) {
+  const gap = ssaResult.totalSessionsRequired - ssaResult.maximumAchievableMatching;
+  const report = ssaResult.deadlockReport;
+
+  return (
+    <div className={styles.ssaPanel}>
+      <div className={styles.ssaHeader}>
+        <div className={styles.ssaHeaderTop}>
+          <AlertTriangle size={24} className={styles.ssaHeaderIcon} aria-hidden="true" />
+          <h2 className={styles.ssaHeaderTitle}>
+            Structural Infeasibility Detected — GA Not Executed
+          </h2>
+        </div>
+        <p className={styles.ssaHeaderDescription}>
+          The current configuration cannot produce a valid schedule. The Genetic Algorithm was not run to prevent wasted computation.
+        </p>
+      </div>
+
+      <div className={styles.ssaStatsTriad}>
+        <div className={styles.ssaStatCard}>
+          <p className={styles.ssaStatLabel}>Sessions Required</p>
+          <p className={styles.ssaStatValue}>{ssaResult.totalSessionsRequired}</p>
+        </div>
+        <div className={styles.ssaStatCard}>
+          <p className={styles.ssaStatLabel}>Max Schedulable</p>
+          <p className={`${styles.ssaStatValue} ${styles.ssaStatSuccess}`}>
+            {ssaResult.maximumAchievableMatching}
+          </p>
+        </div>
+        <div className={styles.ssaStatCard}>
+          <p className={styles.ssaStatLabel}>Unresolvable</p>
+          <p className={`${styles.ssaStatValue} ${styles.ssaStatError}`}>{gap}</p>
+        </div>
+      </div>
+
+      {report && (
+        <div className={styles.ssaDeadlockCard}>
+          <p className={styles.ssaDeadlockMessage}>{report.message}</p>
+
+          {report.affectedOfferingIds.length > 0 && (
+            <div className={styles.ssaOfferingPills}>
+              {report.affectedOfferingIds.map((oid) => (
+                <span key={oid} className={styles.ssaOfferingPill}>
+                  Offering #{oid}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {report.recommendation && (
+            <div className={styles.ssaRecommendation}>
+              <p className={styles.ssaRecommendationLabel}>
+                <Lightbulb size={12} aria-hidden="true" />
+                Recommended Action
+              </p>
+              <p className={styles.ssaRecommendationBody}>{report.recommendation}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className={styles.actionBar}>
+        <div className={styles.actionBarLeft}>
+          <Button variant="secondary" onClick={() => onNavigate('/runs')}>
+            Back to Runs
+          </Button>
+        </div>
+        <div className={styles.actionBarRight}>
+          <Button
+            variant="primary"
+            onClick={() => {
+              const ids = report?.affectedOfferingIds;
+              const query = ids && ids.length > 0 ? `?highlight=${ids.join(',')}` : '';
+              onNavigate(`/offerings${query}`);
+            }}
+          >
+            Edit Offerings
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Pre-GA Failure Panel ── */
+
+const REASON_BADGE_VARIANT: Record<string, string> = {
+  COMPETENCY_MISMATCH: 'warning',
+  ROOM_MISSING: 'error',
+  NO_ROOMS_QUALIFY: 'error',
+  ROOM_ZERO_CAPACITY: 'error',
+  TEMPORAL_INSUFFICIENT: 'error',
+  POLICY_FIXED_NO_SLOTS: 'error',
+  FACILITY_MISMATCH: 'error',
+};
+
+function reasonBadgeClass(code: string): string {
+  const variant = REASON_BADGE_VARIANT[code];
+  if (variant === 'warning') return styles.reasonBadgeWarning;
+  if (variant === 'error') return styles.reasonBadgeError;
+  return styles.reasonBadgeDefault;
+}
+
+function formatReasonCode(code: string): string {
+  return code
+    .split('_')
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function PreGAFailurePanel({
+  preGASummary,
+  onNavigate,
+}: {
+  preGASummary: PreGASummaryPayload;
+  onNavigate: (path: string) => void;
+}) {
+  const { feasible, infeasible } = preGASummary;
+
+  return (
+    <div className={styles.ssaPanel}>
+      <div className={styles.ssaHeader}>
+        <div className={styles.ssaHeaderTop}>
+          <AlertCircle size={24} className={styles.ssaHeaderIcon} aria-hidden="true" />
+          <h2 className={styles.ssaHeaderTitle}>
+            No Feasible Candidates — GA Not Executed
+          </h2>
+        </div>
+        <p className={styles.ssaHeaderDescription}>
+          All course offerings were rejected during pre-validation. The Genetic Algorithm cannot run without at least one valid candidate.
+        </p>
+      </div>
+
+      <div className={styles.preGAStatsGrid}>
+        <div className={styles.ssaStatCard}>
+          <p className={styles.ssaStatLabel}>Passed Validation</p>
+          <p className={`${styles.ssaStatValue} ${styles.ssaStatSuccess}`}>{feasible}</p>
+        </div>
+        <div className={styles.ssaStatCard}>
+          <p className={styles.ssaStatLabel}>Rejected</p>
+          <p className={`${styles.ssaStatValue} ${styles.ssaStatError}`}>{infeasible.length}</p>
+        </div>
+      </div>
+
+      {infeasible.length > 0 && (
+        <div className={styles.rejectionTable}>
+          <table className={styles.rejectionTableInner}>
+            <thead>
+              <tr className={styles.rejectionTheadRow}>
+                <th className={styles.rejectionTh}>Offering</th>
+                <th className={styles.rejectionTh}>Reason</th>
+                <th className={styles.rejectionTh}>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {infeasible.map((entry) => (
+                <tr
+                  key={entry.offeringId}
+                  className={styles.rejectionTr}
+                  onClick={() => onNavigate(`/offerings?highlight=${entry.offeringId}`)}
+                >
+                  <td className={styles.rejectionTd}>
+                    <span className={styles.rejectionOfferingId}>#{entry.offeringId}</span>
+                  </td>
+                  <td className={styles.rejectionTd}>
+                    <span className={`${styles.reasonBadge} ${reasonBadgeClass(entry.code)}`}>
+                      {formatReasonCode(entry.code)}
+                    </span>
+                  </td>
+                  <td className={styles.rejectionTd}>
+                    <span className={styles.rejectionDetails}>{entry.message}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className={styles.preGAActionBar}>
+        <Button variant="secondary" onClick={() => onNavigate('/runs')}>
+          Back to Runs
+        </Button>
+        <div className={styles.preGAActionBarRight}>
+          <Button variant="secondary" onClick={() => onNavigate('/lecturers')}>
+            Fix Lecturers
+          </Button>
+          <Button variant="primary" onClick={() => onNavigate('/offerings')}>
+            Fix Offerings
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
