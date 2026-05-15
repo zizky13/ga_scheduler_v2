@@ -14,6 +14,7 @@ import { PlaceholderPage } from './pages/PlaceholderPage';
 import { RunHistoryPage } from './pages/RunHistoryPage';
 import { RunCreationPage } from './pages/RunCreationPage';
 import { RunDetailPage } from './pages/RunDetailPage';
+import { ScheduleViewerPage } from './pages/ScheduleViewerPage';
 
 function AppShell() {
   const { theme, toggleTheme } = useTheme();
@@ -70,7 +71,7 @@ function App() {
           <Route path="runs" element={<RunHistoryPage />} />
           <Route path="runs/new" element={<RunCreationPage />} />
           <Route path="runs/:id" element={<RunDetailPage />} />
-          <Route path="schedule" element={<PlaceholderPage title="View Schedule" />} />
+          <Route path="schedule" element={<ScheduleViewerPage />} />
 
           {/* ADMIN-only routes */}
           <Route element={<RoleGuard allowedRoles={['ADMIN']} />}>
