@@ -12,9 +12,11 @@ interface StatCardProps {
   value: string | number;
   trend?: { value: string; direction: 'up' | 'down' };
   onClick?: () => void;
+  iconBgColor?: string;
+  iconColor?: string;
 }
 
-export function StatCard({ icon, label, value, trend, onClick }: StatCardProps) {
+export function StatCard({ icon, label, value, trend, onClick, iconBgColor, iconColor }: StatCardProps) {
   const Tag = onClick ? 'button' : 'div';
 
   return (
@@ -23,7 +25,13 @@ export function StatCard({ icon, label, value, trend, onClick }: StatCardProps) 
       onClick={onClick}
       type={onClick ? 'button' : undefined}
     >
-      <div className={styles.statIconContainer}>{icon}</div>
+      <div
+        className={styles.statIconContainer}
+        style={{
+          ...(iconBgColor ? { background: iconBgColor } : {}),
+          ...(iconColor ? { color: iconColor } : {}),
+        }}
+      >{icon}</div>
       <div className={styles.statLabel}>{label}</div>
       <div className={styles.statValue}>{value}</div>
       {trend && (
