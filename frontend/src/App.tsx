@@ -28,6 +28,8 @@ function AppShell() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={setSidebarCollapsed}
         userRole={user?.role}
+        userName={user?.name}
+        onLogout={logout}
       />
       <TopBar
         sidebarCollapsed={sidebarCollapsed}

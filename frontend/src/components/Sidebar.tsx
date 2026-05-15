@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -15,7 +15,9 @@ import {
   ScrollText,
   PanelLeftClose,
   PanelLeftOpen,
+  LogOut,
 } from 'lucide-react';
+import { RoleBadge } from './Badge';
 import styles from './Sidebar.module.css';
 
 interface NavItem {
@@ -63,14 +65,18 @@ const NAV_GROUPS: NavGroup[] = [
 
 interface SidebarProps {
   userRole?: 'ADMIN' | 'USER';
+  userName?: string;
   collapsed?: boolean;
   onToggleCollapse?: (collapsed: boolean) => void;
+  onLogout?: () => void;
 }
 
 export function Sidebar({
   userRole = 'ADMIN',
+  userName,
   collapsed: controlledCollapsed,
   onToggleCollapse,
+  onLogout,
 }: SidebarProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const collapsed = controlledCollapsed ?? internalCollapsed;
@@ -135,6 +141,100 @@ export function Sidebar({
           </div>
         ))}
       </nav>
+
+      {userName && (
+        <SidebarFooter
+          userName={userName}
+          userRole={userRole}
+          collapsed={collapsed}
+          onLogout={onLogout}
+        />
+      )}
     </aside>
+  );
+}
+
+/* ── Sidebar Footer ── */
+
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase();
+}
+
+interface SidebarFooterProps {
+  userName: string;
+  userRole: 'ADMIN' | 'USER';
+  collapsed: boolean;
+  onLogout?: () => void;
+}
+
+function SidebarFooter({ userName, userRole, collapsed, onLogout }: SidebarFooterProps) {
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!popoverOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setPopoverOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [popoverOpen]);
+
+  const initials = getInitials(userName);
+
+  if (collapsed) {
+    return (
+      <div className={styles.footer} ref={popoverRef}>
+        <button
+          type="button"
+          className={styles.avatarButton}
+          onClick={() => setPopoverOpen((o) => !o)}
+          aria-label="User menu"
+          aria-expanded={popoverOpen}
+        >
+          <span className={styles.avatar}>{initials}</span>
+        </button>
+
+        {popoverOpen && (
+          <div className={styles.footerPopover}>
+            <p className={styles.popoverName}>{userName}</p>
+            <RoleBadge role={userRole} />
+            <button
+              type="button"
+              className={styles.popoverLogout}
+              onClick={onLogout}
+            >
+              <LogOut size={14} />
+              Log out
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.footer}>
+      <span className={styles.avatar}>{initials}</span>
+      <div className={styles.userInfo}>
+        <span className={styles.userName}>{userName}</span>
+        <RoleBadge role={userRole} />
+      </div>
+      <button
+        type="button"
+        className={styles.logoutButton}
+        onClick={onLogout}
+        aria-label="Log out"
+      >
+        <LogOut size={16} />
+      </button>
+    </div>
   );
 }
