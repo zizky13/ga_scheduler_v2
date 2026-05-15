@@ -1,0 +1,269 @@
+/* ── Tag list in table cells ── */
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--color-primary-700);
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-100);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.tagEmpty {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-400);
+  font-style: italic;
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Filter panel inside toolbar dropdown ── */
+.filterPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 240px;
+}
+
+.filterLabel {
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--color-secondary-700);
+  margin: 0 0 4px;
+}
+
+.filterCheckboxGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.filterCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-700);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.filterCheckbox:hover {
+  background: var(--color-secondary-50);
+}
+
+.filterCheckbox input[type="checkbox"] {
+  accent-color: var(--color-primary-500);
+}
+
+.filterDivider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 2px 0;
+}
+
+.filterActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.filterClearButton {
+  border: none;
+  background: none;
+  font-size: var(--text-body-sm);
+  font-family: var(--font-family-primary);
+  color: var(--color-primary-500);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.filterClearButton:hover {
+  color: var(--color-primary-700);
+  background: var(--color-primary-50);
+}
+
+/* ══════════════════════════════════════════
+   Tag Input — free-text tag entry
+   ══════════════════════════════════════════ */
+
+.tagInputWrapper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--color-secondary-200);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-primary);
+  cursor: text;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.tagInputWrapper:focus-within {
+  border-color: var(--color-primary-500);
+  box-shadow: var(--shadow-ring);
+}
+
+.tagInputTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--color-primary-700);
+  background: var(--color-primary-50);
+  border: 1px solid var(--color-primary-100);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  animation: tagIn var(--duration-fast) var(--ease-out);
+}
+
+@keyframes tagIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.tagInputRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-primary-400);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.tagInputRemove:hover {
+  color: var(--color-danger-600);
+  background: var(--color-danger-50);
+}
+
+.tagInputField {
+  flex: 1;
+  min-width: 80px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: var(--text-body-sm);
+  font-family: var(--font-family-primary);
+  color: var(--color-secondary-900);
+  padding: 2px 0;
+}
+
+.tagInputField::placeholder {
+  color: var(--color-secondary-400);
+}
+
+/* ══════════════════════════════════════════
+   Preferred Slots Mini-Grid
+   ══════════════════════════════════════════ */
+
+.slotsGrid {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.slotsGridHeader {
+  display: contents;
+}
+
+.slotsGridHeaderCell {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-secondary-400);
+  background: var(--color-secondary-50);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.slotsGridCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--color-secondary-100);
+  border-right: 1px solid var(--color-secondary-100);
+  min-height: 36px;
+}
+
+.slotsGridCell:last-child {
+  border-right: none;
+}
+
+.slotsGridTimeLabel {
+  composes: slotsGridCell;
+  justify-content: flex-end;
+  padding-right: 8px;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: var(--color-secondary-500);
+  white-space: nowrap;
+  background: var(--color-secondary-50);
+}
+
+.slotsGridCheckbox {
+  accent-color: var(--color-primary-500);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.slotsGridEmpty {
+  grid-column: 1 / -1;
+  padding: 24px;
+  text-align: center;
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-400);
+  font-style: italic;
+}
+
+/* ── Blocked delete info banner ── */
+.blockedBanner {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--color-info-50);
+  color: var(--color-info-700);
+  font-size: var(--text-body-sm);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  line-height: 1.5;
+}

@@ -19,6 +19,7 @@ import { SemesterManagementPage } from './pages/SemesterManagementPage';
 import { FacilityManagementPage } from './pages/FacilityManagementPage';
 import { RoomManagementPage } from './pages/RoomManagementPage';
 import { TimeslotManagementPage } from './pages/TimeslotManagementPage';
+import { LecturerManagementPage } from './pages/LecturerManagementPage';
 
 type Breakpoint = 'mobile' | 'tablet' | 'desktop';
 
@@ -118,7 +119,7 @@ function App() {
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="rooms" element={<RoomManagementPage />} />
           <Route path="timeslots" element={<TimeslotManagementPage />} />
-          <Route path="lecturers" element={<PlaceholderPage title="Lecturers" />} />
+          <Route path="lecturers" element={<LecturerManagementPage />} />
           <Route path="courses" element={<PlaceholderPage title="Courses" />} />
           <Route path="offerings" element={<PlaceholderPage title="Offerings" />} />
 

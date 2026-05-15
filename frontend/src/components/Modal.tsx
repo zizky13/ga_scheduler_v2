@@ -134,6 +134,7 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   loading?: boolean;
+  children?: ReactNode;
 }
 
 const VARIANT_ICON_CLASS: Record<ConfirmVariant, string> = {
@@ -151,6 +152,7 @@ export function ConfirmDialog({
   confirmLabel = 'Delete',
   cancelLabel = 'Cancel',
   loading,
+  children,
 }: ConfirmDialogProps) {
   return (
     <Modal open={open} onClose={onClose} size="sm" dismissable={false} noPadding>
@@ -160,11 +162,14 @@ export function ConfirmDialog({
         </div>
         <h2 className={styles.confirmTitle}>{title}</h2>
         {description && <p className={styles.confirmDescription}>{description}</p>}
+        {children}
       </div>
       <div className={styles.confirmActions}>
-        <Button variant="secondary" onClick={onClose} disabled={loading}>
-          {cancelLabel}
-        </Button>
+        {cancelLabel && (
+          <Button variant="secondary" onClick={onClose} disabled={loading}>
+            {cancelLabel}
+          </Button>
+        )}
         <Button
           variant={variant === 'danger' ? 'danger' : 'primary'}
           onClick={onConfirm}
