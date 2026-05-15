@@ -1,0 +1,29 @@
+/* ── Active semester row indicator ── */
+.activeRow {
+  background: var(--color-success-50);
+  border-left: 3px solid var(--color-success-500);
+}
+
+.activeRow:hover {
+  background: var(--color-success-50);
+}
+
+/* ── Mono code text ── */
+.mono {
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ── Date row in modal ── */
+.dateRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+@media (max-width: 639px) {
+  .dateRow {
+    grid-template-columns: 1fr;
+  }
+}

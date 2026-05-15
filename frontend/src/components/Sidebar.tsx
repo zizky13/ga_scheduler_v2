@@ -24,6 +24,7 @@ interface NavItem {
   icon: React.ElementType;
   label: string;
   route: string;
+  adminOnly?: boolean;
 }
 
 interface NavGroup {
@@ -37,8 +38,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Data Management',
     items: [
       { icon: LayoutDashboard, label: 'Dashboard', route: '/dashboard' },
-      { icon: GraduationCap, label: 'Semesters', route: '/semesters' },
-      { icon: Wrench, label: 'Facilities', route: '/facilities' },
+      { icon: GraduationCap, label: 'Semesters', route: '/semesters', adminOnly: true },
+      { icon: Wrench, label: 'Facilities', route: '/facilities', adminOnly: true },
       { icon: DoorOpen, label: 'Rooms', route: '/rooms' },
       { icon: Clock, label: 'Timeslots', route: '/timeslots' },
       { icon: Users, label: 'Lecturers', route: '/lecturers' },
@@ -91,9 +92,13 @@ export function Sidebar({
     onToggleCollapse?.(next);
   }, [collapsed, onToggleCollapse]);
 
-  const visibleGroups = NAV_GROUPS.filter(
-    (group) => !group.adminOnly || userRole === 'ADMIN'
-  );
+  const visibleGroups = NAV_GROUPS
+    .filter((group) => !group.adminOnly || userRole === 'ADMIN')
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.adminOnly || userRole === 'ADMIN'),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <>

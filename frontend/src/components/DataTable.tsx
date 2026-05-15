@@ -38,6 +38,7 @@ export interface DataTableProps<T> {
 
   onRowClick?: (row: T) => void;
   rowActions?: (row: T) => ReactNode;
+  rowClassName?: (row: T) => string | undefined;
   minWidth?: string;
 }
 
@@ -65,6 +66,7 @@ export function DataTable<T>({
   emptyAction,
   onRowClick,
   rowActions,
+  rowClassName,
   minWidth,
 }: DataTableProps<T>) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -123,7 +125,7 @@ export function DataTable<T>({
               {data.map((row, idx) => (
                 <tr
                   key={keyExtractor(row)}
-                  className={`${styles.tr} ${onRowClick ? styles.trClickable : ''}`}
+                  className={`${styles.tr} ${onRowClick ? styles.trClickable : ''} ${rowClassName?.(row) ?? ''}`}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                 >
                   {columns.map((col) => (

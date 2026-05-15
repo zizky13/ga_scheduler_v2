@@ -15,6 +15,8 @@ import { RunHistoryPage } from './pages/RunHistoryPage';
 import { RunCreationPage } from './pages/RunCreationPage';
 import { RunDetailPage } from './pages/RunDetailPage';
 import { ScheduleViewerPage } from './pages/ScheduleViewerPage';
+import { SemesterManagementPage } from './pages/SemesterManagementPage';
+import { FacilityManagementPage } from './pages/FacilityManagementPage';
 
 type Breakpoint = 'mobile' | 'tablet' | 'desktop';
 
@@ -126,8 +128,8 @@ function App() {
 
           {/* ADMIN-only routes */}
           <Route element={<RoleGuard allowedRoles={['ADMIN']} />}>
-            <Route path="semesters" element={<PlaceholderPage title="Semesters" />} />
-            <Route path="facilities" element={<PlaceholderPage title="Facilities" />} />
+            <Route path="semesters" element={<SemesterManagementPage />} />
+            <Route path="facilities" element={<FacilityManagementPage />} />
             <Route path="users" element={<PlaceholderPage title="Users" />} />
             <Route path="audit-log" element={<PlaceholderPage title="Audit Log" />} />
           </Route>
