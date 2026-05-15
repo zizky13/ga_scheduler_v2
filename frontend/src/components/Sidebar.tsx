@@ -69,6 +69,8 @@ interface SidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: (collapsed: boolean) => void;
   onLogout?: () => void;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 export function Sidebar({
@@ -77,6 +79,8 @@ export function Sidebar({
   collapsed: controlledCollapsed,
   onToggleCollapse,
   onLogout,
+  mobileOpen = false,
+  onMobileClose,
 }: SidebarProps) {
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const collapsed = controlledCollapsed ?? internalCollapsed;
@@ -92,65 +96,75 @@ export function Sidebar({
   );
 
   return (
-    <aside
-      className={styles.sidebar}
-      data-collapsed={collapsed}
-      aria-label="Main navigation"
-    >
-      <div className={styles.header}>
-        <div className={styles.logo}>
-          <span className={styles.logoText}>
-            {collapsed ? 'GA' : 'GA Scheduler'}
-          </span>
-        </div>
-        <button
-          className={styles.collapseButton}
-          onClick={handleToggle}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-expanded={!collapsed}
-          type="button"
-        >
-          {collapsed ? (
-            <PanelLeftOpen size={20} />
-          ) : (
-            <PanelLeftClose size={20} />
-          )}
-        </button>
-      </div>
-
-      <nav className={styles.nav}>
-        {visibleGroups.map((group) => (
-          <div key={group.label}>
-            <div className={styles.groupLabel}>{group.label}</div>
-            <div className={styles.groupSeparator} />
-            {group.items.map((item) => (
-              <NavLink
-                key={item.route}
-                to={item.route}
-                className={({ isActive }) =>
-                  `${styles.navItem} ${isActive ? styles.navItemActive : ''}`
-                }
-              >
-                <item.icon className={styles.navIcon} size={20} />
-                <span className={styles.navLabel}>{item.label}</span>
-                {collapsed && (
-                  <span className={styles.tooltip}>{item.label}</span>
-                )}
-              </NavLink>
-            ))}
+    <>
+      <div
+        className={styles.backdrop}
+        data-visible={mobileOpen}
+        onClick={onMobileClose}
+        aria-hidden="true"
+      />
+      <aside
+        className={styles.sidebar}
+        data-collapsed={collapsed}
+        data-mobile-open={mobileOpen}
+        aria-label="Main navigation"
+      >
+        <div className={styles.header}>
+          <div className={styles.logo}>
+            <span className={styles.logoText}>
+              {collapsed ? 'GA' : 'GA Scheduler'}
+            </span>
           </div>
-        ))}
-      </nav>
+          <button
+            className={styles.collapseButton}
+            onClick={handleToggle}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!collapsed}
+            type="button"
+          >
+            {collapsed ? (
+              <PanelLeftOpen size={20} />
+            ) : (
+              <PanelLeftClose size={20} />
+            )}
+          </button>
+        </div>
 
-      {userName && (
-        <SidebarFooter
-          userName={userName}
-          userRole={userRole}
-          collapsed={collapsed}
-          onLogout={onLogout}
-        />
-      )}
-    </aside>
+        <nav className={styles.nav}>
+          {visibleGroups.map((group) => (
+            <div key={group.label}>
+              <div className={styles.groupLabel}>{group.label}</div>
+              <div className={styles.groupSeparator} />
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.route}
+                  to={item.route}
+                  className={({ isActive }) =>
+                    `${styles.navItem} ${isActive ? styles.navItemActive : ''}`
+                  }
+                  onClick={mobileOpen ? onMobileClose : undefined}
+                >
+                  <item.icon className={styles.navIcon} size={20} />
+                  <span className={styles.navLabel}>{item.label}</span>
+                  {collapsed && (
+                    <span className={styles.tooltip}>{item.label}</span>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        {userName && (
+          <SidebarFooter
+            userName={userName}
+            userRole={userRole}
+            collapsed={collapsed}
+            onLogout={onLogout}
+          />
+        )}
+      </aside>
+    </>
   );
 }
 
