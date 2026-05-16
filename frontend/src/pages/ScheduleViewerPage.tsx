@@ -11,8 +11,11 @@ import { PageHeader } from '../components/ContentArea';
 import { Button } from '../components/Button';
 import { TimetableGrid, GRID_COL_OFFSET, GRID_ROW_OFFSET } from '../components/TimetableGrid';
 import { CourseBlock, getCategoryForCompetencies } from '../components/CourseBlock';
+import { ManualOverrideModal } from '../components/ManualOverrideModal';
+import type { OverrideTarget, OtherSession } from '../components/ManualOverrideModal';
 import type { GridDensity } from '../components/TimetableGrid';
 import { useToastStore } from '../store/toastStore';
+import { useAuthStore } from '../store/authStore';
 import { get } from '../lib/api';
 import type { ListResponse } from '../lib/api';
 import styles from './ScheduleViewerPage.module.css';
@@ -63,6 +66,7 @@ interface GroupedAssignmentWire {
 interface RunDetail {
   id: string;
   status: string;
+  createdById: number;
   bestFitness: number;
   hardViolations: number;
   softPenalty: number;
@@ -71,6 +75,13 @@ interface RunDetail {
   completedAt: string | null;
   createdAt: string;
   assignments: GroupedAssignmentWire[];
+}
+
+interface TimeslotFull {
+  id: number;
+  day: string;
+  startTime: string;
+  endTime: string;
 }
 
 interface RoomWire {
@@ -113,11 +124,13 @@ export function ScheduleViewerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const addToast = useToastStore((s) => s.addToast);
+  const currentUser = useAuthStore((s) => s.user);
 
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string>(searchParams.get('runId') ?? '');
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
   const [rooms, setRooms] = useState<RoomWire[]>([]);
+  const [allTimeslots, setAllTimeslots] = useState<TimeslotFull[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -130,6 +143,10 @@ export function ScheduleViewerPage() {
 
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+
+  // Override modal
+  const [overrideTarget, setOverrideTarget] = useState<OverrideTarget | null>(null);
+  const [overrideModalOpen, setOverrideModalOpen] = useState(false);
 
   /* ── Close export dropdown on outside click ── */
 
@@ -184,11 +201,14 @@ export function ScheduleViewerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ── Fetch rooms (for room names & capacity) ── */
+  /* ── Fetch rooms and timeslots ── */
 
   useEffect(() => {
     get<ListResponse<RoomWire>>('/rooms', { page: 1, pageSize: 500 })
       .then((res) => setRooms(res.data))
+      .catch(() => {});
+    get<ListResponse<TimeslotFull>>('/timeslots', { page: 1, pageSize: 500 })
+      .then((res) => setAllTimeslots(res.data))
       .catch(() => {});
   }, []);
 
@@ -302,6 +322,70 @@ export function ScheduleViewerPage() {
   }, [filterRoom, filterLecturer, filterDay, filterCourse]);
 
   const hasActiveFilters = !!(filterRoom || filterLecturer || filterDay || filterCourse);
+
+  /* ── Override permission ── */
+
+  const canOverride = useMemo(() => {
+    if (!runDetail || !currentUser) return false;
+    const isAdmin = currentUser.role === 'ADMIN';
+    const isOwner = String(runDetail.createdById) === currentUser.id;
+    if (isAdmin) return runDetail.status === 'COMPLETED' || runDetail.status === 'STAGNATED';
+    if (isOwner) return runDetail.status === 'COMPLETED';
+    return false;
+  }, [runDetail, currentUser]);
+
+  function handleBlockClick(group: GroupedAssignmentWire, session: SessionWire) {
+    if (!canOverride) return;
+    const sortedSlots = [...session.timeSlots].sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const firstSlot = sortedSlots[0];
+    const lastSlot = sortedSlots[sortedSlots.length - 1];
+    const room = roomMap.get(session.roomId);
+
+    setOverrideTarget({
+      assignmentId: session.assignmentId,
+      sessionIndex: session.sessionIndex,
+      courseCode: group.offering.courseCode,
+      courseName: group.offering.courseName,
+      lecturerIds: group.offering.lecturers.map((l) => l.id),
+      lecturerNames: group.offering.lecturers.map((l) => l.name).join(', '),
+      currentRoomId: session.roomId,
+      currentRoomName: room?.name ?? `Room ${session.roomId}`,
+      currentDay: normalizeDay(firstSlot.day),
+      currentTimeRange: `${firstSlot.startTime} – ${lastSlot.endTime}`,
+      slotCount: sortedSlots.length,
+      manualOverride: session.manualOverride,
+      currentSlotIds: sortedSlots.map((s) => s.id),
+    });
+    setOverrideModalOpen(true);
+  }
+
+  const otherSessions: OtherSession[] = useMemo(() => {
+    if (!runDetail || !overrideTarget) return [];
+    const result: OtherSession[] = [];
+    for (const group of runDetail.assignments) {
+      for (const session of group.sessions) {
+        if (session.assignmentId === overrideTarget.assignmentId) continue;
+        result.push({
+          assignmentId: session.assignmentId,
+          roomId: session.roomId,
+          timeSlotIds: session.timeSlots.map((s) => s.id),
+          lecturerIds: group.offering.lecturers.map((l) => l.id),
+          courseCode: group.offering.courseCode,
+        });
+      }
+    }
+    return result;
+  }, [runDetail, overrideTarget]);
+
+  function handleOverrideSaved() {
+    if (selectedRunId) {
+      setDetailLoading(true);
+      get<RunDetail>(`/schedule-runs/${selectedRunId}`)
+        .then((data) => setRunDetail(data))
+        .catch(() => addToast({ type: 'error', title: 'Failed to refresh schedule' }))
+        .finally(() => setDetailLoading(false));
+    }
+  }
 
   /* ── CSV Export ── */
 
@@ -548,6 +632,7 @@ export function ScheduleViewerPage() {
                     override={session.manualOverride}
                     filteredOut={filtered}
                     density={density}
+                    onClick={canOverride ? () => handleBlockClick(group, session) : undefined}
                   />
                 );
               }),
@@ -592,6 +677,17 @@ export function ScheduleViewerPage() {
           <p className={styles.emptyDescription}>This run produced no schedule assignments.</p>
         </div>
       ) : null}
+
+      <ManualOverrideModal
+        open={overrideModalOpen}
+        onClose={() => setOverrideModalOpen(false)}
+        runId={selectedRunId}
+        target={overrideTarget}
+        otherSessions={otherSessions}
+        rooms={rooms}
+        timeslots={allTimeslots}
+        onSaved={handleOverrideSaved}
+      />
     </>
   );
 }
