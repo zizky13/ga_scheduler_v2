@@ -114,6 +114,25 @@
   box-sizing: border-box;
 }
 
+/* ── Expanded rows ── */
+
+.trExpanded {
+  background: var(--color-secondary-50);
+}
+
+.trExpanded .td {
+  border-bottom: none;
+}
+
+.trExpandedContent {
+  background: var(--color-secondary-50);
+}
+
+.tdExpanded {
+  padding: 0 16px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
 /* ── Actions column ── */
 
 .actionsCell {

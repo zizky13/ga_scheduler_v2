@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import styles from './DataTable.module.css';
 
@@ -40,6 +40,9 @@ export interface DataTableProps<T> {
   rowActions?: (row: T) => ReactNode;
   rowClassName?: (row: T) => string | undefined;
   minWidth?: string;
+
+  expandedKeys?: Set<string | number>;
+  renderExpandedRow?: (row: T) => ReactNode;
 }
 
 const DEFAULT_PAGE_SIZES = [10, 25, 50];
@@ -68,6 +71,8 @@ export function DataTable<T>({
   rowActions,
   rowClassName,
   minWidth,
+  expandedKeys,
+  renderExpandedRow,
 }: DataTableProps<T>) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -122,26 +127,39 @@ export function DataTable<T>({
               </tr>
             </thead>
             <tbody>
-              {data.map((row, idx) => (
-                <tr
-                  key={keyExtractor(row)}
-                  className={`${styles.tr} ${onRowClick ? styles.trClickable : ''} ${rowClassName?.(row) ?? ''}`}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                >
-                  {columns.map((col) => (
-                    <td key={col.key} className={styles.td}>
-                      {col.render(row, idx)}
-                    </td>
-                  ))}
-                  {rowActions && (
-                    <td className={styles.td}>
-                      <div className={styles.actionsCell}>
-                        {rowActions(row)}
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
+              {data.map((row, idx) => {
+                const key = keyExtractor(row);
+                const isExpanded = expandedKeys?.has(key);
+                const colSpan = columns.length + (rowActions ? 1 : 0);
+                return (
+                  <Fragment key={key}>
+                    <tr
+                      className={`${styles.tr} ${onRowClick ? styles.trClickable : ''} ${isExpanded ? styles.trExpanded : ''} ${rowClassName?.(row) ?? ''}`}
+                      onClick={onRowClick ? () => onRowClick(row) : undefined}
+                    >
+                      {columns.map((col) => (
+                        <td key={col.key} className={styles.td}>
+                          {col.render(row, idx)}
+                        </td>
+                      ))}
+                      {rowActions && (
+                        <td className={styles.td}>
+                          <div className={styles.actionsCell}>
+                            {rowActions(row)}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                    {isExpanded && renderExpandedRow && (
+                      <tr className={styles.trExpandedContent}>
+                        <td colSpan={colSpan} className={styles.tdExpanded}>
+                          {renderExpandedRow(row)}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

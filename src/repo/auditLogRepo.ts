@@ -13,7 +13,7 @@
  * callers don't have to think about the encoding.
  */
 
-import type { PrismaClient, AuditLog } from '@prisma/client';
+import type { PrismaClient, AuditLog, Prisma } from '@prisma/client';
 
 export type AuditLogRecord = Pick<
   AuditLog,
@@ -42,8 +42,27 @@ export interface CreateAuditLogInput {
   userAgent?: string | null;
 }
 
+export interface ListAuditLogsFilter {
+  actorId?: number;
+  entityType?: string;
+  action?: string;
+}
+
+export interface ListAuditLogsOptions {
+  filter?: ListAuditLogsFilter;
+  page: number;
+  pageSize: number;
+  sort?: string;
+}
+
+export interface ListResult<T> {
+  rows: T[];
+  total: number;
+}
+
 export interface AuditLogRepository {
   create(input: CreateAuditLogInput): Promise<AuditLogRecord>;
+  list(opts: ListAuditLogsOptions): Promise<ListResult<AuditLogRecord>>;
 }
 
 const AUDIT_LOG_SELECT = {
@@ -57,6 +76,23 @@ const AUDIT_LOG_SELECT = {
   userAgent: true,
   createdAt: true,
 } as const;
+
+const SORTABLE = new Set(['createdAt', 'action', 'entityType']);
+
+function parseSort(sort: string | undefined): Prisma.AuditLogOrderByWithRelationInput[] {
+  if (!sort) return [{ createdAt: 'desc' }];
+  return sort
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((token) => {
+      const dir: 'asc' | 'desc' = token.startsWith('-') ? 'desc' : 'asc';
+      const field = token.replace(/^[-+]/u, '');
+      if (!SORTABLE.has(field)) return null;
+      return { [field]: dir } as Prisma.AuditLogOrderByWithRelationInput;
+    })
+    .filter((v): v is Prisma.AuditLogOrderByWithRelationInput => v !== null);
+}
 
 export function createAuditLogRepository(prisma: PrismaClient): AuditLogRepository {
   return {
@@ -77,6 +113,25 @@ export function createAuditLogRepository(prisma: PrismaClient): AuditLogReposito
         },
         select: AUDIT_LOG_SELECT,
       });
+    },
+
+    async list({ filter, page, pageSize, sort }) {
+      const where: Prisma.AuditLogWhereInput = {};
+      if (filter?.actorId !== undefined) where.actorId = filter.actorId;
+      if (filter?.entityType !== undefined) where.entityType = filter.entityType;
+      if (filter?.action !== undefined) where.action = { contains: filter.action };
+      const orderBy = parseSort(sort);
+      const [rows, total] = await Promise.all([
+        prisma.auditLog.findMany({
+          where,
+          orderBy: orderBy.length > 0 ? orderBy : [{ createdAt: 'desc' }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          select: AUDIT_LOG_SELECT,
+        }),
+        prisma.auditLog.count({ where }),
+      ]);
+      return { rows, total };
     },
   };
 }

@@ -10,7 +10,6 @@ import { ToastContainer } from './components/Toast';
 import { SessionExpiredModal } from './components/SessionExpiredModal';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { PlaceholderPage } from './pages/PlaceholderPage';
 import { RunHistoryPage } from './pages/RunHistoryPage';
 import { RunCreationPage } from './pages/RunCreationPage';
 import { RunDetailPage } from './pages/RunDetailPage';
@@ -23,6 +22,7 @@ import { LecturerManagementPage } from './pages/LecturerManagementPage';
 import { CourseManagementPage } from './pages/CourseManagementPage';
 import { CourseOfferingManagementPage } from './pages/CourseOfferingManagementPage';
 import { UserManagementPage } from './pages/UserManagementPage';
+import { AuditLogPage } from './pages/AuditLogPage';
 
 type Breakpoint = 'mobile' | 'tablet' | 'desktop';
 
@@ -137,7 +137,7 @@ function App() {
             <Route path="semesters" element={<SemesterManagementPage />} />
             <Route path="facilities" element={<FacilityManagementPage />} />
             <Route path="users" element={<UserManagementPage />} />
-            <Route path="audit-log" element={<PlaceholderPage title="Audit Log" />} />
+            <Route path="audit-log" element={<AuditLogPage />} />
           </Route>
 
           {/* Catch-all */}

@@ -12,6 +12,7 @@ import { createLecturersRouter } from './routes/lecturers';
 import { createCoursesRouter } from './routes/courses';
 import { createCourseOfferingsRouter } from './routes/course-offerings';
 import { createScheduleRunsRouter } from './routes/schedule-runs';
+import { createAuditLogsRouter } from './routes/audit-logs';
 
 export function createV1Router(): Router {
   const router = Router();
@@ -76,6 +77,7 @@ export function createV1Router(): Router {
   router.use('/courses', createCoursesRouter());
   router.use('/course-offerings', createCourseOfferingsRouter());
   router.use('/schedule-runs', createScheduleRunsRouter());
+  router.use('/audit-logs', createAuditLogsRouter());
 
   return router;
 }
