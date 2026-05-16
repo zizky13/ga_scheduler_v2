@@ -1,8 +1,8 @@
 # ga_scheduler_v2
 
-> A three-layer course scheduling engine for Universitas Pembangunan Jaya (UPJ) that combines deterministic feasibility analysis with a Genetic Algorithm to produce conflict-free class timetables. Exposed through a REST API backed by PostgreSQL, Redis, and a BullMQ worker.
+> A full-stack university course scheduling system for Universitas Pembangunan Jaya (UPJ) that combines deterministic feasibility analysis with a Genetic Algorithm to produce conflict-free class timetables. The backend exposes a REST API backed by PostgreSQL, Redis, and a BullMQ worker. The frontend is a React SPA with real-time run progress, CRUD management for all scheduling entities, and a timetable viewer.
 
-This is the backend for a final-year thesis ("Tugas Akhir") project. It implements the runtime described in `techspec_upj_scheduler_v2.md` (arc42 Tech Spec, aligned to PRD v6.0). The system spans the full scheduling lifecycle: data management via a RESTful API, asynchronous GA execution via a BullMQ worker, real-time progress streaming over SSE, and post-run manual assignment overrides.
+This is a final-year thesis ("Tugas Akhir") project. It implements the runtime described in `docs/techspec_upj_scheduler_v2.md` (arc42 Tech Spec, aligned to PRD v6.0). The system spans the full scheduling lifecycle: data management via a RESTful API, asynchronous GA execution via a BullMQ worker, real-time progress streaming over SSE, post-run manual assignment overrides, and a production frontend for end-to-end usage.
 
 ---
 
@@ -32,6 +32,8 @@ A core design rule (encoded as a TypeScript discriminated union in `src/types.ts
 | Validation | Zod 4 |
 | API docs | OpenAPI 3.1 (auto-generated via `@asteasolutions/zod-to-openapi`) |
 | Logging | Pino + pino-http (structured JSON) |
+| Frontend | React 19, React Router 7, Vite 8, Zustand 5, Recharts, Lucide icons |
+| Styling | CSS Modules with design-system tokens (light/dark mode) |
 | Testing | Vitest |
 
 ---
@@ -128,7 +130,7 @@ redis-cli ping
 
 The application connects to `redis://127.0.0.1:6379` by default. Set `REDIS_URL` in `.env` if your Redis is on a different host or port.
 
-### 3. Node.js dependencies
+### 3. Backend dependencies
 
 ```bash
 npm install
@@ -136,7 +138,15 @@ npm install
 
 There is no build step -- `tsx` executes TypeScript sources directly.
 
-### 4. Environment configuration
+### 4. Frontend dependencies
+
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+### 5. Environment configuration
 
 Copy `.env.example` to `.env` and fill in real values:
 
@@ -165,7 +175,7 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 | `REDIS_URL` | `redis://127.0.0.1:6379` | Redis connection for BullMQ and pub/sub |
 | `DATABASE_PROVIDER` | _(unset = postgres)_ | Set to `sqlite` only for the thesis-defense fallback build |
 
-### 5. Database migrations and seed
+### 6. Database migrations and seed
 
 Apply the Prisma schema to your PostgreSQL database and load the fixture data:
 
@@ -177,7 +187,7 @@ npx prisma generate
 npx prisma migrate deploy
 
 # Seed the database with the canonical fixture
-# (1 semester, 6 rooms, 15 time slots, 8 lecturers, 11 courses, 15 offerings)
+# (1 semester, 6 rooms, 60 time slots, 8 lecturers, 11 courses, 15 offerings)
 npm run db:seed
 ```
 
@@ -187,7 +197,7 @@ Append `-- --with-infeasible` to `db:seed` to also load the 4 intentionally infe
 npm run db:seed -- --with-infeasible
 ```
 
-### 6. Verify everything is connected
+### 7. Verify everything is connected
 
 Start the API server and confirm the readiness probe:
 
@@ -211,14 +221,47 @@ If `db` or `redis` shows `"fail"`, check that the respective service is running 
 
 ---
 
+## Running
+
+### Full stack (API + Worker + Frontend)
+
+Start all three processes in separate terminals:
+
+```bash
+# Terminal 1: API server
+npm run api:dev
+
+# Terminal 2: GA pipeline worker
+npm run worker
+
+# Terminal 3: Frontend dev server
+cd frontend && npm run dev
+```
+
+The API server listens on port 3000. The frontend dev server starts on port 5173 and proxies `/api` requests to the backend. Open http://localhost:5173 to use the application.
+
+### CLI runners (standalone, no API/Redis needed)
+
+The CLI scripts run the scheduling layers directly against the in-memory seed fixture (`src/db/seed.ts`):
+
+```bash
+npm run layer1     # Pre-GA validator only
+npm run layer2     # SSA only (with multiple infeasibility scenarios)
+npm run layer3     # Full pipeline, single GA run
+npm run pipeline   # Full pipeline, all three crossover strategies
+```
+
+---
+
 ## How the Services Fit Together
 
 ```
                  +-----------+
-                 |  Client   |
+                 |  Browser  |  http://localhost:5173
+                 |  (React)  |  frontend/
                  +-----+-----+
                        |
-              HTTP REST / SSE
+              Vite dev proxy /api ->
                        |
                  +-----v-----+
                  |  Express   |  npm run api:dev
@@ -247,6 +290,7 @@ If `db` or `redis` shows `"fail"`, check that the respective service is running 
                                     Publish progress to Redis pub/sub
 ```
 
+- **React Frontend** (`cd frontend && npm run dev`): single-page application for login, data management, schedule run creation, real-time progress monitoring, and timetable viewing. Proxies API calls to the backend via Vite's dev server.
 - **Express API** (`npm run api:dev`): handles authentication, CRUD, schedule run creation, and SSE streaming. Enqueues GA jobs into BullMQ. Reads results from PostgreSQL.
 - **BullMQ Worker** (`npm run worker`): pulls jobs from the `ga-pipeline` Redis queue, runs the three-layer scheduling pipeline, persists results to PostgreSQL, and publishes real-time progress events via Redis pub/sub.
 - **PostgreSQL**: stores all persistent data -- users, semesters, rooms, courses, offerings, schedule runs, assignments, fitness history, and audit logs.
@@ -261,36 +305,9 @@ GA configuration (`populationSize`, `generations`, `mutationRate`, `elitismCount
 
 ---
 
-## Running
-
-### API server + worker (production path)
-
-Start the Express API and the BullMQ worker as two separate processes:
-
-```bash
-# Terminal 1: API server
-npm run api:dev
-
-# Terminal 2: GA pipeline worker
-npm run worker
-```
-
-The API server listens on `PORT` (default 3000). The worker consumes jobs from the `ga-pipeline` BullMQ queue and drives the `runPreGA -> runSSA -> runGA` pipeline.
-
-### CLI runners (standalone, no API/Redis needed)
-
-The CLI scripts run the scheduling layers directly against the in-memory seed fixture (`src/db/seed.ts`):
-
-```bash
-npm run layer1     # Pre-GA validator only
-npm run layer2     # SSA only (with multiple infeasibility scenarios)
-npm run layer3     # Full pipeline, single GA run
-npm run pipeline   # Full pipeline, all three crossover strategies
-```
-
----
-
 ## Available Scripts
+
+### Backend (from repository root)
 
 | Script | Command | What it does |
 |--------|---------|-------------|
@@ -303,6 +320,68 @@ npm run pipeline   # Full pipeline, all three crossover strategies
 | `db:seed` | `npm run db:seed` | Idempotently upserts the canonical fixture data |
 | `test` | `npm test` | Runs the Vitest suite once and exits |
 | `test:watch` | `npm run test:watch` | Vitest in watch mode |
+
+### Frontend (from `frontend/`)
+
+| Script | Command | What it does |
+|--------|---------|-------------|
+| `dev` | `npm run dev` | Starts the Vite dev server on port 5173 with API proxy |
+| `build` | `npm run build` | Type-checks and produces a production bundle in `dist/` |
+| `preview` | `npm run preview` | Serves the production build locally |
+| `lint` | `npm run lint` | Runs ESLint across the frontend source |
+
+---
+
+## Frontend
+
+The frontend is a React 19 single-page application located in `frontend/`. It communicates with the backend REST API and provides a complete management interface for the scheduling system.
+
+### Pages
+
+| Route | Page | Access | Description |
+|-------|------|--------|-------------|
+| `/login` | LoginPage | Public | Authentication form |
+| `/dashboard` | DashboardPage | All users | System overview with stat grids, recent runs, and activity feed |
+| `/rooms` | RoomManagementPage | All users | CRUD for classrooms with capacity and facility tags |
+| `/timeslots` | TimeslotManagementPage | All users | CRUD for weekly time slot definitions |
+| `/lecturers` | LecturerManagementPage | All users | CRUD for lecturers with competencies and preferred slots |
+| `/courses` | CourseManagementPage | All users | CRUD for courses with required competencies and facilities |
+| `/offerings` | CourseOfferingManagementPage | All users | CRUD for course offerings linking courses, rooms, and lecturers |
+| `/runs` | RunHistoryPage | All users | Paginated list of schedule runs with status filters |
+| `/runs/new` | RunCreationPage | All users | GA configuration form with pre-flight data summary |
+| `/runs/:id` | RunDetailPage | All users | Run detail with real-time SSE progress, fitness chart, and failure panels |
+| `/schedule` | ScheduleViewerPage | All users | Timetable grid view of completed schedule assignments |
+| `/semesters` | SemesterManagementPage | Admin only | Semester CRUD with activate/deactivate |
+| `/facilities` | FacilityManagementPage | Admin only | Facility tag CRUD |
+| `/users` | UserManagementPage | Admin only | User account management |
+| `/audit-log` | AuditLogPage | Admin only | Audit trail of all state-changing operations |
+
+### Key Components
+
+| Component | Description |
+|-----------|-------------|
+| `Sidebar` | Fixed-left navigation with grouped items, collapse toggle, responsive mobile drawer |
+| `TopBar` | Header with semester selector dropdown, dark mode toggle, and user menu |
+| `DataTable` | Generic paginated table with row actions, empty states, and loading skeletons |
+| `TableToolbar` | Search input, filter dropdown with apply/reset, active filter pills |
+| `Form` | Form primitives: TextInput, NumberInput, Select, DatePicker (calendar grid), TimeInput (HH:MM) |
+| `Modal` / `ConfirmDialog` | Overlay dialogs with variant support (warning, danger) |
+| `Chart` | Recharts-based fitness curve visualization |
+| `TimetableGrid` / `ScheduleGrid` | Weekly Mon-Fri schedule grid with course blocks |
+| `Skeleton` | Loading primitives: text, stat value, table cell, avatar, badge, table rows |
+| `Toast` | Notification system with auto-dismiss and variant styling |
+| `SessionExpiredModal` | Non-dismissable modal triggered on 401 API responses |
+| `AccountDisabledModal` | Non-dismissable modal triggered on 403 ACCOUNT_DISABLED responses |
+
+### State Management
+
+| Store | Purpose |
+|-------|---------|
+| `authStore` | User session, JWT token, login/logout, session-expired and account-disabled flags |
+| `semesterStore` | Semester list and active semester selection with activate API |
+| `pipelineStore` | In-browser pipeline run state (POC demo mode) |
+| `rateLimitStore` | Tracks 429 rate-limit retry-after countdown |
+| `toastStore` | Toast notification queue |
 
 ---
 
@@ -335,14 +414,14 @@ Standard REST endpoints with pagination, sorting, and role-based access control:
 | Resource | Path prefix | Notes |
 |----------|------------|-------|
 | Users | `/users` | Admin-only management |
-| Semesters | `/semesters` | Academic period management |
-| Rooms | `/rooms` | Scoped to semester |
-| Time Slots | `/timeslots` | Scoped to semester |
-| Facilities | `/facilities` | Room/course facility tags |
-| Locked Rooms | `/locked-rooms` | Per-offering room locks |
-| Lecturers | `/lecturers` | Includes competencies and preferred slots |
-| Courses | `/courses` | Includes required competencies and facilities |
-| Course Offerings | `/course-offerings` | Links courses to semesters with lecturers |
+| Semesters | `/semesters` | Academic period management; `POST /:id/activate` to set active semester |
+| Rooms | `/rooms` | Classrooms with capacity and facility associations |
+| Time Slots | `/timeslots` | Weekly time slot definitions (day + HH:MM range) |
+| Facilities | `/facilities` | Room/course facility tags (LAB, PROJECTOR, STUDIO) |
+| Locked Rooms | `/locked-rooms` | Per-offering room locks (admin pre-run constraint) |
+| Lecturers | `/lecturers` | Includes competencies and preferred time slots |
+| Courses | `/courses` | Includes required competencies and required facilities |
+| Course Offerings | `/course-offerings` | Links courses to semesters with lecturers; supports fixed/flexible flag |
 
 ### Schedule Runs
 
@@ -385,15 +464,17 @@ Worker (src/worker/index.ts)
    v
 runPipeline (src/orchestrator.ts)
    |
-   +---> runPreGA(offerings, slots)      <-- Layer 1 (src/pre-ga/validator.ts)
+   +---> runPreGA(offerings, slots, rooms)   <-- Layer 1 (src/pre-ga/validator.ts)
+   |        7 sequential checks + entity tagging
    |        competency filtering (primary gate)
+   |        possibleRoomIds computation for flexible offerings
    |        produces: { validation, candidates: PreGACandidate[] }
    |
-   +---> runSSA(candidates, slots)       <-- Layer 2 (src/ssa/index.ts)
+   +---> runSSA(candidates, slots)           <-- Layer 2 (src/ssa/index.ts)
    |        static exclusion -> AC-3 -> Hopcroft-Karp
    |        gates GA execution; returns DeadlockReport if INFEASIBLE
    |
-   +---> runGA(candidates, ...)          <-- Layer 3 (src/ga/runGA.ts)
+   +---> runGA(candidates, ...)              <-- Layer 3 (src/ga/runGA.ts)
             async loop with hooks:
               onGeneration -> SSE progress events + fitness history
               shouldCancel -> Redis cancellation polling
@@ -438,30 +519,13 @@ ga_scheduler_v2/
 │   │   ├── router.ts                     # /api/v1 route mounting
 │   │   ├── errors.ts                     # Typed error classes (AuthError, NotFoundError, ...)
 │   │   ├── logger.ts                     # Pino root logger
-│   │   ├── middleware/
-│   │   │   ├── auth.ts                   # requireAuth (JWT), requireRole
-│   │   │   ├── permissions.ts            # requireOwnerOrAdmin, allowFields
-│   │   │   ├── rateLimit.ts              # Per-user rate limiting (auth + run creation)
-│   │   │   ├── validate.ts               # Zod request validation
-│   │   │   ├── requestId.ts              # X-Request-Id propagation
-│   │   │   └── errorHandler.ts           # Global error handler + 404
-│   │   ├── routes/
-│   │   │   ├── auth.ts                   # Register, login, refresh, logout, me
-│   │   │   ├── users.ts                  # User CRUD (admin-only)
-│   │   │   ├── semesters.ts              # Semester CRUD
-│   │   │   ├── rooms.ts                  # Room CRUD
-│   │   │   ├── timeslots.ts              # Time slot CRUD
-│   │   │   ├── facilities.ts             # Facility CRUD
-│   │   │   ├── locked-rooms.ts           # Locked room CRUD
-│   │   │   ├── lecturers.ts              # Lecturer CRUD (with competencies)
-│   │   │   ├── courses.ts                # Course CRUD (with required competencies)
-│   │   │   ├── course-offerings.ts       # Course offering CRUD
-│   │   │   └── schedule-runs.ts          # Run lifecycle: create, list, detail, stream, cancel, delete, override
+│   │   ├── middleware/                    # Auth, RBAC, rate limiting, validation, error handling
+│   │   ├── routes/                       # Endpoint handlers for all 12 resource routers
 │   │   ├── schemas/                      # Zod schemas for request/response validation
 │   │   ├── openapi/                      # OpenAPI 3.1 registry and generation
-│   │   └── lib/                          # Auth helpers, audit logging, readiness checks, Prisma error matchers
+│   │   └── lib/                          # Auth helpers, audit logging, readiness, Prisma errors
 │   ├── worker/
-│   │   ├── index.ts                      # BullMQ worker: consumes ga-pipeline jobs, drives orchestrator
+│   │   ├── index.ts                      # BullMQ worker: consumes ga-pipeline jobs
 │   │   └── progressChannel.ts            # Redis pub/sub event encoding for SSE
 │   ├── queue/
 │   │   ├── ga-pipeline.ts                # BullMQ queue setup and enqueue helpers
@@ -469,25 +533,9 @@ ga_scheduler_v2/
 │   │   ├── cancellation.ts              # Redis-backed cancellation flag (set/poll/clear)
 │   │   └── checkpoints.ts               # Redis-backed GA checkpoint read/write (1h TTL)
 │   ├── repo/                             # Prisma repository layer
-│   │   ├── prisma.ts                     # Shared PrismaClient singleton
-│   │   ├── index.ts                      # Barrel export
-│   │   ├── userRepo.ts                   # User queries
-│   │   ├── refreshTokenRepo.ts           # Refresh token queries
-│   │   ├── semesterRepo.ts               # Semester queries
-│   │   ├── roomRepo.ts                   # Room queries
-│   │   ├── timeslotRepo.ts               # Time slot queries
-│   │   ├── facilityRepo.ts               # Facility queries
-│   │   ├── lockedRoomRepo.ts             # Locked room queries
-│   │   ├── lecturerRepo.ts               # Lecturer queries (GA input loader)
-│   │   ├── lecturerCrudRepo.ts           # Lecturer CRUD for API routes
-│   │   ├── courseRepo.ts                 # Course queries (GA input loader)
-│   │   ├── courseCrudRepo.ts             # Course CRUD for API routes
-│   │   ├── courseOfferingRepo.ts         # Course offering queries
-│   │   ├── scheduleRunRepo.ts            # Schedule run queries (list, detail, status updates)
-│   │   ├── scheduleAssignmentRepo.ts     # Schedule assignment persistence + override
-│   │   ├── scheduleRepo.ts              # GA input loader (loads all entities for a semester)
-│   │   ├── auditLogRepo.ts              # Audit log persistence
-│   │   ├── competencyCodec.ts           # Dual-target encoding for competency arrays (Postgres/SQLite)
+│   │   ├── prisma.ts                     # PrismaClient singleton
+│   │   ├── *Repo.ts                      # Per-entity query modules
+│   │   ├── competencyCodec.ts           # Dual-target encoding (Postgres TEXT[] / SQLite JSON)
 │   │   └── mappers/                     # Prisma row -> domain type mappers
 │   ├── pre-ga/                           # Layer 1: Pre-GA Policy Engine
 │   │   ├── checks.ts                     # 7 validation checks (incl. competency match)
@@ -507,7 +555,7 @@ ga_scheduler_v2/
 │   │   ├── crossover.ts                 # singlePoint, uniform, pmx
 │   │   ├── mutation.ts                  # Slot mutation (room mutation only on FLEXIBLE genes)
 │   │   ├── repair.ts                    # Post-operator chromosome repair
-│   │   └── fitness.ts                   # Weighted fitness with competency mismatch defense-in-depth
+│   │   └── fitness.ts                   # Weighted fitness with competency mismatch counter
 │   ├── cli/                              # Standalone CLI runners (no API/Redis needed)
 │   │   ├── run-layer1.ts
 │   │   ├── run-layer2.ts
@@ -515,10 +563,25 @@ ga_scheduler_v2/
 │   │   ├── run-pipeline.ts
 │   │   └── _format.ts                   # CLI output formatting
 │   └── db/
-│       └── seed.ts                       # In-memory mock seed (used by CLI runners)
-├── tests/                                # 43 test files across all layers
+│       └── seed.ts                       # In-memory mock seed (used by CLI runners and tests)
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.ts                    # Dev proxy, @pipeline alias, .js->.ts resolver
+│   ├── tsconfig.json
+│   └── src/
+│       ├── main.tsx                      # React root entry point
+│       ├── App.tsx                       # Route definitions + AppShell layout
+│       ├── pages/                        # 15 page components (see Frontend section)
+│       ├── components/                   # 20 reusable UI components
+│       ├── store/                        # 5 Zustand stores (auth, semester, pipeline, rateLimit, toast)
+│       ├── hooks/                        # Custom hooks (useRateLimitCountdown)
+│       ├── lib/                          # API client, SSE stream hook, theme hook, polyfills
+│       └── styles/                       # Design tokens, breakpoints
+├── tests/                                # 44 test files across all layers
 │   ├── smoke.test.ts
 │   ├── integration/
+│   │   ├── integration.test.ts           # Layer 3 integration (convergence, stagnation, elitism)
+│   │   └── blackbox.test.ts              # 11 black-box scenarios (techspec §10.2)
 │   ├── ga/                               # Crossover, fitness, contiguous slots
 │   ├── ssa/                              # AC-3, bipartite graph, Hopcroft-Karp, static exclusion
 │   ├── pre-ga/                           # Layer 1 checks
@@ -529,7 +592,12 @@ ga_scheduler_v2/
 │   ├── repo/                             # Mappers, competency codec
 │   └── db/                               # Prisma seed
 └── docs/
-    └── api_and_database_design.md        # API + DB design document
+    ├── techspec_upj_scheduler_v2.md      # Technical specification (arc42, v2.0)
+    ├── api_and_database_design.md        # API + DB design document
+    ├── app-design-spec.md                # Frontend design specification
+    ├── erd.md                            # Entity relationship diagram
+    ├── backlog.md                        # Development backlog (Phases 0-6)
+    └── blackbox-test-documentation.md    # Black-box test plan and results
 ```
 
 ---
@@ -537,30 +605,45 @@ ga_scheduler_v2/
 ## Testing
 
 ```bash
-npm test              # Run once
-npm run test:watch    # Watch mode
+# Run the full suite once (from repository root)
+npm test
+
+# Watch mode
+npm run test:watch
+
+# Run only the black-box integration tests
+npx vitest run tests/integration/blackbox.test.ts
+
+# Run only the Layer 3 integration tests
+npx vitest run tests/integration/integration.test.ts
 ```
 
-The test suite (43 files) covers:
+The test suite (44 files) covers:
 
-- **GA layer**: crossover operators, fitness evaluation, contiguous slot finding
-- **SSA layer**: AC-3, bipartite graph construction, Hopcroft-Karp matching, static exclusion
-- **Pre-GA layer**: validation checks, competency matching
+- **GA layer**: crossover operators (masking invariant assertions), fitness evaluation, contiguous slot finding
+- **SSA layer**: AC-3 constraint propagation, bipartite graph construction, Hopcroft-Karp matching, static exclusion
+- **Pre-GA layer**: all 7 validation checks, competency matching edge cases
 - **Orchestrator**: pipeline composition, pre-GA summary format
-- **API**: server setup, OpenAPI spec, readiness probe, rate limiting, permission middleware, Zod schemas, and route-level tests for all 11 resource routers (auth, users, semesters, rooms, timeslots, facilities, locked-rooms, lecturers, courses, course-offerings, schedule-runs)
+- **API**: server setup, OpenAPI spec, readiness probe, rate limiting, permission middleware, Zod schemas, and route-level tests for all 12 resource routers (auth, users, semesters, rooms, timeslots, facilities, locked-rooms, lecturers, courses, course-offerings, schedule-runs, audit-logs)
 - **Queue**: BullMQ queue setup, checkpoint read/write
 - **Worker**: job processing lifecycle, progress channel encoding
 - **Repository**: Prisma mappers, competency codec, schedule assignment mapping
-- **Integration**: end-to-end pipeline tests
+- **Integration**: end-to-end Layer 3 tests (convergence, stagnation exit, fixed room invariant, elitism monotonicity)
+- **Black-box (§10.2)**: 11 scenarios exercising the full `runPipeline` as a black box for thesis Chapter 4 validation -- feasible simple, SSA Phase 0 trigger, AC-3 abort, Hopcroft-Karp abort, partial infeasibility, parallel class, team teaching, fixed room invariant, competency mismatch, competency open assignment, crossover comparison
+
+See `docs/blackbox-test-documentation.md` for detailed scenario descriptions, inputs, expected outputs, and results.
 
 ---
 
 ## Spec Documents
 
-For the full domain rationale, architecture decisions, constraint catalogue, and complexity analysis, read:
-
-- `techspec_upj_scheduler_v2.md` -- current spec (v2.0, aligned to PRD v6.0). Start here.
-- `docs/api_and_database_design.md` -- API design, database schema decisions, and open-question resolutions.
-- `technical_spec.md` -- earlier v1.0 of the tech spec, kept for reference.
+| Document | Location | Description |
+|----------|----------|-------------|
+| Technical Specification | `docs/techspec_upj_scheduler_v2.md` | arc42 Tech Spec v2.0 aligned to PRD v6.0. Covers architecture, constraint catalogue, complexity analysis, and ADRs. Start here. |
+| API & Database Design | `docs/api_and_database_design.md` | API design, database schema, Zod validation rules, RBAC matrix, and open-question resolutions. |
+| Frontend Design Spec | `docs/app-design-spec.md` | UI design system, component specifications, page layouts, and interaction patterns. |
+| Entity Relationship Diagram | `docs/erd.md` | Visual database schema reference. |
+| Development Backlog | `docs/backlog.md` | Phased roadmap (Phases 0-6) with task tracking. |
+| Black-Box Test Documentation | `docs/blackbox-test-documentation.md` | Detailed test plan for the 11 thesis Chapter 4 scenarios. |
 
 ---
