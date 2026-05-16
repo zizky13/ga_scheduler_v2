@@ -31,6 +31,10 @@ export function Modal({
   const titleId = useId();
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  const dismissableRef = useRef(dismissable);
+  onCloseRef.current = onClose;
+  dismissableRef.current = dismissable;
 
   useEffect(() => {
     if (!open) return;
@@ -42,8 +46,8 @@ export function Modal({
     document.body.style.overflow = 'hidden';
 
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && dismissable) {
-        onClose();
+      if (e.key === 'Escape' && dismissableRef.current) {
+        onCloseRef.current();
         return;
       }
 
@@ -73,7 +77,7 @@ export function Modal({
       document.body.style.overflow = original;
       previousFocusRef.current?.focus();
     };
-  }, [open, onClose, dismissable]);
+  }, [open]);
 
   if (!open) return null;
 
