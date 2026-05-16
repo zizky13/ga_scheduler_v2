@@ -59,6 +59,10 @@ function toInputDate(iso: string): string {
   return iso.slice(0, 10)
 }
 
+function toISOTimestamp(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00.000Z').toISOString()
+}
+
 function validate(form: FormState, isEdit: boolean): FormErrors {
   const errors: FormErrors = {}
   if (!isEdit && !form.code.trim()) errors.code = 'Code is required'
@@ -165,16 +169,16 @@ export function SemesterManagementPage() {
       if (isEdit) {
         await patch(`/semesters/${editTarget!.id}`, {
           label: form.label,
-          startsOn: form.startsOn,
-          endsOn: form.endsOn,
+          startsOn: toISOTimestamp(form.startsOn),
+          endsOn: toISOTimestamp(form.endsOn),
         })
         addToast({ type: 'success', title: 'Semester updated' })
       } else {
         await post('/semesters', {
           code: form.code,
           label: form.label,
-          startsOn: form.startsOn,
-          endsOn: form.endsOn,
+          startsOn: toISOTimestamp(form.startsOn),
+          endsOn: toISOTimestamp(form.endsOn),
         })
         addToast({ type: 'success', title: 'Semester created' })
       }
