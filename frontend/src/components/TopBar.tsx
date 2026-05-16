@@ -10,6 +10,10 @@ import {
   KeyRound,
   LogOut,
 } from 'lucide-react';
+import { useSemesterStore } from '../store/semesterStore';
+import type { SemesterItem } from '../store/semesterStore';
+import { useToastStore } from '../store/toastStore';
+import { ConfirmDialog } from './Modal';
 import styles from './TopBar.module.css';
 
 const ROUTE_LABELS: Record<string, string> = {
@@ -27,19 +31,12 @@ const ROUTE_LABELS: Record<string, string> = {
   'audit-log': 'Audit Log',
 };
 
-interface Semester {
-  id: string;
-  code: string;
-}
-
 interface TopBarProps {
   sidebarCollapsed: boolean;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   onToggleSidebar?: () => void;
-  activeSemester?: Semester;
-  semesters?: Semester[];
-  onSemesterChange?: (semester: Semester) => void;
+  disabled?: boolean;
   userName?: string;
   userEmail?: string;
   userRole?: 'ADMIN' | 'USER';
@@ -75,20 +72,22 @@ export function TopBar({
   theme,
   onToggleTheme,
   onToggleSidebar,
-  activeSemester = { id: '1', code: '2025-GANJIL' },
-  semesters = [
-    { id: '1', code: '2025-GANJIL' },
-    { id: '2', code: '2024-GENAP' },
-  ],
-  onSemesterChange,
+  disabled = false,
   userName = 'Admin User',
   userEmail = 'admin@upj.ac.id',
   userRole = 'ADMIN',
   onLogout,
 }: TopBarProps) {
   const breadcrumbs = useBreadcrumbs();
+  const semesters = useSemesterStore((s) => s.semesters);
+  const activeSemester = useSemesterStore((s) => s.activeSemester);
+  const activateSemester = useSemesterStore((s) => s.activateSemester);
+  const addToast = useToastStore((s) => s.addToast);
+
   const [semesterOpen, setSemesterOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState<SemesterItem | null>(null);
+  const [switching, setSwitching] = useState(false);
 
   const semesterRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -156,38 +155,39 @@ export function TopBar({
         {/* Semester Selector */}
         <div ref={semesterRef} style={{ position: 'relative' }}>
           <button
-            className={`${styles.semesterSelector} ${semesterOpen ? styles.semesterSelectorOpen : ''}`}
+            className={`${styles.semesterSelector} ${semesterOpen ? styles.semesterSelectorOpen : ''} ${disabled ? styles.semesterSelectorDisabled : ''}`}
             onClick={() => setSemesterOpen((prev) => !prev)}
             aria-haspopup="listbox"
             aria-expanded={semesterOpen}
+            disabled={disabled}
+            title={disabled ? 'Close the current form before switching semesters' : undefined}
             type="button"
           >
-            <span>{activeSemester.code}</span>
+            <span>{activeSemester?.code ?? '—'}</span>
             <ChevronDown size={14} className={styles.semesterSelectorIcon} />
           </button>
 
           {semesterOpen && (
             <div className={styles.semesterDropdown} role="listbox" aria-label="Select semester">
-              {semesters.map((sem) => (
-                <button
-                  key={sem.id}
-                  className={`${styles.semesterOption} ${sem.id === activeSemester.id ? styles.semesterOptionActive : ''}`}
-                  role="option"
-                  aria-selected={sem.id === activeSemester.id}
-                  onClick={() => {
-                    if (sem.id !== activeSemester.id) {
-                      onSemesterChange?.(sem);
-                    }
-                    setSemesterOpen(false);
-                  }}
-                  type="button"
-                >
-                  {sem.code}
-                  {sem.id === activeSemester.id && (
-                    <Check size={14} className={styles.checkIcon} />
-                  )}
-                </button>
-              ))}
+              {semesters.map((sem) => {
+                const isActive = sem.id === activeSemester?.id;
+                return (
+                  <button
+                    key={sem.id}
+                    className={`${styles.semesterOption} ${isActive ? styles.semesterOptionActive : ''}`}
+                    role="option"
+                    aria-selected={isActive}
+                    onClick={() => {
+                      setSemesterOpen(false);
+                      if (!isActive) setConfirmTarget(sem);
+                    }}
+                    type="button"
+                  >
+                    {sem.code}
+                    {isActive && <Check size={14} className={styles.checkIcon} />}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -255,6 +255,30 @@ export function TopBar({
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={!!confirmTarget}
+        onClose={() => setConfirmTarget(null)}
+        onConfirm={async () => {
+          if (!confirmTarget) return;
+          setSwitching(true);
+          try {
+            await activateSemester(confirmTarget.id);
+            addToast({ type: 'success', title: `Switched to ${confirmTarget.code}.` });
+          } catch {
+            addToast({ type: 'error', title: 'Failed to switch semester.' });
+          } finally {
+            setSwitching(false);
+            setConfirmTarget(null);
+          }
+        }}
+        variant="warning"
+        title="Switch Semester?"
+        description={`You are about to switch from ${activeSemester?.code ?? '—'} to ${confirmTarget?.code ?? '—'}. Any unsaved changes on this page will be lost. All data views will reload for the selected semester.`}
+        confirmLabel="Switch"
+        cancelLabel="Cancel"
+        loading={switching}
+      />
     </header>
   );
 }

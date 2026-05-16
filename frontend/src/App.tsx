@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useTheme } from './lib/useTheme';
 import { useAuthStore } from './store/authStore';
+import { useSemesterStore } from './store/semesterStore';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { ContentArea } from './components/ContentArea';
@@ -62,6 +63,11 @@ function AppShell() {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const fetchSemesters = useSemesterStore((s) => s.fetchSemesters);
+
+  useEffect(() => {
+    fetchSemesters();
+  }, [fetchSemesters]);
 
   const effectiveCollapsed = breakpoint === 'tablet' ? true : sidebarCollapsed;
 

@@ -123,6 +123,12 @@
   box-shadow: var(--shadow-ring);
 }
 
+.semesterSelectorDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .semesterSelectorIcon {
   flex-shrink: 0;
   transition: transform var(--duration-fast) var(--ease-out);
