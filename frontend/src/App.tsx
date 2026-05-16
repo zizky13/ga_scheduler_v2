@@ -9,6 +9,7 @@ import { ContentArea } from './components/ContentArea';
 import { ProtectedRoute, RoleGuard } from './components/ProtectedRoute';
 import { ToastContainer } from './components/Toast';
 import { SessionExpiredModal } from './components/SessionExpiredModal';
+import { AccountDisabledModal } from './components/AccountDisabledModal';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { RunHistoryPage } from './pages/RunHistoryPage';
@@ -116,6 +117,7 @@ function App() {
     <>
     <ToastContainer />
     <SessionExpiredModal />
+    <AccountDisabledModal />
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 

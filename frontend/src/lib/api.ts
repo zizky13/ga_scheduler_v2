@@ -96,9 +96,14 @@ function scheduleProactiveRefresh(expiresIn: number) {
 
 let refreshPromise: Promise<string> | null = null
 let onSessionExpired: (() => void) | null = null
+let onAccountDisabled: (() => void) | null = null
 
 export function setOnSessionExpired(cb: () => void) {
   onSessionExpired = cb
+}
+
+export function setOnAccountDisabled(cb: () => void) {
+  onAccountDisabled = cb
 }
 
 const AUTH_PATHS = ['/auth/login', '/auth/refresh', '/auth/logout', '/auth/register']
@@ -166,6 +171,11 @@ api.interceptors.response.use(
 
         return Promise.reject(refreshError)
       }
+    }
+
+    if (status === 403 && code === 'ACCOUNT_DISABLED') {
+      setAccessToken(null)
+      onAccountDisabled?.()
     }
 
     if (error.response?.data?.error) {

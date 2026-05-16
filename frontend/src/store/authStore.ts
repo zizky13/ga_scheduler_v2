@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import api, { setAccessToken, setOnSessionExpired, ApiRequestError } from '../lib/api';
+import api, { setAccessToken, setOnSessionExpired, setOnAccountDisabled, ApiRequestError } from '../lib/api';
 
 export type UserRole = 'ADMIN' | 'USER';
 
@@ -21,6 +21,7 @@ interface AuthState {
   isAuthenticated: boolean;
   loading: boolean;
   sessionExpired: boolean;
+  accountDisabled: boolean;
 
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -40,11 +41,15 @@ function mapUser(raw: LoginResponse['user']): AuthUser {
 export const useAuthStore = create<AuthState>((set) => {
   const clearAuth = () => {
     setAccessToken(null);
-    set({ user: null, isAuthenticated: false, sessionExpired: false });
+    set({ user: null, isAuthenticated: false, sessionExpired: false, accountDisabled: false });
   };
 
   setOnSessionExpired(() => {
     set({ sessionExpired: true });
+  });
+
+  setOnAccountDisabled(() => {
+    set({ accountDisabled: true });
   });
 
   return {
@@ -52,6 +57,7 @@ export const useAuthStore = create<AuthState>((set) => {
     isAuthenticated: false,
     loading: false,
     sessionExpired: false,
+    accountDisabled: false,
 
     login: async (email, password) => {
       set({ loading: true });
