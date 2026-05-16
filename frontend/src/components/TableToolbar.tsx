@@ -1,8 +1,15 @@
 import { type ReactNode, useState, useRef, useEffect, useCallback } from 'react';
 import { Search, Filter, List, Rows3, X } from 'lucide-react';
+import { Button } from './Button';
 import styles from './TableToolbar.module.css';
 
 /* ── Types ── */
+
+export interface FilterPill {
+  key: string;
+  label: string;
+  onRemove: () => void;
+}
 
 export interface TableToolbarProps {
   searchValue?: string;
@@ -11,6 +18,9 @@ export interface TableToolbarProps {
 
   activeFilterCount?: number;
   filterContent?: ReactNode;
+  onApplyFilters?: () => void;
+  onResetFilters?: () => void;
+  filterPills?: FilterPill[];
 
   rangeStart?: number;
   rangeEnd?: number;
@@ -36,6 +46,9 @@ export function TableToolbar({
   searchPlaceholder = 'Search...',
   activeFilterCount = 0,
   filterContent,
+  onApplyFilters,
+  onResetFilters,
+  filterPills,
   rangeStart,
   rangeEnd,
   total,
@@ -118,6 +131,8 @@ export function TableToolbar({
           <FilterDropdown
             activeCount={activeFilterCount}
             content={filterContent}
+            onApply={onApplyFilters}
+            onReset={onResetFilters}
           />
         )}
 
@@ -154,6 +169,24 @@ export function TableToolbar({
           </div>
         )}
       </div>
+
+      {filterPills && filterPills.length > 0 && (
+        <div className={styles.pillsRow}>
+          {filterPills.map((pill) => (
+            <span key={pill.key} className={styles.pill}>
+              <span className={styles.pillLabel}>{pill.label}</span>
+              <button
+                type="button"
+                className={styles.pillRemove}
+                onClick={pill.onRemove}
+                aria-label={`Remove filter: ${pill.label}`}
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -163,9 +196,13 @@ export function TableToolbar({
 function FilterDropdown({
   activeCount,
   content,
+  onApply,
+  onReset,
 }: {
   activeCount: number;
   content: ReactNode;
+  onApply?: () => void;
+  onReset?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -202,6 +239,20 @@ function FilterDropdown({
       {open && (
         <div className={styles.filterDropdown}>
           {content}
+          {(onApply || onReset) && (
+            <div className={styles.filterFooter}>
+              {onReset && (
+                <Button variant="ghost" size="sm" onClick={() => { onReset(); }}>
+                  Reset
+                </Button>
+              )}
+              {onApply && (
+                <Button size="sm" onClick={() => { onApply(); close(); }}>
+                  Apply
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

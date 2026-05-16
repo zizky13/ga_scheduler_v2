@@ -149,11 +149,76 @@
   left: 0;
   z-index: 20;
   min-width: 220px;
-  padding: var(--space-3);
+  padding: 16px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--color-surface);
   box-shadow: var(--shadow-lg);
+}
+
+/* ── Filter footer (Apply / Reset) ── */
+
+.filterFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* ── Active filter pills ── */
+
+.pillsRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  padding-top: 0;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--color-primary-50);
+  color: var(--color-primary-700);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  border-radius: var(--radius-pill);
+  line-height: 1.4;
+  max-width: 100%;
+}
+
+.pillLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pillRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary-700);
+  cursor: pointer;
+  border-radius: var(--radius-full);
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+
+.pillRemove:hover {
+  background: var(--color-primary-100);
+  color: var(--color-primary-900);
 }
 
 /* ── Pagination info ── */
