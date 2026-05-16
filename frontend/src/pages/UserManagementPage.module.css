@@ -1,0 +1,162 @@
+/* ── Table cells ── */
+.emailCell {
+  color: var(--color-secondary-600);
+}
+
+.loginCell {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-500);
+}
+
+.loginNever {
+  composes: loginCell;
+  font-style: italic;
+  color: var(--color-secondary-400);
+}
+
+.dateCell {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-500);
+}
+
+/* ── Filter panel ── */
+.filterPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 220px;
+}
+
+.filterLabel {
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--color-secondary-700);
+  margin: 0 0 4px;
+}
+
+.filterCheckboxGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filterCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-700);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.filterCheckbox:hover {
+  background: var(--color-secondary-50);
+}
+
+.filterCheckbox input[type="radio"] {
+  accent-color: var(--color-primary-500);
+}
+
+.filterDivider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 2px 0;
+}
+
+.filterActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.filterClearButton {
+  border: none;
+  background: none;
+  font-size: var(--text-body-sm);
+  font-family: var(--font-family-primary);
+  color: var(--color-primary-500);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.filterClearButton:hover {
+  color: var(--color-primary-700);
+  background: var(--color-primary-50);
+}
+
+/* ── Reset password section in edit modal ── */
+.resetPasswordTrigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  font-family: var(--font-family-primary);
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--color-warning-500);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+
+.resetPasswordTrigger:hover {
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
+}
+
+.resetPasswordPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 12px;
+  border: 1px solid var(--color-warning-100);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-50);
+}
+
+.resetPasswordHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.resetPasswordTitle {
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  color: var(--color-warning-700);
+}
+
+.resetPasswordClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-warning-500);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+
+.resetPasswordClose:hover {
+  background: var(--color-warning-100);
+  color: var(--color-warning-700);
+}
+
+.passwordMismatch {
+  font-size: var(--text-caption);
+  color: var(--color-danger-500);
+  margin: -4px 0 0;
+}

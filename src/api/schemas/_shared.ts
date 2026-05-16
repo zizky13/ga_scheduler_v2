@@ -60,7 +60,7 @@ const positiveIntCoerced = intCoerced.pipe(z.number().int().positive());
 export const paginationQuerySchema = z
   .object({
     page: positiveIntCoerced.default(1),
-    pageSize: positiveIntCoerced.pipe(z.number().int().max(200, 'pageSize must be ≤ 200')).default(50),
+    pageSize: positiveIntCoerced.pipe(z.number().int().max(5000, 'pageSize must be ≤ 5000')).default(50),
     sort: z.string().trim().min(1).max(128).optional(),
   })
   .strict();

@@ -20,6 +20,9 @@ import { FacilityManagementPage } from './pages/FacilityManagementPage';
 import { RoomManagementPage } from './pages/RoomManagementPage';
 import { TimeslotManagementPage } from './pages/TimeslotManagementPage';
 import { LecturerManagementPage } from './pages/LecturerManagementPage';
+import { CourseManagementPage } from './pages/CourseManagementPage';
+import { CourseOfferingManagementPage } from './pages/CourseOfferingManagementPage';
+import { UserManagementPage } from './pages/UserManagementPage';
 
 type Breakpoint = 'mobile' | 'tablet' | 'desktop';
 
@@ -120,8 +123,8 @@ function App() {
           <Route path="rooms" element={<RoomManagementPage />} />
           <Route path="timeslots" element={<TimeslotManagementPage />} />
           <Route path="lecturers" element={<LecturerManagementPage />} />
-          <Route path="courses" element={<PlaceholderPage title="Courses" />} />
-          <Route path="offerings" element={<PlaceholderPage title="Offerings" />} />
+          <Route path="courses" element={<CourseManagementPage />} />
+          <Route path="offerings" element={<CourseOfferingManagementPage />} />
 
           {/* Scheduling */}
           <Route path="runs" element={<RunHistoryPage />} />
@@ -133,7 +136,7 @@ function App() {
           <Route element={<RoleGuard allowedRoles={['ADMIN']} />}>
             <Route path="semesters" element={<SemesterManagementPage />} />
             <Route path="facilities" element={<FacilityManagementPage />} />
-            <Route path="users" element={<PlaceholderPage title="Users" />} />
+            <Route path="users" element={<UserManagementPage />} />
             <Route path="audit-log" element={<PlaceholderPage title="Audit Log" />} />
           </Route>
 
