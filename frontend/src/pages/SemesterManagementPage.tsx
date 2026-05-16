@@ -5,7 +5,7 @@ import { DataTable, type Column } from '../components/DataTable'
 import { Button } from '../components/Button'
 import { BooleanTag } from '../components/Badge'
 import { Modal, ConfirmDialog } from '../components/Modal'
-import { TextInput, FormSection, FormActions } from '../components/Form'
+import { TextInput, DatePicker, FormSection, FormActions } from '../components/Form'
 import { useToastStore } from '../store/toastStore'
 import { get, post, patch, del } from '../lib/api'
 import type { ApiRequestError } from '../lib/api'
@@ -383,20 +383,20 @@ export function SemesterManagementPage() {
             required
           />
           <div className={styles.dateRow}>
-            <TextInput
+            <DatePicker
               label="Start Date"
-              type="date"
               value={form.startsOn}
-              onChange={(e) => updateField('startsOn', e.target.value)}
+              onChange={(v) => updateField('startsOn', v)}
               error={formErrors.startsOn}
+              max={form.endsOn || undefined}
               required
             />
-            <TextInput
+            <DatePicker
               label="End Date"
-              type="date"
               value={form.endsOn}
-              onChange={(e) => updateField('endsOn', e.target.value)}
+              onChange={(v) => updateField('endsOn', v)}
               error={formErrors.endsOn}
+              min={form.startsOn || undefined}
               required
             />
           </div>

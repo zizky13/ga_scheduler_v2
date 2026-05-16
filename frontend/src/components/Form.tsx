@@ -4,13 +4,14 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useMemo,
 } from 'react';
 import type {
   InputHTMLAttributes,
   ReactNode,
   ChangeEvent,
 } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp, Check, X, Search } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X, Search, Calendar, Clock } from 'lucide-react';
 import styles from './Form.module.css';
 
 /* ══════════════════════════════════════════
@@ -543,6 +544,283 @@ export function Toggle({ label, checked, onChange, disabled, id }: ToggleProps) 
       </span>
       {label && <span>{label}</span>}
     </label>
+  );
+}
+
+/* ══════════════════════════════════════════
+   DatePicker
+   ══════════════════════════════════════════ */
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const WEEKDAY_HEADERS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+function getDaysInMonth(year: number, month: number) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function getFirstDayOfWeek(year: number, month: number) {
+  return new Date(year, month, 1).getDay();
+}
+
+function toDateString(y: number, m: number, d: number) {
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+interface DatePickerProps {
+  label?: string;
+  helperText?: string;
+  error?: string;
+  required?: boolean;
+  value?: string;
+  onChange?: (value: string) => void;
+  disabled?: boolean;
+  id?: string;
+  min?: string;
+  max?: string;
+}
+
+export function DatePicker({
+  label,
+  helperText,
+  error,
+  required,
+  value,
+  onChange,
+  disabled,
+  id,
+  min,
+  max,
+}: DatePickerProps) {
+  const inputId = id ?? (label ? `datepicker-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const today = useMemo(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate() };
+  }, []);
+
+  const parsed = useMemo(() => {
+    if (!value) return null;
+    const [y, m, d] = value.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    return { year: y, month: m - 1, day: d };
+  }, [value]);
+
+  const [viewYear, setViewYear] = useState(parsed?.year ?? today.year);
+  const [viewMonth, setViewMonth] = useState(parsed?.month ?? today.month);
+
+  useEffect(() => {
+    if (parsed) {
+      setViewYear(parsed.year);
+      setViewMonth(parsed.month);
+    }
+  }, [parsed]);
+
+  const handleClose = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        handleClose();
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [handleClose]);
+
+  function prevMonth() {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear((y) => y - 1);
+    } else {
+      setViewMonth((m) => m - 1);
+    }
+  }
+
+  function nextMonth() {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear((y) => y + 1);
+    } else {
+      setViewMonth((m) => m + 1);
+    }
+  }
+
+  function selectDay(day: number) {
+    const dateStr = toDateString(viewYear, viewMonth, day);
+    onChange?.(dateStr);
+    setOpen(false);
+  }
+
+  function isDisabledDate(dateStr: string) {
+    if (min && dateStr < min) return true;
+    if (max && dateStr > max) return true;
+    return false;
+  }
+
+  const daysInMonth = getDaysInMonth(viewYear, viewMonth);
+  const firstDay = getFirstDayOfWeek(viewYear, viewMonth);
+
+  const displayValue = parsed
+    ? `${parsed.day} ${MONTH_NAMES[parsed.month]?.slice(0, 3)} ${parsed.year}`
+    : '';
+
+  return (
+    <FormField label={label} htmlFor={inputId} required={required} helperText={helperText} error={error}>
+      <div className={styles.datePickerWrapper} ref={wrapperRef}>
+        <button
+          id={inputId}
+          type="button"
+          className={`${styles.datePickerTrigger} ${error ? styles.datePickerTriggerError : ''}`}
+          onClick={() => !disabled && setOpen((p) => !p)}
+          disabled={disabled}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+        >
+          {displayValue || <span className={styles.datePickerPlaceholder}>Select date…</span>}
+        </button>
+        <Calendar size={16} className={styles.datePickerIcon} />
+
+        {open && (
+          <div className={styles.datePickerDropdown} role="dialog" aria-label="Choose date">
+            <div className={styles.datePickerNav}>
+              <button type="button" className={styles.datePickerNavBtn} onClick={prevMonth} aria-label="Previous month">
+                <ChevronLeft size={16} />
+              </button>
+              <span className={styles.datePickerNavTitle}>
+                {MONTH_NAMES[viewMonth]} {viewYear}
+              </span>
+              <button type="button" className={styles.datePickerNavBtn} onClick={nextMonth} aria-label="Next month">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+
+            <div className={styles.datePickerGrid}>
+              {WEEKDAY_HEADERS.map((d) => (
+                <div key={d} className={styles.datePickerWeekday}>{d}</div>
+              ))}
+              {Array.from({ length: firstDay }).map((_, i) => (
+                <div key={`empty-${i}`} />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1;
+                const dateStr = toDateString(viewYear, viewMonth, day);
+                const isToday = viewYear === today.year && viewMonth === today.month && day === today.day;
+                const isSelected = parsed && viewYear === parsed.year && viewMonth === parsed.month && day === parsed.day;
+                const dayDisabled = isDisabledDate(dateStr);
+
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    className={`${styles.datePickerDay} ${isToday ? styles.datePickerDayToday : ''} ${isSelected ? styles.datePickerDaySelected : ''}`}
+                    onClick={() => !dayDisabled && selectDay(day)}
+                    disabled={dayDisabled}
+                    aria-label={`${day} ${MONTH_NAMES[viewMonth]} ${viewYear}`}
+                    aria-pressed={!!isSelected}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </FormField>
+  );
+}
+
+/* ══════════════════════════════════════════
+   TimeInput
+   ══════════════════════════════════════════ */
+
+const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+interface TimeInputProps {
+  label?: string;
+  helperText?: string;
+  error?: string;
+  required?: boolean;
+  value?: string;
+  onChange?: (value: string) => void;
+  disabled?: boolean;
+  id?: string;
+}
+
+export function TimeInput({
+  label,
+  helperText,
+  error,
+  required,
+  value = '',
+  onChange,
+  disabled,
+  id,
+}: TimeInputProps) {
+  const inputId = id ?? (label ? `timeinput-${label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
+  const [localValue, setLocalValue] = useState(value);
+  const [touched, setTouched] = useState(false);
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    let raw = e.target.value.replace(/[^0-9:]/g, '');
+
+    if (raw.length === 2 && !raw.includes(':') && localValue.length < raw.length) {
+      raw = raw + ':';
+    }
+
+    if (raw.length > 5) raw = raw.slice(0, 5);
+
+    setLocalValue(raw);
+
+    if (TIME_REGEX.test(raw)) {
+      onChange?.(raw);
+    }
+  }
+
+  function handleBlur() {
+    setTouched(true);
+    if (localValue && !TIME_REGEX.test(localValue)) {
+      setLocalValue(value);
+    }
+  }
+
+  const showFormatError = touched && localValue && !TIME_REGEX.test(localValue);
+
+  return (
+    <FormField
+      label={label}
+      htmlFor={inputId}
+      required={required}
+      helperText={helperText}
+      error={error || (showFormatError ? 'Use HH:MM format (00:00–23:59)' : undefined)}
+    >
+      <div className={styles.timeInputWrapper}>
+        <input
+          id={inputId}
+          type="text"
+          inputMode="numeric"
+          className={`${styles.input} ${styles.timeInputField} ${error || showFormatError ? styles.inputError : ''}`}
+          value={localValue}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          placeholder="HH:MM"
+          disabled={disabled}
+          required={required}
+          maxLength={5}
+          autoComplete="off"
+        />
+        <Clock size={16} className={styles.timeInputIcon} />
+      </div>
+    </FormField>
   );
 }
 

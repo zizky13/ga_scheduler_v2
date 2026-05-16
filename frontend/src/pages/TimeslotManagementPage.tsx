@@ -4,7 +4,7 @@ import { PageHeader } from '../components/ContentArea'
 import { DataTable, type Column } from '../components/DataTable'
 import { Button } from '../components/Button'
 import { Modal, ConfirmDialog } from '../components/Modal'
-import { Select, FormSection, FormActions, TextInput } from '../components/Form'
+import { Select, FormSection, FormActions, TimeInput } from '../components/Form'
 import type { SelectOption } from '../components/Form'
 import { useToastStore } from '../store/toastStore'
 import { useAuthStore } from '../store/authStore'
@@ -684,19 +684,17 @@ export function TimeslotManagementPage() {
             error={formErrors.day}
             required
           />
-          <TextInput
+          <TimeInput
             label="Start Time"
-            type="time"
             value={form.startTime}
-            onChange={(e) => updateField('startTime', e.target.value)}
+            onChange={(v) => updateField('startTime', v)}
             error={formErrors.startTime}
             required
           />
-          <TextInput
+          <TimeInput
             label="End Time"
-            type="time"
             value={form.endTime}
-            onChange={(e) => updateField('endTime', e.target.value)}
+            onChange={(v) => updateField('endTime', v)}
             error={formErrors.endTime}
             required
           />
