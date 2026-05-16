@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import api, { setAccessToken, setOnSessionExpired, setOnAccountDisabled, ApiRequestError } from '../lib/api';
+import api, { setAccessToken, setOnSessionExpired, setOnAccountDisabled, setOnRateLimited, ApiRequestError } from '../lib/api';
+import { useRateLimitStore } from './rateLimitStore';
+import { useToastStore } from './toastStore';
 
 export type UserRole = 'ADMIN' | 'USER';
 
@@ -50,6 +52,15 @@ export const useAuthStore = create<AuthState>((set) => {
 
   setOnAccountDisabled(() => {
     set({ accountDisabled: true });
+  });
+
+  setOnRateLimited((retryAfterSeconds) => {
+    useRateLimitStore.getState().setRetryAfter(retryAfterSeconds);
+    useToastStore.getState().addToast({
+      type: 'error',
+      title: 'Too many requests',
+      message: `Please wait before trying again. You can retry in ${retryAfterSeconds} seconds.`,
+    });
   });
 
   return {

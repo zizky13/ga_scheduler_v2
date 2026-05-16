@@ -13,6 +13,7 @@ import { Button } from '../components/Button';
 import { NumberInput, Select, FormSection, FormActions } from '../components/Form';
 import { ConfirmDialog } from '../components/Modal';
 import { useToastStore } from '../store/toastStore';
+import { useRateLimitCountdown } from '../hooks/useRateLimitCountdown';
 import { get, post } from '../lib/api';
 import type { ApiRequestError } from '../lib/api';
 import styles from './RunCreationPage.module.css';
@@ -104,6 +105,7 @@ export function RunCreationPage() {
   const [preflightLoading, setPreflightLoading] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const { blocked: rateLimited, remaining: rateLimitRemaining } = useRateLimitCountdown();
 
   const updateField = useCallback(<K extends keyof GAFormState>(key: K, value: GAFormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -362,9 +364,10 @@ export function RunCreationPage() {
             variant="primary"
             size="lg"
             onClick={handleStartClick}
-            disabled={!preflight.semester || preflightLoading || hasErrors || submitting}
+            disabled={!preflight.semester || preflightLoading || hasErrors || submitting || rateLimited}
+            icon={rateLimited ? <Clock size={16} /> : undefined}
           >
-            Start Run
+            {rateLimited ? `Retry in ${rateLimitRemaining}s` : 'Start Run'}
           </Button>
         </FormActions>
       </div>
