@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Layers,
   Plus,
@@ -10,13 +10,13 @@ import {
   AlertTriangle,
   ChevronRight,
   Info,
-} from 'lucide-react';
-import { PageHeader } from '../components/ContentArea';
-import { DataTable, type Column } from '../components/DataTable';
-import { TableToolbar } from '../components/TableToolbar';
-import { Button } from '../components/Button';
-import { BooleanTag } from '../components/Badge';
-import { Modal, ConfirmDialog } from '../components/Modal';
+} from 'lucide-react'
+import { PageHeader } from '../components/ContentArea'
+import { DataTable, type Column } from '../components/DataTable'
+import { TableToolbar } from '../components/TableToolbar'
+import { Button } from '../components/Button'
+import { BooleanTag } from '../components/Badge'
+import { Modal, ConfirmDialog } from '../components/Modal'
 import {
   TextInput,
   NumberInput,
@@ -27,101 +27,101 @@ import {
   FormSection,
   FormActions,
   FormField,
-} from '../components/Form';
-import { useToastStore } from '../store/toastStore';
-import { useAuthStore } from '../store/authStore';
-import { get, post, patch, del } from '../lib/api';
-import type { ApiRequestError } from '../lib/api';
-import styles from './CourseOfferingManagementPage.module.css';
+} from '../components/Form'
+import { useToastStore } from '../store/toastStore'
+import { useAuthStore } from '../store/authStore'
+import { get, post, patch, del } from '../lib/api'
+import type { ApiRequestError } from '../lib/api'
+import styles from './CourseOfferingManagementPage.module.css'
 
 /* ── Types ── */
 
-type Weekday = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY';
+type Weekday = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY'
 
 interface CourseOfferingWire {
-  id: number;
-  semesterId: number;
-  courseId: number;
-  roomId: number;
-  effectiveStudentCount: number;
-  lecturerIds: number[];
-  isFixed: boolean;
-  fixedTimeSlotIds: number[];
-  parentOfferingId: number | null;
+  id: number
+  semesterId: number
+  courseId: number
+  roomId: number
+  effectiveStudentCount: number
+  lecturerIds: number[]
+  isFixed: boolean
+  fixedTimeSlotIds: number[]
+  parentOfferingId: number | null
 }
 
 interface CourseWire {
-  id: number;
-  code: string;
-  name: string;
-  sks: number;
-  requiredCompetencies: string[];
-  requiredFacilities: string[];
+  id: number
+  code: string
+  name: string
+  sks: number
+  requiredCompetencies: string[]
+  requiredFacilities: string[]
 }
 
 interface RoomWire {
-  id: number;
-  name: string;
-  capacity: number;
-  facilities: string[];
+  id: number
+  name: string
+  capacity: number
+  facilities: string[]
 }
 
 interface LecturerWire {
-  id: number;
-  name: string;
-  competencies: string[];
+  id: number
+  name: string
+  competencies: string[]
 }
 
 interface TimeSlotWire {
-  id: number;
-  day: Weekday;
-  startTime: string;
-  endTime: string;
+  id: number
+  day: Weekday
+  startTime: string
+  endTime: string
 }
 
 interface LockedRoomWire {
-  id: number;
-  offeringId: number;
-  roomId: number;
-  reason: string | null;
+  id: number
+  offeringId: number
+  roomId: number
+  reason: string | null
 }
 
 interface Semester {
-  id: number;
-  isActive: boolean;
+  id: number
+  isActive: boolean
 }
 
 interface ListResponse<T> {
-  data: T[];
-  meta: { page: number; pageSize: number; total: number };
+  data: T[]
+  meta: { page: number; pageSize: number; total: number }
 }
 
 interface OfferingEnriched extends CourseOfferingWire {
-  courseCode: string;
-  courseName: string;
-  roomName: string;
-  lecturerNames: string[];
-  parentCourseCode: string | null;
-  lockedRoomId: number | null;
+  courseCode: string
+  courseName: string
+  roomName: string
+  lecturerNames: string[]
+  parentCourseCode: string | null
+  lockedRoomId: number | null
 }
 
 interface FormState {
-  courseId: number | null;
-  roomId: number | null;
-  effectiveStudentCount: number;
-  parentOfferingId: number | null;
-  lecturerIds: number[];
-  isFixed: boolean;
-  fixedTimeSlotIds: number[];
-  lockRoom: boolean;
-  lockReason: string;
+  courseId: number | null
+  roomId: number | null
+  effectiveStudentCount: number
+  parentOfferingId: number | null
+  lecturerIds: number[]
+  isFixed: boolean
+  fixedTimeSlotIds: number[]
+  lockRoom: boolean
+  lockReason: string
 }
 
 interface FormErrors {
-  courseId?: string;
-  roomId?: string;
-  effectiveStudentCount?: string;
-  lecturerIds?: string;
+  courseId?: string
+  roomId?: string
+  effectiveStudentCount?: string
+  lecturerIds?: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -134,39 +134,52 @@ const EMPTY_FORM: FormState = {
   fixedTimeSlotIds: [],
   lockRoom: false,
   lockReason: '',
-};
+}
 
-const WEEKDAYS: Weekday[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+const WEEKDAYS: Weekday[] = [
+  'MONDAY',
+  'TUESDAY',
+  'WEDNESDAY',
+  'THURSDAY',
+  'FRIDAY',
+  'SATURDAY',
+  'SUNDAY',
+]
 const WEEKDAY_SHORT: Record<Weekday, string> = {
-  MONDAY: 'Mon', TUESDAY: 'Tue', WEDNESDAY: 'Wed', THURSDAY: 'Thu',
-  FRIDAY: 'Fri', SATURDAY: 'Sat', SUNDAY: 'Sun',
-};
+  MONDAY: 'Mon',
+  TUESDAY: 'Tue',
+  WEDNESDAY: 'Wed',
+  THURSDAY: 'Thu',
+  FRIDAY: 'Fri',
+  SATURDAY: 'Sat',
+  SUNDAY: 'Sun',
+}
 
 function validateForm(form: FormState): FormErrors {
-  const errors: FormErrors = {};
-  if (!form.courseId) errors.courseId = 'Course is required';
-  if (!form.roomId) errors.roomId = 'Room is required';
-  if (form.effectiveStudentCount < 0) errors.effectiveStudentCount = 'Must be 0 or greater';
-  if (form.lecturerIds.length === 0) errors.lecturerIds = 'At least one lecturer is required';
-  return errors;
+  const errors: FormErrors = {}
+  if (!form.courseId) errors.courseId = 'Course is required'
+  if (!form.roomId) errors.roomId = 'Room is required'
+  if (form.effectiveStudentCount < 0) errors.effectiveStudentCount = 'Must be 0 or greater'
+  if (form.lecturerIds.length === 0) errors.lecturerIds = 'At least one lecturer is required'
+  return errors
 }
 
 /* ── CSV Export ── */
 
 function exportCsv(offerings: OfferingEnriched[]) {
-  const header = 'Course Code,Course Name,Room,Lecturers,Students,Fixed,Parent';
+  const header = 'Course Code,Course Name,Room,Lecturers,Students,Fixed,Parent'
   const rows = offerings.map(
     (o) =>
       `"${o.courseCode}","${o.courseName.replace(/"/g, '""')}","${o.roomName}","${o.lecturerNames.join(', ')}",${o.effectiveStudentCount},${o.isFixed ? 'Yes' : 'No'},"${o.parentCourseCode ?? ''}"`,
-  );
-  const csv = [header, ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'course-offerings.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  )
+  const csv = [header, ...rows].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'course-offerings.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 /* ══════════════════════════════════════════
@@ -177,13 +190,13 @@ function CompetencyIndicator({
   requiredCompetencies,
   lecturerCompetencies,
 }: {
-  requiredCompetencies: string[];
-  lecturerCompetencies: string[];
+  requiredCompetencies: string[]
+  lecturerCompetencies: string[]
 }) {
-  if (requiredCompetencies.length === 0) return null;
+  if (requiredCompetencies.length === 0) return null
 
-  const covered = new Set(lecturerCompetencies);
-  const missing = requiredCompetencies.filter((c) => !covered.has(c));
+  const covered = new Set(lecturerCompetencies)
+  const missing = requiredCompetencies.filter((c) => !covered.has(c))
 
   if (missing.length === 0) {
     return (
@@ -191,7 +204,7 @@ function CompetencyIndicator({
         <Check size={14} className={styles.competencyMatchIcon} />
         <span>All required competencies covered.</span>
       </div>
-    );
+    )
   }
 
   return (
@@ -201,12 +214,14 @@ function CompetencyIndicator({
         Missing competencies:
         <span className={styles.missingTags}>
           {missing.map((c) => (
-            <span key={c} className={styles.missingTag}>{c}</span>
+            <span key={c} className={styles.missingTag}>
+              {c}
+            </span>
           ))}
         </span>
       </span>
     </div>
-  );
+  )
 }
 
 /* ══════════════════════════════════════════
@@ -218,36 +233,36 @@ function FixedSlotsGrid({
   selected,
   onChange,
 }: {
-  timeslots: TimeSlotWire[];
-  selected: number[];
-  onChange: (ids: number[]) => void;
+  timeslots: TimeSlotWire[]
+  selected: number[]
+  onChange: (ids: number[]) => void
 }) {
   const slotsByDay = useMemo(() => {
-    const map = new Map<Weekday, TimeSlotWire[]>();
-    for (const d of WEEKDAYS) map.set(d, []);
-    for (const ts of timeslots) map.get(ts.day)!.push(ts);
-    for (const arr of map.values()) arr.sort((a, b) => a.startTime.localeCompare(b.startTime));
-    return map;
-  }, [timeslots]);
+    const map = new Map<Weekday, TimeSlotWire[]>()
+    for (const d of WEEKDAYS) map.set(d, [])
+    for (const ts of timeslots) map.get(ts.day)!.push(ts)
+    for (const arr of map.values()) arr.sort((a, b) => a.startTime.localeCompare(b.startTime))
+    return map
+  }, [timeslots])
 
   const activeDays = useMemo(
     () => WEEKDAYS.filter((d) => (slotsByDay.get(d) ?? []).length > 0),
     [slotsByDay],
-  );
+  )
 
   const allTimeLabels = useMemo(() => {
-    const set = new Set<string>();
-    for (const ts of timeslots) set.add(`${ts.startTime}-${ts.endTime}`);
-    return [...set].sort();
-  }, [timeslots]);
+    const set = new Set<string>()
+    for (const ts of timeslots) set.add(`${ts.startTime}-${ts.endTime}`)
+    return [...set].sort()
+  }, [timeslots])
 
-  if (timeslots.length === 0) return null;
+  if (timeslots.length === 0) return null
 
   function toggle(id: number) {
     if (selected.includes(id)) {
-      onChange(selected.filter((s) => s !== id));
+      onChange(selected.filter((s) => s !== id))
     } else {
-      onChange([...selected, id]);
+      onChange([...selected, id])
     }
   }
 
@@ -263,16 +278,16 @@ function FixedSlotsGrid({
         </div>
       ))}
       {allTimeLabels.map((timeLabel) => {
-        const [start, end] = timeLabel.split('-');
+        const [start, end] = timeLabel.split('-')
         return (
           <div key={timeLabel} style={{ display: 'contents' }}>
             <div className={styles.slotsGridTimeLabel}>
               {start}–{end}
             </div>
             {activeDays.map((day) => {
-              const slot = slotsByDay.get(day)!.find(
-                (s) => `${s.startTime}-${s.endTime}` === timeLabel,
-              );
+              const slot = slotsByDay
+                .get(day)!
+                .find((s) => `${s.startTime}-${s.endTime}` === timeLabel)
               return (
                 <div key={day} className={styles.slotsGridCell}>
                   {slot ? (
@@ -285,13 +300,13 @@ function FixedSlotsGrid({
                     />
                   ) : null}
                 </div>
-              );
+              )
             })}
           </div>
-        );
+        )
       })}
     </div>
-  );
+  )
 }
 
 /* ══════════════════════════════════════════
@@ -299,54 +314,54 @@ function FixedSlotsGrid({
    ══════════════════════════════════════════ */
 
 export function CourseOfferingManagementPage() {
-  const addToast = useToastStore((s) => s.addToast);
-  const userRole = useAuthStore((s) => s.user?.role);
-  const isAdmin = userRole === 'ADMIN';
+  const addToast = useToastStore((s) => s.addToast)
+  const userRole = useAuthStore((s) => s.user?.role)
+  const isAdmin = userRole === 'ADMIN'
 
   /* ── Reference data ── */
-  const [allCourses, setAllCourses] = useState<CourseWire[]>([]);
-  const [allRooms, setAllRooms] = useState<RoomWire[]>([]);
-  const [allLecturers, setAllLecturers] = useState<LecturerWire[]>([]);
-  const [allTimeslots, setAllTimeslots] = useState<TimeSlotWire[]>([]);
-  const [allLockedRooms, setAllLockedRooms] = useState<LockedRoomWire[]>([]);
-  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null);
+  const [allCourses, setAllCourses] = useState<CourseWire[]>([])
+  const [allRooms, setAllRooms] = useState<RoomWire[]>([])
+  const [allLecturers, setAllLecturers] = useState<LecturerWire[]>([])
+  const [allTimeslots, setAllTimeslots] = useState<TimeSlotWire[]>([])
+  const [allLockedRooms, setAllLockedRooms] = useState<LockedRoomWire[]>([])
+  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null)
 
   /* ── Table data ── */
-  const [offerings, setOfferings] = useState<OfferingEnriched[]>([]);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [offerings, setOfferings] = useState<OfferingEnriched[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   /* ── Search & filters ── */
-  const [search, setSearch] = useState('');
-  const [filterFixed, setFilterFixed] = useState<boolean | null>(null);
-  const [filterHasParent, setFilterHasParent] = useState<boolean | null>(null);
-  const [filterRoom, setFilterRoom] = useState<number | null>(null);
-  const [filterLecturer, setFilterLecturer] = useState<number | null>(null);
+  const [search, setSearch] = useState('')
+  const [filterFixed, setFilterFixed] = useState<boolean | null>(null)
+  const [filterHasParent, setFilterHasParent] = useState<boolean | null>(null)
+  const [filterRoom, setFilterRoom] = useState<number | null>(null)
+  const [filterLecturer, setFilterLecturer] = useState<number | null>(null)
 
   /* ── Create/Edit modal ── */
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<OfferingEnriched | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [saving, setSaving] = useState(false);
-  const [fixedSectionOpen, setFixedSectionOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<OfferingEnriched | null>(null)
+  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [formErrors, setFormErrors] = useState<FormErrors>({})
+  const [saving, setSaving] = useState(false)
+  const [fixedSectionOpen, setFixedSectionOpen] = useState(false)
 
   /* ── Delete ── */
-  const [deleteTarget, setDeleteTarget] = useState<OfferingEnriched | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<OfferingEnriched | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   /* ── Bulk selection ── */
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
   /* ── Fetch ── */
 
   const fetchData = useCallback(
     async (p: number, ps: number) => {
-      setLoading(true);
+      setLoading(true)
       try {
         const [offRes, courseRes, roomRes, lecRes, tsRes, lockRes, semRes] = await Promise.all([
           get<ListResponse<CourseOfferingWire>>('/course-offerings', { page: p, pageSize: ps }),
@@ -356,126 +371,124 @@ export function CourseOfferingManagementPage() {
           get<ListResponse<TimeSlotWire>>('/timeslots', { page: 1, pageSize: 500 }),
           get<ListResponse<LockedRoomWire>>('/locked-rooms', { page: 1, pageSize: 5000 }),
           get<ListResponse<Semester>>('/semesters', { isActive: true, page: 1, pageSize: 1 }),
-        ]);
+        ])
 
-        setAllCourses(courseRes.data);
-        setAllRooms(roomRes.data);
-        setAllLecturers(lecRes.data);
-        setAllTimeslots(tsRes.data);
-        setAllLockedRooms(lockRes.data);
-        setActiveSemesterId(semRes.data[0]?.id ?? null);
+        setAllCourses(courseRes.data)
+        setAllRooms(roomRes.data)
+        setAllLecturers(lecRes.data)
+        setAllTimeslots(tsRes.data)
+        setAllLockedRooms(lockRes.data)
+        setActiveSemesterId(semRes.data[0]?.id ?? null)
 
-        const courseMap = new Map(courseRes.data.map((c) => [c.id, c]));
-        const roomMap = new Map(roomRes.data.map((r) => [r.id, r]));
-        const lecMap = new Map(lecRes.data.map((l) => [l.id, l]));
-        const lockByOffering = new Map(lockRes.data.map((l) => [l.offeringId, l]));
+        const courseMap = new Map(courseRes.data.map((c) => [c.id, c]))
+        const roomMap = new Map(roomRes.data.map((r) => [r.id, r]))
+        const lecMap = new Map(lecRes.data.map((l) => [l.id, l]))
+        const lockByOffering = new Map(lockRes.data.map((l) => [l.offeringId, l]))
 
         const enriched: OfferingEnriched[] = offRes.data.map((o) => {
-          const course = courseMap.get(o.courseId);
-          const room = roomMap.get(o.roomId);
+          const course = courseMap.get(o.courseId)
+          const room = roomMap.get(o.roomId)
           const parentOff = o.parentOfferingId
             ? offRes.data.find((x) => x.id === o.parentOfferingId)
-            : null;
-          const parentCourse = parentOff ? courseMap.get(parentOff.courseId) : null;
-          const lock = lockByOffering.get(o.id);
+            : null
+          const parentCourse = parentOff ? courseMap.get(parentOff.courseId) : null
+          const lock = lockByOffering.get(o.id)
           return {
             ...o,
             courseCode: course?.code ?? `#${o.courseId}`,
             courseName: course?.name ?? 'Unknown',
             roomName: room?.name ?? `#${o.roomId}`,
-            lecturerNames: o.lecturerIds.map(
-              (lid) => lecMap.get(lid)?.name ?? `#${lid}`,
-            ),
-            parentCourseCode: parentCourse?.code ?? (o.parentOfferingId ? `#${o.parentOfferingId}` : null),
+            lecturerNames: o.lecturerIds.map((lid) => lecMap.get(lid)?.name ?? `#${lid}`),
+            parentCourseCode:
+              parentCourse?.code ?? (o.parentOfferingId ? `#${o.parentOfferingId}` : null),
             lockedRoomId: lock?.id ?? null,
-          };
-        });
+          }
+        })
 
-        setOfferings(enriched);
-        setTotal(offRes.meta.total);
+        setOfferings(enriched)
+        setTotal(offRes.meta.total)
       } catch {
-        addToast({ type: 'error', title: 'Failed to load offerings' });
+        addToast({ type: 'error', title: 'Failed to load offerings' })
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     },
     [addToast],
-  );
+  )
 
   useEffect(() => {
-    fetchData(page, pageSize);
-  }, [page, pageSize, fetchData]);
+    fetchData(page, pageSize)
+  }, [page, pageSize, fetchData])
 
   /* ── Client-side filtering ── */
 
   const filteredOfferings = useMemo(() => {
-    let result = offerings;
+    let result = offerings
 
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.toLowerCase()
       result = result.filter(
-        (o) =>
-          o.courseCode.toLowerCase().includes(q) ||
-          o.courseName.toLowerCase().includes(q),
-      );
+        (o) => o.courseCode.toLowerCase().includes(q) || o.courseName.toLowerCase().includes(q),
+      )
     }
 
     if (filterFixed !== null) {
-      result = result.filter((o) => o.isFixed === filterFixed);
+      result = result.filter((o) => o.isFixed === filterFixed)
     }
 
     if (filterHasParent !== null) {
       result = result.filter((o) =>
         filterHasParent ? o.parentOfferingId !== null : o.parentOfferingId === null,
-      );
+      )
     }
 
     if (filterRoom !== null) {
-      result = result.filter((o) => o.roomId === filterRoom);
+      result = result.filter((o) => o.roomId === filterRoom)
     }
 
     if (filterLecturer !== null) {
-      result = result.filter((o) => o.lecturerIds.includes(filterLecturer));
+      result = result.filter((o) => o.lecturerIds.includes(filterLecturer))
     }
 
-    return result;
-  }, [offerings, search, filterFixed, filterHasParent, filterRoom, filterLecturer]);
+    return result
+  }, [offerings, search, filterFixed, filterHasParent, filterRoom, filterLecturer])
 
   /* ── Form helpers ── */
 
   const selectedCourse = useMemo(
-    () => (form.courseId ? allCourses.find((c) => c.id === form.courseId) ?? null : null),
+    () => (form.courseId ? (allCourses.find((c) => c.id === form.courseId) ?? null) : null),
     [form.courseId, allCourses],
-  );
+  )
 
   const pooledLecturerCompetencies = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>()
     for (const lid of form.lecturerIds) {
-      const lec = allLecturers.find((l) => l.id === lid);
-      if (lec) for (const c of lec.competencies) set.add(c);
+      const lec = allLecturers.find((l) => l.id === lid)
+      if (lec) for (const c of lec.competencies) set.add(c)
     }
-    return [...set];
-  }, [form.lecturerIds, allLecturers]);
+    return [...set]
+  }, [form.lecturerIds, allLecturers])
 
   const parentOfferingOptions: SelectOption[] = useMemo(() => {
-    if (!form.courseId) return [];
+    if (!form.courseId) return []
     return offerings
       .filter((o) => o.courseId === form.courseId && (!editTarget || o.id !== editTarget.id))
       .map((o) => ({
         value: String(o.id),
         label: `Offering #${o.id} — ${o.courseCode}`,
-      }));
-  }, [form.courseId, offerings, editTarget]);
+      }))
+  }, [form.courseId, offerings, editTarget])
 
   const courseOptions: SelectOption[] = useMemo(
     () => allCourses.map((c) => ({ value: String(c.id), label: `${c.code} — ${c.name}` })),
     [allCourses],
-  );
+  )
 
   const roomOptions: SelectOption[] = useMemo(
-    () => allRooms.map((r) => ({ value: String(r.id), label: `${r.name} (capacity: ${r.capacity})` })),
+    () =>
+      allRooms.map((r) => ({ value: String(r.id), label: `${r.name} (capacity: ${r.capacity})` })),
     [allRooms],
-  );
+  )
 
   const lecturerOptions = useMemo(
     () =>
@@ -484,21 +497,21 @@ export function CourseOfferingManagementPage() {
         label: l.competencies.length > 0 ? `${l.name} — ${l.competencies.join(', ')}` : l.name,
       })),
     [allLecturers],
-  );
+  )
 
   /* ── Create / Edit ── */
 
   function openCreate() {
-    setEditTarget(null);
-    setForm(EMPTY_FORM);
-    setFormErrors({});
-    setFixedSectionOpen(false);
-    setModalOpen(true);
+    setEditTarget(null)
+    setForm(EMPTY_FORM)
+    setFormErrors({})
+    setFixedSectionOpen(false)
+    setModalOpen(true)
   }
 
   function openEdit(off: OfferingEnriched) {
-    const lock = allLockedRooms.find((l) => l.offeringId === off.id);
-    setEditTarget(off);
+    const lock = allLockedRooms.find((l) => l.offeringId === off.id)
+    setEditTarget(off)
     setForm({
       courseId: off.courseId,
       roomId: off.roomId,
@@ -509,62 +522,66 @@ export function CourseOfferingManagementPage() {
       fixedTimeSlotIds: [...off.fixedTimeSlotIds],
       lockRoom: !!lock,
       lockReason: lock?.reason ?? '',
-    });
-    setFormErrors({});
-    setFixedSectionOpen(off.isFixed);
-    setModalOpen(true);
+    })
+    setFormErrors({})
+    setFixedSectionOpen(off.isFixed)
+    setModalOpen(true)
   }
 
   async function handleSave() {
-    const errors = validateForm(form);
-    setFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    const errors = validateForm(form)
+    setFormErrors(errors)
+    if (Object.keys(errors).length > 0) return
 
     if (!editTarget && !activeSemesterId) {
-      addToast({ type: 'error', title: 'No active semester', message: 'Activate a semester first.' });
-      return;
+      addToast({
+        type: 'error',
+        title: 'No active semester',
+        message: 'Activate a semester first.',
+      })
+      return
     }
 
-    setSaving(true);
+    setSaving(true)
     try {
       const body: Record<string, unknown> = {
         courseId: form.courseId,
         roomId: form.roomId,
         effectiveStudentCount: form.effectiveStudentCount,
         lecturerIds: form.lecturerIds,
-      };
+      }
 
       if (form.parentOfferingId) {
-        body.parentOfferingId = form.parentOfferingId;
+        body.parentOfferingId = form.parentOfferingId
       }
 
       if (isAdmin) {
-        body.isFixed = form.isFixed;
+        body.isFixed = form.isFixed
         if (form.isFixed) {
-          body.fixedTimeSlotIds = form.fixedTimeSlotIds;
+          body.fixedTimeSlotIds = form.fixedTimeSlotIds
         }
       }
 
-      let savedOfferingId: number;
+      let savedOfferingId: number
 
       if (editTarget) {
-        const res = await patch<CourseOfferingWire>(`/course-offerings/${editTarget.id}`, body);
-        savedOfferingId = res.id;
-        addToast({ type: 'success', title: 'Offering updated' });
+        const res = await patch<CourseOfferingWire>(`/course-offerings/${editTarget.id}`, body)
+        savedOfferingId = res.id
+        addToast({ type: 'success', title: 'Offering updated' })
       } else {
         const res = await post<CourseOfferingWire>('/course-offerings', {
           semesterId: activeSemesterId,
           ...body,
-        });
-        savedOfferingId = res.id;
-        addToast({ type: 'success', title: 'Offering created' });
+        })
+        savedOfferingId = res.id
+        addToast({ type: 'success', title: 'Offering created' })
       }
 
       // Handle room lock
       if (isAdmin) {
         const existingLock = allLockedRooms.find(
           (l) => l.offeringId === (editTarget?.id ?? savedOfferingId),
-        );
+        )
 
         if (form.lockRoom && !existingLock) {
           try {
@@ -573,95 +590,113 @@ export function CourseOfferingManagementPage() {
               offeringId: savedOfferingId,
               roomId: form.roomId,
               reason: form.lockReason.trim() || undefined,
-            });
+            })
           } catch {
-            addToast({ type: 'warning', title: 'Room lock failed', message: 'The offering was saved but the room lock could not be created.' });
+            addToast({
+              type: 'warning',
+              title: 'Room lock failed',
+              message: 'The offering was saved but the room lock could not be created.',
+            })
           }
         } else if (form.lockRoom && existingLock) {
           try {
             await patch(`/locked-rooms/${existingLock.id}`, {
               roomId: form.roomId,
               reason: form.lockReason.trim() || null,
-            });
+            })
           } catch {
             // silently ignore lock update failure
           }
         } else if (!form.lockRoom && existingLock) {
           try {
-            await del(`/locked-rooms/${existingLock.id}`);
+            await del(`/locked-rooms/${existingLock.id}`)
           } catch {
             // silently ignore unlock failure
           }
         }
       }
 
-      setModalOpen(false);
-      fetchData(page, pageSize);
+      setModalOpen(false)
+      fetchData(page, pageSize)
     } catch (err) {
-      const e = err as ApiRequestError;
+      const e = err as ApiRequestError
       addToast({
         type: 'error',
         title: editTarget ? 'Failed to update' : 'Failed to create',
         message: e.message,
-      });
+      })
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
   /* ── Delete ── */
 
   async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
+    if (!deleteTarget) return
+    setDeleting(true)
     try {
-      await del(`/course-offerings/${deleteTarget.id}`);
-      addToast({ type: 'success', title: 'Offering deleted' });
-      setDeleteTarget(null);
+      await del(`/course-offerings/${deleteTarget.id}`)
+      addToast({ type: 'success', title: 'Offering deleted' })
+      setDeleteTarget(null)
       setSelected((prev) => {
-        const next = new Set(prev);
-        next.delete(deleteTarget.id);
-        return next;
-      });
-      fetchData(page, pageSize);
+        const next = new Set(prev)
+        next.delete(deleteTarget.id)
+        return next
+      })
+      fetchData(page, pageSize)
     } catch (err) {
-      const e = err as ApiRequestError;
-      addToast({ type: 'error', title: 'Failed to delete', message: e.message });
+      const e = err as ApiRequestError
+      addToast({ type: 'error', title: 'Failed to delete', message: e.message })
     } finally {
-      setDeleting(false);
+      setDeleting(false)
     }
   }
 
   /* ── Bulk delete ── */
 
   async function handleBulkDelete() {
-    setBulkDeleting(true);
-    const ids = [...selected];
-    let ok = 0;
-    let fail = 0;
+    setBulkDeleting(true)
+    const ids = [...selected]
+    let ok = 0
+    let fail = 0
     for (const id of ids) {
-      try { await del(`/course-offerings/${id}`); ok++; } catch { fail++; }
+      try {
+        await del(`/course-offerings/${id}`)
+        ok++
+      } catch {
+        fail++
+      }
     }
-    if (ok > 0) addToast({ type: 'success', title: `${ok} offering${ok > 1 ? 's' : ''} deleted` });
-    if (fail > 0) addToast({ type: 'error', title: `${fail} offering${fail > 1 ? 's' : ''} could not be deleted` });
-    setSelected(new Set());
-    setBulkDeleteOpen(false);
-    setBulkDeleting(false);
-    fetchData(page, pageSize);
+    if (ok > 0) addToast({ type: 'success', title: `${ok} offering${ok > 1 ? 's' : ''} deleted` })
+    if (fail > 0)
+      addToast({
+        type: 'error',
+        title: `${fail} offering${fail > 1 ? 's' : ''} could not be deleted`,
+      })
+    setSelected(new Set())
+    setBulkDeleteOpen(false)
+    setBulkDeleting(false)
+    fetchData(page, pageSize)
   }
 
   /* ── Selection ── */
 
   function toggleSelect(id: number) {
     setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
-  function selectAll() { setSelected(new Set(filteredOfferings.map((o) => o.id))); }
-  function clearSelection() { setSelected(new Set()); }
+  function selectAll() {
+    setSelected(new Set(filteredOfferings.map((o) => o.id)))
+  }
+  function clearSelection() {
+    setSelected(new Set())
+  }
 
   /* ── Filter count ── */
 
@@ -669,13 +704,13 @@ export function CourseOfferingManagementPage() {
     (filterFixed !== null ? 1 : 0) +
     (filterHasParent !== null ? 1 : 0) +
     (filterRoom !== null ? 1 : 0) +
-    (filterLecturer !== null ? 1 : 0);
+    (filterLecturer !== null ? 1 : 0)
 
   function clearFilters() {
-    setFilterFixed(null);
-    setFilterHasParent(null);
-    setFilterRoom(null);
-    setFilterLecturer(null);
+    setFilterFixed(null)
+    setFilterHasParent(null)
+    setFilterRoom(null)
+    setFilterLecturer(null)
   }
 
   /* ── Columns ── */
@@ -722,15 +757,16 @@ export function CourseOfferingManagementPage() {
       header: 'Lecturers',
       width: '180px',
       render: (row) => {
-        const names = row.lecturerNames;
-        if (names.length === 0) return <span className={styles.dashPlaceholder}>—</span>;
-        if (names.length <= 2) return <span className={styles.lecturerCell}>{names.join(', ')}</span>;
+        const names = row.lecturerNames
+        if (names.length === 0) return <span className={styles.dashPlaceholder}>—</span>
+        if (names.length <= 2)
+          return <span className={styles.lecturerCell}>{names.join(', ')}</span>
         return (
           <span className={styles.lecturerCell}>
             {names.slice(0, 2).join(', ')}{' '}
             <span className={styles.lecturerMore}>+{names.length - 2} more</span>
           </span>
-        );
+        )
       },
     },
     {
@@ -767,7 +803,7 @@ export function CourseOfferingManagementPage() {
           <span className={styles.dashPlaceholder}>—</span>
         ),
     },
-  ];
+  ]
 
   /* ── Filter content ── */
 
@@ -876,7 +912,7 @@ export function CourseOfferingManagementPage() {
         </>
       )}
     </div>
-  );
+  )
 
   return (
     <>
@@ -885,7 +921,7 @@ export function CourseOfferingManagementPage() {
         description="Link courses to rooms and lecturers. Configure parallel splits and fixed schedules."
         actions={
           <Button icon={<Plus size={16} />} onClick={openCreate}>
-            + Create Offering
+            Create Offering
           </Button>
         }
       />
@@ -944,7 +980,10 @@ export function CourseOfferingManagementPage() {
         pageSize={pageSize}
         total={filteredOfferings.length}
         onPageChange={setPage}
-        onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+        onPageSizeChange={(s) => {
+          setPageSize(s)
+          setPage(1)
+        }}
         loading={loading}
         emptyIcon={<Layers size={48} />}
         emptyTitle="No course offerings"
@@ -956,7 +995,7 @@ export function CourseOfferingManagementPage() {
         emptyAction={
           !search && activeFilterCount === 0 ? (
             <Button icon={<Plus size={16} />} onClick={openCreate}>
-              + Create Offering
+              Create Offering
             </Button>
           ) : undefined
         }
@@ -964,8 +1003,20 @@ export function CourseOfferingManagementPage() {
           isAdmin
             ? (row) => (
                 <>
-                  <Button variant="icon" size="sm" icon={<Pencil size={16} />} onClick={() => openEdit(row)} aria-label="Edit offering" />
-                  <Button variant="icon" size="sm" icon={<Trash2 size={16} />} onClick={() => setDeleteTarget(row)} aria-label="Delete offering" />
+                  <Button
+                    variant="icon"
+                    size="sm"
+                    icon={<Pencil size={16} />}
+                    onClick={() => openEdit(row)}
+                    aria-label="Edit offering"
+                  />
+                  <Button
+                    variant="icon"
+                    size="sm"
+                    icon={<Trash2 size={16} />}
+                    onClick={() => setDeleteTarget(row)}
+                    aria-label="Delete offering"
+                  />
                 </>
               )
             : undefined
@@ -996,7 +1047,8 @@ export function CourseOfferingManagementPage() {
           <div className={styles.parallelBanner}>
             <Info size={14} className={styles.parallelBannerIcon} />
             <span>
-              This is a parallel split of <strong>{selectedCourse.code}</strong>. The GA will schedule this session independently.
+              This is a parallel split of <strong>{selectedCourse.code}</strong>. The GA will
+              schedule this session independently.
             </span>
           </div>
         )}
@@ -1011,8 +1063,12 @@ export function CourseOfferingManagementPage() {
             options={courseOptions}
             value={form.courseId ? String(form.courseId) : ''}
             onChange={(v) => {
-              setForm((prev) => ({ ...prev, courseId: v ? Number(v) : null, parentOfferingId: null }));
-              setFormErrors((prev) => ({ ...prev, courseId: undefined }));
+              setForm((prev) => ({
+                ...prev,
+                courseId: v ? Number(v) : null,
+                parentOfferingId: null,
+              }))
+              setFormErrors((prev) => ({ ...prev, courseId: undefined }))
             }}
             error={formErrors.courseId}
             required
@@ -1024,8 +1080,8 @@ export function CourseOfferingManagementPage() {
             options={roomOptions}
             value={form.roomId ? String(form.roomId) : ''}
             onChange={(v) => {
-              setForm((prev) => ({ ...prev, roomId: v ? Number(v) : null }));
-              setFormErrors((prev) => ({ ...prev, roomId: undefined }));
+              setForm((prev) => ({ ...prev, roomId: v ? Number(v) : null }))
+              setFormErrors((prev) => ({ ...prev, roomId: undefined }))
             }}
             error={formErrors.roomId}
             required
@@ -1035,8 +1091,8 @@ export function CourseOfferingManagementPage() {
             label="Effective Student Count"
             value={form.effectiveStudentCount}
             onChange={(v) => {
-              setForm((prev) => ({ ...prev, effectiveStudentCount: v }));
-              setFormErrors((prev) => ({ ...prev, effectiveStudentCount: undefined }));
+              setForm((prev) => ({ ...prev, effectiveStudentCount: v }))
+              setFormErrors((prev) => ({ ...prev, effectiveStudentCount: undefined }))
             }}
             error={formErrors.effectiveStudentCount}
             min={0}
@@ -1069,8 +1125,8 @@ export function CourseOfferingManagementPage() {
               options={lecturerOptions}
               value={form.lecturerIds.map(String)}
               onChange={(v) => {
-                setForm((prev) => ({ ...prev, lecturerIds: v.map(Number) }));
-                setFormErrors((prev) => ({ ...prev, lecturerIds: undefined }));
+                setForm((prev) => ({ ...prev, lecturerIds: v.map(Number) }))
+                setFormErrors((prev) => ({ ...prev, lecturerIds: undefined }))
               }}
               helperText="Select at least one lecturer. Competencies are pooled for team teaching."
             />
@@ -1094,15 +1150,17 @@ export function CourseOfferingManagementPage() {
                 type="button"
                 className={styles.collapsibleToggle}
                 onClick={() => {
-                  setFixedSectionOpen((prev) => !prev);
+                  setFixedSectionOpen((prev) => !prev)
                   if (!fixedSectionOpen && !form.isFixed) {
-                    setForm((prev) => ({ ...prev, isFixed: true }));
+                    setForm((prev) => ({ ...prev, isFixed: true }))
                   }
                 }}
               >
                 <ChevronRight
                   size={16}
-                  className={fixedSectionOpen ? styles.collapsibleChevronOpen : styles.collapsibleChevron}
+                  className={
+                    fixedSectionOpen ? styles.collapsibleChevronOpen : styles.collapsibleChevron
+                  }
                 />
                 Fixed Schedule
               </button>
@@ -1123,7 +1181,10 @@ export function CourseOfferingManagementPage() {
                     />
 
                     {form.isFixed && allTimeslots.length > 0 && (
-                      <FormField label="Fixed Time Slots" helperText="Select the timeslots for this fixed offering.">
+                      <FormField
+                        label="Fixed Time Slots"
+                        helperText="Select the timeslots for this fixed offering."
+                      >
                         <FixedSlotsGrid
                           timeslots={allTimeslots}
                           selected={form.fixedTimeSlotIds}
@@ -1146,7 +1207,9 @@ export function CourseOfferingManagementPage() {
 
               <div className={styles.lockInfo}>
                 <Info size={14} className={styles.lockInfoIcon} />
-                <span>Locking a room ensures the GA always assigns this offering to the selected room.</span>
+                <span>
+                  Locking a room ensures the GA always assigns this offering to the selected room.
+                </span>
               </div>
 
               <Toggle
@@ -1160,9 +1223,7 @@ export function CourseOfferingManagementPage() {
                   label="Reason"
                   placeholder="Why are you locking this room?"
                   value={form.lockReason}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, lockReason: e.target.value }))
-                  }
+                  onChange={(e) => setForm((prev) => ({ ...prev, lockReason: e.target.value }))}
                 />
               )}
             </FormSection>
@@ -1200,5 +1261,5 @@ export function CourseOfferingManagementPage() {
         loading={bulkDeleting}
       />
     </>
-  );
+  )
 }

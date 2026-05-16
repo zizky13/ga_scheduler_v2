@@ -1,66 +1,66 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BookOpen, Plus, Pencil, Trash2, Download, X } from 'lucide-react';
-import { PageHeader } from '../components/ContentArea';
-import { DataTable, type Column } from '../components/DataTable';
-import { TableToolbar } from '../components/TableToolbar';
-import { Button } from '../components/Button';
-import { Modal, ConfirmDialog } from '../components/Modal';
-import { TextInput, NumberInput, MultiSelect, FormSection, FormActions } from '../components/Form';
-import { useToastStore } from '../store/toastStore';
-import { useAuthStore } from '../store/authStore';
-import { get, post, patch, del } from '../lib/api';
-import type { ApiRequestError } from '../lib/api';
-import styles from './CourseManagementPage.module.css';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { BookOpen, Plus, Pencil, Trash2, Download, X } from 'lucide-react'
+import { PageHeader } from '../components/ContentArea'
+import { DataTable, type Column } from '../components/DataTable'
+import { TableToolbar } from '../components/TableToolbar'
+import { Button } from '../components/Button'
+import { Modal, ConfirmDialog } from '../components/Modal'
+import { TextInput, NumberInput, MultiSelect, FormSection, FormActions } from '../components/Form'
+import { useToastStore } from '../store/toastStore'
+import { useAuthStore } from '../store/authStore'
+import { get, post, patch, del } from '../lib/api'
+import type { ApiRequestError } from '../lib/api'
+import styles from './CourseManagementPage.module.css'
 
 /* ── Types ── */
 
 interface Course {
-  id: number;
-  semesterId: number;
-  code: string;
-  name: string;
-  sks: number;
-  requiredFacilities: string[];
-  requiredCompetencies: string[];
+  id: number
+  semesterId: number
+  code: string
+  name: string
+  sks: number
+  requiredFacilities: string[]
+  requiredCompetencies: string[]
 }
 
 interface Facility {
-  id: number;
-  code: string;
-  label: string;
+  id: number
+  code: string
+  label: string
 }
 
 interface OfferingWire {
-  id: number;
-  courseId: number;
+  id: number
+  courseId: number
 }
 
 interface Semester {
-  id: number;
-  isActive: boolean;
+  id: number
+  isActive: boolean
 }
 
 interface ListResponse<T> {
-  data: T[];
-  meta: { page: number; pageSize: number; total: number };
+  data: T[]
+  meta: { page: number; pageSize: number; total: number }
 }
 
 interface CourseEnriched extends Course {
-  offeringCount: number;
+  offeringCount: number
 }
 
 interface FormState {
-  code: string;
-  name: string;
-  sks: number;
-  requiredCompetencies: string[];
-  requiredFacilities: string[];
+  code: string
+  name: string
+  sks: number
+  requiredCompetencies: string[]
+  requiredFacilities: string[]
 }
 
 interface FormErrors {
-  code?: string;
-  name?: string;
-  sks?: string;
+  code?: string
+  name?: string
+  sks?: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -69,32 +69,32 @@ const EMPTY_FORM: FormState = {
   sks: 2,
   requiredCompetencies: [],
   requiredFacilities: [],
-};
+}
 
 function validate(form: FormState): FormErrors {
-  const errors: FormErrors = {};
-  if (!form.code.trim()) errors.code = 'Code is required';
-  if (!form.name.trim()) errors.name = 'Name is required';
-  if (form.sks < 1 || form.sks > 6) errors.sks = 'SKS must be between 1 and 6';
-  return errors;
+  const errors: FormErrors = {}
+  if (!form.code.trim()) errors.code = 'Code is required'
+  if (!form.name.trim()) errors.name = 'Name is required'
+  if (form.sks < 1 || form.sks > 6) errors.sks = 'SKS must be between 1 and 6'
+  return errors
 }
 
 /* ── CSV Export ── */
 
 function exportCsv(courses: CourseEnriched[]) {
-  const header = 'Code,Name,SKS,Required Competencies,Required Facilities,Offerings';
+  const header = 'Code,Name,SKS,Required Competencies,Required Facilities,Offerings'
   const rows = courses.map(
     (c) =>
       `"${c.code}","${c.name.replace(/"/g, '""')}",${c.sks},"${c.requiredCompetencies.join(', ')}","${c.requiredFacilities.join(', ')}",${c.offeringCount}`,
-  );
-  const csv = [header, ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'courses.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  )
+  const csv = [header, ...rows].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'courses.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 /* ══════════════════════════════════════════
@@ -102,49 +102,60 @@ function exportCsv(courses: CourseEnriched[]) {
    ══════════════════════════════════════════ */
 
 interface TagInputProps {
-  label?: string;
-  helperText?: string;
-  value: string[];
-  onChange: (tags: string[]) => void;
-  placeholder?: string;
+  label?: string
+  helperText?: string
+  value: string[]
+  onChange: (tags: string[]) => void
+  placeholder?: string
 }
 
-function TagInput({ label, helperText, value, onChange, placeholder = 'Type and press Enter…' }: TagInputProps) {
-  const [input, setInput] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
+function TagInput({
+  label,
+  helperText,
+  value,
+  onChange,
+  placeholder = 'Type and press Enter…',
+}: TagInputProps) {
+  const [input, setInput] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   function addTag(raw: string) {
-    const tag = raw.trim().toLowerCase();
+    const tag = raw.trim().toLowerCase()
     if (tag && !value.includes(tag)) {
-      onChange([...value, tag]);
+      onChange([...value, tag])
     }
-    setInput('');
+    setInput('')
   }
 
   function removeTag(tag: string) {
-    onChange(value.filter((t) => t !== tag));
+    onChange(value.filter((t) => t !== tag))
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addTag(input);
+      e.preventDefault()
+      addTag(input)
     } else if (e.key === 'Backspace' && !input && value.length > 0) {
-      removeTag(value[value.length - 1]);
+      removeTag(value[value.length - 1])
     }
   }
 
   return (
     <div>
       {label && (
-        <label style={{ display: 'block', fontSize: 'var(--text-body-sm)', fontWeight: 500, color: 'var(--color-secondary-700)', marginBottom: '6px' }}>
+        <label
+          style={{
+            display: 'block',
+            fontSize: 'var(--text-body-sm)',
+            fontWeight: 500,
+            color: 'var(--color-secondary-700)',
+            marginBottom: '6px',
+          }}
+        >
           {label}
         </label>
       )}
-      <div
-        className={styles.tagInputWrapper}
-        onClick={() => inputRef.current?.focus()}
-      >
+      <div className={styles.tagInputWrapper} onClick={() => inputRef.current?.focus()}>
         {value.map((tag) => (
           <span key={tag} className={styles.tagInputTag}>
             {tag}
@@ -152,8 +163,8 @@ function TagInput({ label, helperText, value, onChange, placeholder = 'Type and 
               type="button"
               className={styles.tagInputRemove}
               onClick={(e) => {
-                e.stopPropagation();
-                removeTag(tag);
+                e.stopPropagation()
+                removeTag(tag)
               }}
               aria-label={`Remove ${tag}`}
             >
@@ -168,17 +179,26 @@ function TagInput({ label, helperText, value, onChange, placeholder = 'Type and 
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          onBlur={() => { if (input.trim()) addTag(input); }}
+          onBlur={() => {
+            if (input.trim()) addTag(input)
+          }}
           placeholder={value.length === 0 ? placeholder : ''}
         />
       </div>
       {helperText && (
-        <p style={{ fontSize: 'var(--text-caption)', color: 'var(--color-secondary-400)', marginTop: '4px', marginBottom: 0 }}>
+        <p
+          style={{
+            fontSize: 'var(--text-caption)',
+            color: 'var(--color-secondary-400)',
+            marginTop: '4px',
+            marginBottom: 0,
+          }}
+        >
           {helperText}
         </p>
       )}
     </div>
-  );
+  )
 }
 
 /* ══════════════════════════════════════════
@@ -186,159 +206,159 @@ function TagInput({ label, helperText, value, onChange, placeholder = 'Type and 
    ══════════════════════════════════════════ */
 
 export function CourseManagementPage() {
-  const addToast = useToastStore((s) => s.addToast);
-  const userRole = useAuthStore((s) => s.user?.role);
-  const isAdmin = userRole === 'ADMIN';
+  const addToast = useToastStore((s) => s.addToast)
+  const userRole = useAuthStore((s) => s.user?.role)
+  const isAdmin = userRole === 'ADMIN'
 
-  const [courses, setCourses] = useState<CourseEnriched[]>([]);
-  const [allFacilities, setAllFacilities] = useState<Facility[]>([]);
-  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<CourseEnriched[]>([])
+  const [allFacilities, setAllFacilities] = useState<Facility[]>([])
+  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   // Search & filters
-  const [search, setSearch] = useState('');
-  const [filterSks, setFilterSks] = useState<number[]>([]);
-  const [filterFacilities, setFilterFacilities] = useState<string[]>([]);
+  const [search, setSearch] = useState('')
+  const [filterSks, setFilterSks] = useState<number[]>([])
+  const [filterFacilities, setFilterFacilities] = useState<string[]>([])
 
   // Create/Edit modal
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<CourseEnriched | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [saving, setSaving] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<CourseEnriched | null>(null)
+  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [formErrors, setFormErrors] = useState<FormErrors>({})
+  const [saving, setSaving] = useState(false)
 
   // Delete confirm
-  const [deleteTarget, setDeleteTarget] = useState<CourseEnriched | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteBlocked, setDeleteBlocked] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CourseEnriched | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteBlocked, setDeleteBlocked] = useState(false)
 
   // Bulk selection
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
   /* ── Fetch ── */
 
   const fetchData = useCallback(
     async (p: number, ps: number) => {
-      setLoading(true);
+      setLoading(true)
       try {
         const [courseRes, facRes, offRes, semRes] = await Promise.all([
           get<ListResponse<Course>>('/courses', { page: p, pageSize: ps, sort: 'code' }),
           get<ListResponse<Facility>>('/facilities', { page: 1, pageSize: 500 }),
           get<ListResponse<OfferingWire>>('/course-offerings', { page: 1, pageSize: 5000 }),
           get<ListResponse<Semester>>('/semesters', { isActive: true, page: 1, pageSize: 1 }),
-        ]);
+        ])
 
-        setAllFacilities(facRes.data);
-        setActiveSemesterId(semRes.data[0]?.id ?? null);
+        setAllFacilities(facRes.data)
+        setActiveSemesterId(semRes.data[0]?.id ?? null)
 
-        const offeringCountMap = new Map<number, number>();
+        const offeringCountMap = new Map<number, number>()
         for (const off of offRes.data) {
-          const cid = off.courseId;
-          if (cid != null) offeringCountMap.set(cid, (offeringCountMap.get(cid) ?? 0) + 1);
+          const cid = off.courseId
+          if (cid != null) offeringCountMap.set(cid, (offeringCountMap.get(cid) ?? 0) + 1)
         }
 
         const enriched: CourseEnriched[] = courseRes.data.map((c) => ({
           ...c,
           offeringCount: offeringCountMap.get(c.id) ?? 0,
-        }));
+        }))
 
-        setCourses(enriched);
-        setTotal(courseRes.meta.total);
+        setCourses(enriched)
+        setTotal(courseRes.meta.total)
       } catch {
-        addToast({ type: 'error', title: 'Failed to load courses' });
+        addToast({ type: 'error', title: 'Failed to load courses' })
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     },
     [addToast],
-  );
+  )
 
   useEffect(() => {
-    fetchData(page, pageSize);
-  }, [page, pageSize, fetchData]);
+    fetchData(page, pageSize)
+  }, [page, pageSize, fetchData])
 
   /* ── Derived data for filters ── */
 
   const allSksValues = useMemo(() => {
-    const set = new Set<number>();
-    for (const c of courses) set.add(c.sks);
-    return [...set].sort((a, b) => a - b);
-  }, [courses]);
+    const set = new Set<number>()
+    for (const c of courses) set.add(c.sks)
+    return [...set].sort((a, b) => a - b)
+  }, [courses])
 
   /* ── Client-side filtering ── */
 
   const filteredCourses = useMemo(() => {
-    let result = courses;
+    let result = courses
 
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.toLowerCase()
       result = result.filter(
-        (c) =>
-          c.code.toLowerCase().includes(q) ||
-          c.name.toLowerCase().includes(q),
-      );
+        (c) => c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q),
+      )
     }
 
     if (filterSks.length > 0) {
-      result = result.filter((c) => filterSks.includes(c.sks));
+      result = result.filter((c) => filterSks.includes(c.sks))
     }
 
     if (filterFacilities.length > 0) {
-      result = result.filter((c) =>
-        filterFacilities.every((f) => c.requiredFacilities.includes(f)),
-      );
+      result = result.filter((c) => filterFacilities.every((f) => c.requiredFacilities.includes(f)))
     }
 
-    return result;
-  }, [courses, search, filterSks, filterFacilities]);
+    return result
+  }, [courses, search, filterSks, filterFacilities])
 
   /* ── Create / Edit ── */
 
   function openCreate() {
-    setEditTarget(null);
-    setForm(EMPTY_FORM);
-    setFormErrors({});
-    setModalOpen(true);
+    setEditTarget(null)
+    setForm(EMPTY_FORM)
+    setFormErrors({})
+    setModalOpen(true)
   }
 
   function openEdit(course: CourseEnriched) {
-    setEditTarget(course);
+    setEditTarget(course)
     setForm({
       code: course.code,
       name: course.name,
       sks: course.sks,
       requiredCompetencies: [...course.requiredCompetencies],
       requiredFacilities: [...course.requiredFacilities],
-    });
-    setFormErrors({});
-    setModalOpen(true);
+    })
+    setFormErrors({})
+    setModalOpen(true)
   }
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => ({ ...prev, [key]: value }))
     setFormErrors((prev) => {
-      const next = { ...prev };
-      delete next[key as keyof FormErrors];
-      return next;
-    });
+      const next = { ...prev }
+      delete next[key as keyof FormErrors]
+      return next
+    })
   }
 
   async function handleSave() {
-    const errors = validate(form);
-    setFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    const errors = validate(form)
+    setFormErrors(errors)
+    if (Object.keys(errors).length > 0) return
 
     if (!editTarget && !activeSemesterId) {
-      addToast({ type: 'error', title: 'No active semester', message: 'Activate a semester before creating courses.' });
-      return;
+      addToast({
+        type: 'error',
+        title: 'No active semester',
+        message: 'Activate a semester before creating courses.',
+      })
+      return
     }
 
-    setSaving(true);
+    setSaving(true)
     try {
       const body: Record<string, unknown> = {
         code: form.code.toUpperCase(),
@@ -346,130 +366,134 @@ export function CourseManagementPage() {
         sks: form.sks,
         requiredCompetencies: form.requiredCompetencies,
         requiredFacilities: form.requiredFacilities,
-      };
+      }
 
       if (editTarget) {
-        await patch(`/courses/${editTarget.id}`, body);
-        addToast({ type: 'success', title: 'Course updated' });
+        await patch(`/courses/${editTarget.id}`, body)
+        addToast({ type: 'success', title: 'Course updated' })
       } else {
-        await post('/courses', { semesterId: activeSemesterId, ...body });
-        addToast({ type: 'success', title: 'Course created' });
+        await post('/courses', { semesterId: activeSemesterId, ...body })
+        addToast({ type: 'success', title: 'Course created' })
       }
-      setModalOpen(false);
-      fetchData(page, pageSize);
+      setModalOpen(false)
+      fetchData(page, pageSize)
     } catch (err) {
-      const e = err as ApiRequestError;
+      const e = err as ApiRequestError
       if (e.code === 'COURSE_CODE_TAKEN') {
-        setFormErrors((prev) => ({ ...prev, code: 'This course code already exists for the active semester' }));
+        setFormErrors((prev) => ({
+          ...prev,
+          code: 'This course code already exists for the active semester',
+        }))
       } else if (e.code === 'UNKNOWN_FACILITY') {
-        addToast({ type: 'error', title: 'Unknown facility', message: e.message });
+        addToast({ type: 'error', title: 'Unknown facility', message: e.message })
       } else {
         addToast({
           type: 'error',
           title: editTarget ? 'Failed to update' : 'Failed to create',
           message: e.message,
-        });
+        })
       }
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
   /* ── Delete ── */
 
   function openDelete(course: CourseEnriched) {
-    setDeleteTarget(course);
-    setDeleteBlocked(course.offeringCount > 0);
+    setDeleteTarget(course)
+    setDeleteBlocked(course.offeringCount > 0)
   }
 
   async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
+    if (!deleteTarget) return
+    setDeleting(true)
     try {
-      await del(`/courses/${deleteTarget.id}`);
-      addToast({ type: 'success', title: 'Course deleted' });
-      setDeleteTarget(null);
-      setDeleteBlocked(false);
+      await del(`/courses/${deleteTarget.id}`)
+      addToast({ type: 'success', title: 'Course deleted' })
+      setDeleteTarget(null)
+      setDeleteBlocked(false)
       setSelected((prev) => {
-        const next = new Set(prev);
-        next.delete(deleteTarget.id);
-        return next;
-      });
-      fetchData(page, pageSize);
+        const next = new Set(prev)
+        next.delete(deleteTarget.id)
+        return next
+      })
+      fetchData(page, pageSize)
     } catch (err) {
-      const e = err as ApiRequestError;
+      const e = err as ApiRequestError
       if (e.code === 'COURSE_REFERENCED' || e.status === 409) {
-        setDeleteBlocked(true);
+        setDeleteBlocked(true)
       } else {
-        addToast({ type: 'error', title: 'Failed to delete', message: e.message });
+        addToast({ type: 'error', title: 'Failed to delete', message: e.message })
       }
     } finally {
-      setDeleting(false);
+      setDeleting(false)
     }
   }
 
   /* ── Bulk delete ── */
 
   async function handleBulkDelete() {
-    setBulkDeleting(true);
-    const ids = [...selected];
-    let successCount = 0;
-    let failCount = 0;
+    setBulkDeleting(true)
+    const ids = [...selected]
+    let successCount = 0
+    let failCount = 0
 
     for (const id of ids) {
       try {
-        await del(`/courses/${id}`);
-        successCount++;
+        await del(`/courses/${id}`)
+        successCount++
       } catch {
-        failCount++;
+        failCount++
       }
     }
 
     if (successCount > 0) {
-      addToast({ type: 'success', title: `${successCount} course${successCount > 1 ? 's' : ''} deleted` });
+      addToast({
+        type: 'success',
+        title: `${successCount} course${successCount > 1 ? 's' : ''} deleted`,
+      })
     }
     if (failCount > 0) {
       addToast({
         type: 'error',
         title: `${failCount} course${failCount > 1 ? 's' : ''} could not be deleted`,
         message: 'Some courses may be referenced by course offerings.',
-      });
+      })
     }
 
-    setSelected(new Set());
-    setBulkDeleteOpen(false);
-    setBulkDeleting(false);
-    fetchData(page, pageSize);
+    setSelected(new Set())
+    setBulkDeleteOpen(false)
+    setBulkDeleting(false)
+    fetchData(page, pageSize)
   }
 
   /* ── Selection helpers ── */
 
   function toggleSelect(id: number) {
     setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   function selectAll() {
-    setSelected(new Set(filteredCourses.map((c) => c.id)));
+    setSelected(new Set(filteredCourses.map((c) => c.id)))
   }
 
   function clearSelection() {
-    setSelected(new Set());
+    setSelected(new Set())
   }
 
   /* ── Filter count ── */
 
-  const activeFilterCount =
-    (filterSks.length > 0 ? 1 : 0) +
-    (filterFacilities.length > 0 ? 1 : 0);
+  const activeFilterCount = (filterSks.length > 0 ? 1 : 0) + (filterFacilities.length > 0 ? 1 : 0)
 
   function clearFilters() {
-    setFilterSks([]);
-    setFilterFacilities([]);
+    setFilterSks([])
+    setFilterFacilities([])
   }
 
   /* ── Facility options for multi-select ── */
@@ -477,7 +501,7 @@ export function CourseManagementPage() {
   const facilityOptions = allFacilities.map((f) => ({
     value: f.code,
     label: `${f.code} — ${f.label}`,
-  }));
+  }))
 
   /* ── Columns ── */
 
@@ -526,7 +550,9 @@ export function CourseManagementPage() {
         row.requiredCompetencies.length > 0 ? (
           <div className={styles.tagList}>
             {row.requiredCompetencies.map((c) => (
-              <span key={c} className={styles.tag}>{c}</span>
+              <span key={c} className={styles.tag}>
+                {c}
+              </span>
             ))}
           </div>
         ) : (
@@ -541,7 +567,9 @@ export function CourseManagementPage() {
         row.requiredFacilities.length > 0 ? (
           <div className={styles.tagList}>
             {row.requiredFacilities.map((f) => (
-              <span key={f} className={styles.tag}>{f}</span>
+              <span key={f} className={styles.tag}>
+                {f}
+              </span>
             ))}
           </div>
         ) : (
@@ -554,7 +582,7 @@ export function CourseManagementPage() {
       width: '80px',
       render: (row) => <span className={styles.count}>{row.offeringCount}</span>,
     },
-  ];
+  ]
 
   /* ── Filter content for toolbar ── */
 
@@ -571,7 +599,7 @@ export function CourseManagementPage() {
                 onChange={() => {
                   setFilterSks((prev) =>
                     prev.includes(sks) ? prev.filter((s) => s !== sks) : [...prev, sks],
-                  );
+                  )
                 }}
               />
               {sks} SKS
@@ -592,10 +620,8 @@ export function CourseManagementPage() {
                 checked={filterFacilities.includes(f.code)}
                 onChange={() => {
                   setFilterFacilities((prev) =>
-                    prev.includes(f.code)
-                      ? prev.filter((c) => c !== f.code)
-                      : [...prev, f.code],
-                  );
+                    prev.includes(f.code) ? prev.filter((c) => c !== f.code) : [...prev, f.code],
+                  )
                 }}
               />
               {f.code} — {f.label}
@@ -611,18 +637,14 @@ export function CourseManagementPage() {
         <>
           <div className={styles.filterDivider} />
           <div className={styles.filterActions}>
-            <button
-              type="button"
-              className={styles.filterClearButton}
-              onClick={clearFilters}
-            >
+            <button type="button" className={styles.filterClearButton} onClick={clearFilters}>
               Clear all filters
             </button>
           </div>
         </>
       )}
     </div>
-  );
+  )
 
   return (
     <>
@@ -631,7 +653,7 @@ export function CourseManagementPage() {
         description="Manage courses for the active semester."
         actions={
           <Button icon={<Plus size={16} />} onClick={openCreate}>
-            + Add Course
+            Add Course
           </Button>
         }
       />
@@ -691,8 +713,8 @@ export function CourseManagementPage() {
         total={filteredCourses.length}
         onPageChange={setPage}
         onPageSizeChange={(s) => {
-          setPageSize(s);
-          setPage(1);
+          setPageSize(s)
+          setPage(1)
         }}
         loading={loading}
         emptyIcon={<BookOpen size={48} />}
@@ -705,7 +727,7 @@ export function CourseManagementPage() {
         emptyAction={
           !search && activeFilterCount === 0 ? (
             <Button icon={<Plus size={16} />} onClick={openCreate}>
-              + Add Course
+              Add Course
             </Button>
           ) : undefined
         }
@@ -781,7 +803,12 @@ export function CourseManagementPage() {
             label="Required Competencies"
             helperText="Type a competency and press Enter. E.g., algorithms, databases, ai-ml."
             value={form.requiredCompetencies}
-            onChange={(tags) => updateField('requiredCompetencies', tags as string[] & FormState['requiredCompetencies'])}
+            onChange={(tags) =>
+              updateField(
+                'requiredCompetencies',
+                tags as string[] & FormState['requiredCompetencies'],
+              )
+            }
             placeholder="Type and press Enter…"
           />
           <MultiSelect
@@ -798,8 +825,18 @@ export function CourseManagementPage() {
       {/* Delete Confirmation — blocked variant if has offerings */}
       <ConfirmDialog
         open={deleteTarget !== null}
-        onClose={() => { setDeleteTarget(null); setDeleteBlocked(false); }}
-        onConfirm={deleteBlocked ? () => { setDeleteTarget(null); setDeleteBlocked(false); } : handleDelete}
+        onClose={() => {
+          setDeleteTarget(null)
+          setDeleteBlocked(false)
+        }}
+        onConfirm={
+          deleteBlocked
+            ? () => {
+                setDeleteTarget(null)
+                setDeleteBlocked(false)
+              }
+            : handleDelete
+        }
         variant="danger"
         title="Delete Course?"
         description={
@@ -816,8 +853,11 @@ export function CourseManagementPage() {
         {deleteTarget && deleteBlocked && (
           <div className={styles.blockedBanner}>
             This course cannot be deleted because it has{' '}
-            <strong>{deleteTarget.offeringCount} course offering{deleteTarget.offeringCount > 1 ? 's' : ''}</strong>.
-            Remove all offerings for this course first.
+            <strong>
+              {deleteTarget.offeringCount} course offering
+              {deleteTarget.offeringCount > 1 ? 's' : ''}
+            </strong>
+            . Remove all offerings for this course first.
           </div>
         )}
       </ConfirmDialog>
@@ -835,5 +875,5 @@ export function CourseManagementPage() {
         loading={bulkDeleting}
       />
     </>
-  );
+  )
 }

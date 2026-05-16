@@ -1,50 +1,50 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Shield, Plus, Pencil, UserX, UserCheck, Key, X } from 'lucide-react';
-import { PageHeader } from '../components/ContentArea';
-import { DataTable, type Column } from '../components/DataTable';
-import { TableToolbar } from '../components/TableToolbar';
-import { Button } from '../components/Button';
-import { RoleBadge, BooleanTag } from '../components/Badge';
-import { Modal, ConfirmDialog } from '../components/Modal';
-import { TextInput, Select, Toggle, FormSection, FormActions } from '../components/Form';
-import { useToastStore } from '../store/toastStore';
-import { useAuthStore } from '../store/authStore';
-import { get, post, patch, del } from '../lib/api';
-import type { ApiRequestError } from '../lib/api';
-import styles from './UserManagementPage.module.css';
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Shield, Plus, Pencil, UserX, UserCheck, Key, X } from 'lucide-react'
+import { PageHeader } from '../components/ContentArea'
+import { DataTable, type Column } from '../components/DataTable'
+import { TableToolbar } from '../components/TableToolbar'
+import { Button } from '../components/Button'
+import { RoleBadge, BooleanTag } from '../components/Badge'
+import { Modal, ConfirmDialog } from '../components/Modal'
+import { TextInput, Select, Toggle, FormSection, FormActions } from '../components/Form'
+import { useToastStore } from '../store/toastStore'
+import { useAuthStore } from '../store/authStore'
+import { get, post, patch, del } from '../lib/api'
+import type { ApiRequestError } from '../lib/api'
+import styles from './UserManagementPage.module.css'
 
 /* ── Types ── */
 
-type WireRole = 'admin' | 'user';
+type WireRole = 'admin' | 'user'
 
 interface UserWire {
-  id: number;
-  email: string;
-  fullName: string;
-  role: WireRole;
-  isActive: boolean;
-  lastLoginAt: string | null;
-  createdAt: string;
-  updatedAt: string;
+  id: number
+  email: string
+  fullName: string
+  role: WireRole
+  isActive: boolean
+  lastLoginAt: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 interface ListResponse<T> {
-  data: T[];
-  meta: { page: number; pageSize: number; total: number };
+  data: T[]
+  meta: { page: number; pageSize: number; total: number }
 }
 
 interface FormState {
-  fullName: string;
-  email: string;
-  password: string;
-  role: WireRole;
-  isActive: boolean;
+  fullName: string
+  email: string
+  password: string
+  role: WireRole
+  isActive: boolean
 }
 
 interface FormErrors {
-  fullName?: string;
-  email?: string;
-  password?: string;
+  fullName?: string
+  email?: string
+  password?: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -53,38 +53,39 @@ const EMPTY_FORM: FormState = {
   password: '',
   role: 'user',
   isActive: true,
-};
+}
 
 const ROLE_OPTIONS = [
   { value: 'user', label: 'User' },
   { value: 'admin', label: 'Admin' },
-];
+]
 
 function validateCreate(form: FormState): FormErrors {
-  const errors: FormErrors = {};
-  if (!form.fullName.trim()) errors.fullName = 'Name is required';
-  if (!form.email.trim()) errors.email = 'Email is required';
-  if (!form.password || form.password.length < 10) errors.password = 'Password must be at least 10 characters';
-  return errors;
+  const errors: FormErrors = {}
+  if (!form.fullName.trim()) errors.fullName = 'Name is required'
+  if (!form.email.trim()) errors.email = 'Email is required'
+  if (!form.password || form.password.length < 10)
+    errors.password = 'Password must be at least 10 characters'
+  return errors
 }
 
 function validateEdit(form: FormState): FormErrors {
-  const errors: FormErrors = {};
-  if (!form.fullName.trim()) errors.fullName = 'Name is required';
-  return errors;
+  const errors: FormErrors = {}
+  if (!form.fullName.trim()) errors.fullName = 'Name is required'
+  return errors
 }
 
 function formatRelativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return 'Just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  const diff = Date.now() - new Date(iso).getTime()
+  const seconds = Math.floor(diff / 1000)
+  if (seconds < 60) return 'Just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  return new Date(iso).toLocaleDateString()
 }
 
 function formatDate(iso: string): string {
@@ -92,7 +93,7 @@ function formatDate(iso: string): string {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  });
+  })
 }
 
 /* ══════════════════════════════════════════
@@ -100,183 +101,181 @@ function formatDate(iso: string): string {
    ══════════════════════════════════════════ */
 
 export function UserManagementPage() {
-  const addToast = useToastStore((s) => s.addToast);
-  const currentUser = useAuthStore((s) => s.user);
+  const addToast = useToastStore((s) => s.addToast)
+  const currentUser = useAuthStore((s) => s.user)
 
-  const [users, setUsers] = useState<UserWire[]>([]);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<UserWire[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   // Search & filters
-  const [search, setSearch] = useState('');
-  const [filterRole, setFilterRole] = useState<WireRole | null>(null);
-  const [filterActive, setFilterActive] = useState<boolean | null>(null);
+  const [search, setSearch] = useState('')
+  const [filterRole, setFilterRole] = useState<WireRole | null>(null)
+  const [filterActive, setFilterActive] = useState<boolean | null>(null)
 
   // Create/Edit modal
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<UserWire | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [saving, setSaving] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<UserWire | null>(null)
+  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [formErrors, setFormErrors] = useState<FormErrors>({})
+  const [saving, setSaving] = useState(false)
 
   // Reset password in edit mode
-  const [resetPwOpen, setResetPwOpen] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [resetPwOpen, setResetPwOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   // Deactivate/Activate confirm
-  const [deactivateTarget, setDeactivateTarget] = useState<UserWire | null>(null);
-  const [deactivating, setDeactivating] = useState(false);
+  const [deactivateTarget, setDeactivateTarget] = useState<UserWire | null>(null)
+  const [deactivating, setDeactivating] = useState(false)
 
   /* ── Fetch ── */
 
   const fetchData = useCallback(
     async (p: number, ps: number) => {
-      setLoading(true);
+      setLoading(true)
       try {
-        const params: Record<string, unknown> = { page: p, pageSize: ps, sort: 'fullName' };
-        if (filterRole) params.role = filterRole;
-        if (filterActive !== null) params.isActive = filterActive;
-        const res = await get<ListResponse<UserWire>>('/users', params);
-        setUsers(res.data);
-        setTotal(res.meta.total);
+        const params: Record<string, unknown> = { page: p, pageSize: ps, sort: 'fullName' }
+        if (filterRole) params.role = filterRole
+        if (filterActive !== null) params.isActive = filterActive
+        const res = await get<ListResponse<UserWire>>('/users', params)
+        setUsers(res.data)
+        setTotal(res.meta.total)
       } catch {
-        addToast({ type: 'error', title: 'Failed to load users' });
+        addToast({ type: 'error', title: 'Failed to load users' })
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     },
     [addToast, filterRole, filterActive],
-  );
+  )
 
   useEffect(() => {
-    fetchData(page, pageSize);
-  }, [page, pageSize, fetchData]);
+    fetchData(page, pageSize)
+  }, [page, pageSize, fetchData])
 
   /* ── Client-side search (server handles role/active filters) ── */
 
   const filteredUsers = useMemo(() => {
-    if (!search.trim()) return users;
-    const q = search.toLowerCase();
+    if (!search.trim()) return users
+    const q = search.toLowerCase()
     return users.filter(
-      (u) =>
-        u.fullName.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q),
-    );
-  }, [users, search]);
+      (u) => u.fullName.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
+    )
+  }, [users, search])
 
   /* ── Create / Edit ── */
 
   function openCreate() {
-    setEditTarget(null);
-    setForm(EMPTY_FORM);
-    setFormErrors({});
-    setResetPwOpen(false);
-    setNewPassword('');
-    setConfirmPassword('');
-    setModalOpen(true);
+    setEditTarget(null)
+    setForm(EMPTY_FORM)
+    setFormErrors({})
+    setResetPwOpen(false)
+    setNewPassword('')
+    setConfirmPassword('')
+    setModalOpen(true)
   }
 
   function openEdit(user: UserWire) {
-    setEditTarget(user);
+    setEditTarget(user)
     setForm({
       fullName: user.fullName,
       email: user.email,
       password: '',
       role: user.role,
       isActive: user.isActive,
-    });
-    setFormErrors({});
-    setResetPwOpen(false);
-    setNewPassword('');
-    setConfirmPassword('');
-    setModalOpen(true);
+    })
+    setFormErrors({})
+    setResetPwOpen(false)
+    setNewPassword('')
+    setConfirmPassword('')
+    setModalOpen(true)
   }
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => ({ ...prev, [key]: value }))
     setFormErrors((prev) => {
-      const next = { ...prev };
-      delete next[key as keyof FormErrors];
-      return next;
-    });
+      const next = { ...prev }
+      delete next[key as keyof FormErrors]
+      return next
+    })
   }
 
   async function handleSave() {
     if (editTarget) {
       // Edit mode
-      const errors = validateEdit(form);
-      setFormErrors(errors);
-      if (Object.keys(errors).length > 0) return;
+      const errors = validateEdit(form)
+      setFormErrors(errors)
+      if (Object.keys(errors).length > 0) return
 
       // Check password reset validation
       if (resetPwOpen) {
         if (newPassword.length < 10) {
-          setFormErrors({ password: 'Password must be at least 10 characters' });
-          return;
+          setFormErrors({ password: 'Password must be at least 10 characters' })
+          return
         }
         if (newPassword !== confirmPassword) {
-          setFormErrors({ password: 'Passwords do not match' });
-          return;
+          setFormErrors({ password: 'Passwords do not match' })
+          return
         }
       }
 
-      const isSelf = currentUser && String(currentUser.id) === String(editTarget.id);
+      const isSelf = currentUser && String(currentUser.id) === String(editTarget.id)
 
-      setSaving(true);
+      setSaving(true)
       try {
-        const body: Record<string, unknown> = {};
-        if (form.fullName !== editTarget.fullName) body.fullName = form.fullName;
-        if (form.role !== editTarget.role && !isSelf) body.role = form.role;
-        if (form.isActive !== editTarget.isActive && !isSelf) body.isActive = form.isActive;
+        const body: Record<string, unknown> = {}
+        if (form.fullName !== editTarget.fullName) body.fullName = form.fullName
+        if (form.role !== editTarget.role && !isSelf) body.role = form.role
+        if (form.isActive !== editTarget.isActive && !isSelf) body.isActive = form.isActive
 
         if (Object.keys(body).length > 0) {
-          await patch(`/users/${editTarget.id}`, body);
+          await patch(`/users/${editTarget.id}`, body)
         }
 
-        addToast({ type: 'success', title: 'User updated' });
-        setModalOpen(false);
-        fetchData(page, pageSize);
+        addToast({ type: 'success', title: 'User updated' })
+        setModalOpen(false)
+        fetchData(page, pageSize)
       } catch (err) {
-        const e = err as ApiRequestError;
+        const e = err as ApiRequestError
         if (e.code === 'SELF_DEMOTION_FORBIDDEN') {
-          addToast({ type: 'error', title: 'Cannot demote yourself' });
+          addToast({ type: 'error', title: 'Cannot demote yourself' })
         } else if (e.code === 'SELF_DEACTIVATION_FORBIDDEN') {
-          addToast({ type: 'error', title: 'Cannot deactivate yourself' });
+          addToast({ type: 'error', title: 'Cannot deactivate yourself' })
         } else {
-          addToast({ type: 'error', title: 'Failed to update user', message: e.message });
+          addToast({ type: 'error', title: 'Failed to update user', message: e.message })
         }
       } finally {
-        setSaving(false);
+        setSaving(false)
       }
     } else {
       // Create mode
-      const errors = validateCreate(form);
-      setFormErrors(errors);
-      if (Object.keys(errors).length > 0) return;
+      const errors = validateCreate(form)
+      setFormErrors(errors)
+      if (Object.keys(errors).length > 0) return
 
-      setSaving(true);
+      setSaving(true)
       try {
         await post('/auth/register', {
           email: form.email,
           password: form.password,
           fullName: form.fullName,
           role: form.role,
-        });
-        addToast({ type: 'success', title: 'User created' });
-        setModalOpen(false);
-        fetchData(page, pageSize);
+        })
+        addToast({ type: 'success', title: 'User created' })
+        setModalOpen(false)
+        fetchData(page, pageSize)
       } catch (err) {
-        const e = err as ApiRequestError;
+        const e = err as ApiRequestError
         if (e.code === 'EMAIL_ALREADY_USED') {
-          setFormErrors({ email: 'This email is already registered' });
+          setFormErrors({ email: 'This email is already registered' })
         } else {
-          addToast({ type: 'error', title: 'Failed to create user', message: e.message });
+          addToast({ type: 'error', title: 'Failed to create user', message: e.message })
         }
       } finally {
-        setSaving(false);
+        setSaving(false)
       }
     }
   }
@@ -284,42 +283,40 @@ export function UserManagementPage() {
   /* ── Deactivate / Activate ── */
 
   async function handleDeactivate() {
-    if (!deactivateTarget) return;
-    setDeactivating(true);
+    if (!deactivateTarget) return
+    setDeactivating(true)
     try {
       if (deactivateTarget.isActive) {
-        await del(`/users/${deactivateTarget.id}`);
-        addToast({ type: 'success', title: `${deactivateTarget.fullName} deactivated` });
+        await del(`/users/${deactivateTarget.id}`)
+        addToast({ type: 'success', title: `${deactivateTarget.fullName} deactivated` })
       } else {
-        await patch(`/users/${deactivateTarget.id}`, { isActive: true });
-        addToast({ type: 'success', title: `${deactivateTarget.fullName} activated` });
+        await patch(`/users/${deactivateTarget.id}`, { isActive: true })
+        addToast({ type: 'success', title: `${deactivateTarget.fullName} activated` })
       }
-      setDeactivateTarget(null);
-      fetchData(page, pageSize);
+      setDeactivateTarget(null)
+      fetchData(page, pageSize)
     } catch (err) {
-      const e = err as ApiRequestError;
+      const e = err as ApiRequestError
       if (e.code === 'SELF_DEACTIVATION_FORBIDDEN') {
-        addToast({ type: 'error', title: 'Cannot deactivate yourself' });
+        addToast({ type: 'error', title: 'Cannot deactivate yourself' })
       } else if (e.code === 'ALREADY_DEACTIVATED') {
-        addToast({ type: 'warning', title: 'User is already deactivated' });
-        fetchData(page, pageSize);
+        addToast({ type: 'warning', title: 'User is already deactivated' })
+        fetchData(page, pageSize)
       } else {
-        addToast({ type: 'error', title: 'Action failed', message: e.message });
+        addToast({ type: 'error', title: 'Action failed', message: e.message })
       }
     } finally {
-      setDeactivating(false);
+      setDeactivating(false)
     }
   }
 
   /* ── Filter count ── */
 
-  const activeFilterCount =
-    (filterRole !== null ? 1 : 0) +
-    (filterActive !== null ? 1 : 0);
+  const activeFilterCount = (filterRole !== null ? 1 : 0) + (filterActive !== null ? 1 : 0)
 
   function clearFilters() {
-    setFilterRole(null);
-    setFilterActive(null);
+    setFilterRole(null)
+    setFilterActive(null)
   }
 
   /* ── Columns ── */
@@ -366,7 +363,7 @@ export function UserManagementPage() {
       width: '140px',
       render: (row) => <span className={styles.dateCell}>{formatDate(row.createdAt)}</span>,
     },
-  ];
+  ]
 
   /* ── Filter content ── */
 
@@ -419,10 +416,9 @@ export function UserManagementPage() {
         </>
       )}
     </div>
-  );
+  )
 
-  const isSelfTarget = (u: UserWire) =>
-    currentUser && String(currentUser.id) === String(u.id);
+  const isSelfTarget = (u: UserWire) => currentUser && String(currentUser.id) === String(u.id)
 
   return (
     <>
@@ -431,7 +427,7 @@ export function UserManagementPage() {
         description="Manage user accounts and roles."
         actions={
           <Button icon={<Plus size={16} />} onClick={openCreate}>
-            + Add User
+            Add User
           </Button>
         }
       />
@@ -452,7 +448,10 @@ export function UserManagementPage() {
         pageSize={pageSize}
         total={total}
         onPageChange={setPage}
-        onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+        onPageSizeChange={(s) => {
+          setPageSize(s)
+          setPage(1)
+        }}
         loading={loading}
         emptyIcon={<Shield size={48} />}
         emptyTitle="No users found"
@@ -464,7 +463,7 @@ export function UserManagementPage() {
         emptyAction={
           !search && activeFilterCount === 0 ? (
             <Button icon={<Plus size={16} />} onClick={openCreate}>
-              + Add User
+              Add User
             </Button>
           ) : undefined
         }
@@ -528,12 +527,7 @@ export function UserManagementPage() {
               required
             />
           ) : (
-            <TextInput
-              label="Email"
-              value={editTarget.email}
-              disabled
-              onChange={() => {}}
-            />
+            <TextInput label="Email" value={editTarget.email} disabled onChange={() => {}} />
           )}
 
           {/* Password: show on create, reset button on edit */}
@@ -566,9 +560,9 @@ export function UserManagementPage() {
                       type="button"
                       className={styles.resetPasswordClose}
                       onClick={() => {
-                        setResetPwOpen(false);
-                        setNewPassword('');
-                        setConfirmPassword('');
+                        setResetPwOpen(false)
+                        setNewPassword('')
+                        setConfirmPassword('')
                       }}
                       aria-label="Cancel password reset"
                     >
@@ -602,7 +596,7 @@ export function UserManagementPage() {
             options={ROLE_OPTIONS}
             value={form.role}
             onChange={(v) => updateField('role', v as WireRole)}
-            disabled={editTarget ? isSelfTarget(editTarget) ?? false : false}
+            disabled={editTarget ? (isSelfTarget(editTarget) ?? false) : false}
             required
           />
 
@@ -610,7 +604,7 @@ export function UserManagementPage() {
             label="Active"
             checked={form.isActive}
             onChange={(v) => updateField('isActive', v)}
-            disabled={editTarget ? isSelfTarget(editTarget) ?? false : false}
+            disabled={editTarget ? (isSelfTarget(editTarget) ?? false) : false}
           />
         </FormSection>
       </Modal>
@@ -634,5 +628,5 @@ export function UserManagementPage() {
         loading={deactivating}
       />
     </>
-  );
+  )
 }

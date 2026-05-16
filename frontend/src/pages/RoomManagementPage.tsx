@@ -1,133 +1,133 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { DoorOpen, Plus, Pencil, Trash2, Download } from 'lucide-react';
-import { PageHeader } from '../components/ContentArea';
-import { DataTable, type Column } from '../components/DataTable';
-import { TableToolbar } from '../components/TableToolbar';
-import { Button } from '../components/Button';
-import { Modal, ConfirmDialog } from '../components/Modal';
-import { TextInput, NumberInput, MultiSelect, FormSection, FormActions } from '../components/Form';
-import { useToastStore } from '../store/toastStore';
-import { useAuthStore } from '../store/authStore';
-import { get, post, patch, del } from '../lib/api';
-import type { ApiRequestError } from '../lib/api';
-import styles from './RoomManagementPage.module.css';
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { DoorOpen, Plus, Pencil, Trash2, Download } from 'lucide-react'
+import { PageHeader } from '../components/ContentArea'
+import { DataTable, type Column } from '../components/DataTable'
+import { TableToolbar } from '../components/TableToolbar'
+import { Button } from '../components/Button'
+import { Modal, ConfirmDialog } from '../components/Modal'
+import { TextInput, NumberInput, MultiSelect, FormSection, FormActions } from '../components/Form'
+import { useToastStore } from '../store/toastStore'
+import { useAuthStore } from '../store/authStore'
+import { get, post, patch, del } from '../lib/api'
+import type { ApiRequestError } from '../lib/api'
+import styles from './RoomManagementPage.module.css'
 
 /* ── Types ── */
 
 interface Room {
-  id: number;
-  name: string;
-  capacity: number;
-  facilities: string[];
-  semesterId: number;
+  id: number
+  name: string
+  capacity: number
+  facilities: string[]
+  semesterId: number
 }
 
 interface Facility {
-  id: number;
-  code: string;
-  label: string;
+  id: number
+  code: string
+  label: string
 }
 
 interface OfferingWire {
-  id: number;
-  roomId: number;
+  id: number
+  roomId: number
 }
 
 interface Semester {
-  id: number;
-  code: string;
-  isActive: boolean;
+  id: number
+  code: string
+  isActive: boolean
 }
 
 interface ListResponse<T> {
-  data: T[];
-  meta: { page: number; pageSize: number; total: number };
+  data: T[]
+  meta: { page: number; pageSize: number; total: number }
 }
 
 interface RoomEnriched extends Room {
-  offeringCount: number;
+  offeringCount: number
 }
 
 interface FormState {
-  name: string;
-  capacity: number;
-  facilities: string[];
+  name: string
+  capacity: number
+  facilities: string[]
 }
 
 interface FormErrors {
-  name?: string;
-  capacity?: string;
+  name?: string
+  capacity?: string
 }
 
-const EMPTY_FORM: FormState = { name: '', capacity: 0, facilities: [] };
+const EMPTY_FORM: FormState = { name: '', capacity: 0, facilities: [] }
 
 function validate(form: FormState): FormErrors {
-  const errors: FormErrors = {};
-  if (!form.name.trim()) errors.name = 'Name is required';
-  if (form.capacity < 1) errors.capacity = 'Capacity must be at least 1';
-  return errors;
+  const errors: FormErrors = {}
+  if (!form.name.trim()) errors.name = 'Name is required'
+  if (form.capacity < 1) errors.capacity = 'Capacity must be at least 1'
+  return errors
 }
 
 /* ── CSV Export ── */
 
 function exportCsv(rooms: RoomEnriched[]) {
-  const header = 'Name,Capacity,Facilities,Offerings';
+  const header = 'Name,Capacity,Facilities,Offerings'
   const rows = rooms.map(
     (r) =>
       `"${r.name.replace(/"/g, '""')}",${r.capacity},"${r.facilities.join(', ')}",${r.offeringCount}`,
-  );
-  const csv = [header, ...rows].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'rooms.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  )
+  const csv = [header, ...rows].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'rooms.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 /* ── Component ── */
 
 export function RoomManagementPage() {
-  const addToast = useToastStore((s) => s.addToast);
-  const userRole = useAuthStore((s) => s.user?.role);
-  const isAdmin = userRole === 'ADMIN';
+  const addToast = useToastStore((s) => s.addToast)
+  const userRole = useAuthStore((s) => s.user?.role)
+  const isAdmin = userRole === 'ADMIN'
 
-  const [rooms, setRooms] = useState<RoomEnriched[]>([]);
-  const [allFacilities, setAllFacilities] = useState<Facility[]>([]);
-  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [rooms, setRooms] = useState<RoomEnriched[]>([])
+  const [allFacilities, setAllFacilities] = useState<Facility[]>([])
+  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   // Search & filters
-  const [search, setSearch] = useState('');
-  const [filterFacilities, setFilterFacilities] = useState<string[]>([]);
-  const [capacityMin, setCapacityMin] = useState('');
-  const [capacityMax, setCapacityMax] = useState('');
+  const [search, setSearch] = useState('')
+  const [filterFacilities, setFilterFacilities] = useState<string[]>([])
+  const [capacityMin, setCapacityMin] = useState('')
+  const [capacityMax, setCapacityMax] = useState('')
 
   // Create/Edit modal
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<RoomEnriched | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [saving, setSaving] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<RoomEnriched | null>(null)
+  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [formErrors, setFormErrors] = useState<FormErrors>({})
+  const [saving, setSaving] = useState(false)
 
   // Delete confirm
-  const [deleteTarget, setDeleteTarget] = useState<RoomEnriched | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<RoomEnriched | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Bulk selection
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
 
   /* ── Fetch ── */
 
   const fetchData = useCallback(
     async (p: number, ps: number) => {
-      setLoading(true);
+      setLoading(true)
       try {
         const [roomRes, facRes, offeringRes, semRes] = await Promise.all([
           get<ListResponse<Room>>('/rooms', {
@@ -138,228 +138,233 @@ export function RoomManagementPage() {
           get<ListResponse<Facility>>('/facilities', { page: 1, pageSize: 500 }),
           get<ListResponse<OfferingWire>>('/course-offerings', { page: 1, pageSize: 5000 }),
           get<ListResponse<Semester>>('/semesters', { isActive: true, page: 1, pageSize: 1 }),
-        ]);
+        ])
 
-        setAllFacilities(facRes.data);
-        setActiveSemesterId(semRes.data[0]?.id ?? null);
+        setAllFacilities(facRes.data)
+        setActiveSemesterId(semRes.data[0]?.id ?? null)
 
         const enriched: RoomEnriched[] = roomRes.data.map((room) => ({
           ...room,
           offeringCount: offeringRes.data.filter((o) => o.roomId === room.id).length,
-        }));
+        }))
 
-        setRooms(enriched);
-        setTotal(roomRes.meta.total);
+        setRooms(enriched)
+        setTotal(roomRes.meta.total)
       } catch {
-        addToast({ type: 'error', title: 'Failed to load rooms' });
+        addToast({ type: 'error', title: 'Failed to load rooms' })
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     },
     [addToast],
-  );
+  )
 
   useEffect(() => {
-    fetchData(page, pageSize);
-  }, [page, pageSize, fetchData]);
+    fetchData(page, pageSize)
+  }, [page, pageSize, fetchData])
 
   /* ── Client-side filtering ── */
 
   const filteredRooms = useMemo(() => {
-    let result = rooms;
+    let result = rooms
 
     if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter((r) => r.name.toLowerCase().includes(q));
+      const q = search.toLowerCase()
+      result = result.filter((r) => r.name.toLowerCase().includes(q))
     }
 
     if (filterFacilities.length > 0) {
-      result = result.filter((r) =>
-        filterFacilities.every((f) => r.facilities.includes(f)),
-      );
+      result = result.filter((r) => filterFacilities.every((f) => r.facilities.includes(f)))
     }
 
-    const min = capacityMin ? Number(capacityMin) : null;
-    const max = capacityMax ? Number(capacityMax) : null;
+    const min = capacityMin ? Number(capacityMin) : null
+    const max = capacityMax ? Number(capacityMax) : null
     if (min !== null && !isNaN(min)) {
-      result = result.filter((r) => r.capacity >= min);
+      result = result.filter((r) => r.capacity >= min)
     }
     if (max !== null && !isNaN(max)) {
-      result = result.filter((r) => r.capacity <= max);
+      result = result.filter((r) => r.capacity <= max)
     }
 
-    return result;
-  }, [rooms, search, filterFacilities, capacityMin, capacityMax]);
+    return result
+  }, [rooms, search, filterFacilities, capacityMin, capacityMax])
 
   /* ── Create / Edit ── */
 
   function openCreate() {
-    setEditTarget(null);
-    setForm(EMPTY_FORM);
-    setFormErrors({});
-    setModalOpen(true);
+    setEditTarget(null)
+    setForm(EMPTY_FORM)
+    setFormErrors({})
+    setModalOpen(true)
   }
 
   function openEdit(room: RoomEnriched) {
-    setEditTarget(room);
+    setEditTarget(room)
     setForm({
       name: room.name,
       capacity: room.capacity,
       facilities: [...room.facilities],
-    });
-    setFormErrors({});
-    setModalOpen(true);
+    })
+    setFormErrors({})
+    setModalOpen(true)
   }
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => ({ ...prev, [key]: value }))
     setFormErrors((prev) => {
-      const next = { ...prev };
-      delete next[key as keyof FormErrors];
-      return next;
-    });
+      const next = { ...prev }
+      delete next[key as keyof FormErrors]
+      return next
+    })
   }
 
   async function handleSave() {
-    const errors = validate(form);
-    setFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    const errors = validate(form)
+    setFormErrors(errors)
+    if (Object.keys(errors).length > 0) return
 
     if (!editTarget && !activeSemesterId) {
-      addToast({ type: 'error', title: 'No active semester', message: 'Activate a semester before creating rooms.' });
-      return;
+      addToast({
+        type: 'error',
+        title: 'No active semester',
+        message: 'Activate a semester before creating rooms.',
+      })
+      return
     }
 
-    setSaving(true);
+    setSaving(true)
     try {
       if (editTarget) {
         await patch(`/rooms/${editTarget.id}`, {
           name: form.name,
           capacity: form.capacity,
           facilities: form.facilities,
-        });
-        addToast({ type: 'success', title: 'Room updated' });
+        })
+        addToast({ type: 'success', title: 'Room updated' })
       } else {
         await post('/rooms', {
           semesterId: activeSemesterId,
           name: form.name,
           capacity: form.capacity,
           facilities: form.facilities,
-        });
-        addToast({ type: 'success', title: 'Room created' });
+        })
+        addToast({ type: 'success', title: 'Room created' })
       }
-      setModalOpen(false);
-      fetchData(page, pageSize);
+      setModalOpen(false)
+      fetchData(page, pageSize)
     } catch (err) {
-      const e = err as ApiRequestError;
+      const e = err as ApiRequestError
       if (e.code === 'ROOM_NAME_TAKEN') {
-        setFormErrors((prev) => ({ ...prev, name: 'A room with this name already exists' }));
+        setFormErrors((prev) => ({ ...prev, name: 'A room with this name already exists' }))
       } else {
         addToast({
           type: 'error',
           title: editTarget ? 'Failed to update' : 'Failed to create',
           message: e.message,
-        });
+        })
       }
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
   /* ── Delete ── */
 
   async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
+    if (!deleteTarget) return
+    setDeleting(true)
     try {
-      await del(`/rooms/${deleteTarget.id}`);
-      addToast({ type: 'success', title: 'Room deleted' });
-      setDeleteTarget(null);
+      await del(`/rooms/${deleteTarget.id}`)
+      addToast({ type: 'success', title: 'Room deleted' })
+      setDeleteTarget(null)
       setSelected((prev) => {
-        const next = new Set(prev);
-        next.delete(deleteTarget.id);
-        return next;
-      });
-      fetchData(page, pageSize);
+        const next = new Set(prev)
+        next.delete(deleteTarget.id)
+        return next
+      })
+      fetchData(page, pageSize)
     } catch (err) {
-      const e = err as ApiRequestError;
+      const e = err as ApiRequestError
       if (e.code === 'ROOM_REFERENCED') {
         addToast({
           type: 'error',
           title: 'Cannot delete',
-          message: 'This room is referenced by course offerings or locked rooms. Remove all references first.',
-        });
+          message:
+            'This room is referenced by course offerings or locked rooms. Remove all references first.',
+        })
       } else {
-        addToast({ type: 'error', title: 'Failed to delete', message: e.message });
+        addToast({ type: 'error', title: 'Failed to delete', message: e.message })
       }
     } finally {
-      setDeleting(false);
+      setDeleting(false)
     }
   }
 
   /* ── Bulk delete ── */
 
   async function handleBulkDelete() {
-    setBulkDeleting(true);
-    const ids = [...selected];
-    let successCount = 0;
-    let failCount = 0;
+    setBulkDeleting(true)
+    const ids = [...selected]
+    let successCount = 0
+    let failCount = 0
 
     for (const id of ids) {
       try {
-        await del(`/rooms/${id}`);
-        successCount++;
+        await del(`/rooms/${id}`)
+        successCount++
       } catch {
-        failCount++;
+        failCount++
       }
     }
 
     if (successCount > 0) {
-      addToast({ type: 'success', title: `${successCount} room${successCount > 1 ? 's' : ''} deleted` });
+      addToast({
+        type: 'success',
+        title: `${successCount} room${successCount > 1 ? 's' : ''} deleted`,
+      })
     }
     if (failCount > 0) {
       addToast({
         type: 'error',
         title: `${failCount} room${failCount > 1 ? 's' : ''} could not be deleted`,
         message: 'Some rooms may be referenced by offerings or locked rooms.',
-      });
+      })
     }
 
-    setSelected(new Set());
-    setBulkDeleteOpen(false);
-    setBulkDeleting(false);
-    fetchData(page, pageSize);
+    setSelected(new Set())
+    setBulkDeleteOpen(false)
+    setBulkDeleting(false)
+    fetchData(page, pageSize)
   }
 
   /* ── Selection helpers ── */
 
   function toggleSelect(id: number) {
     setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   function selectAll() {
-    setSelected(new Set(filteredRooms.map((r) => r.id)));
+    setSelected(new Set(filteredRooms.map((r) => r.id)))
   }
 
   function clearSelection() {
-    setSelected(new Set());
+    setSelected(new Set())
   }
 
   /* ── Filter count ── */
 
   const activeFilterCount =
-    (filterFacilities.length > 0 ? 1 : 0) +
-    (capacityMin || capacityMax ? 1 : 0);
+    (filterFacilities.length > 0 ? 1 : 0) + (capacityMin || capacityMax ? 1 : 0)
 
   function clearFilters() {
-    setFilterFacilities([]);
-    setCapacityMin('');
-    setCapacityMax('');
+    setFilterFacilities([])
+    setCapacityMin('')
+    setCapacityMax('')
   }
 
   /* ── Facility options for multi-select ── */
@@ -367,7 +372,7 @@ export function RoomManagementPage() {
   const facilityOptions = allFacilities.map((f) => ({
     value: f.code,
     label: `${f.code} — ${f.label}`,
-  }));
+  }))
 
   /* ── Columns ── */
 
@@ -425,7 +430,7 @@ export function RoomManagementPage() {
       width: '100px',
       render: (row) => <span className={styles.offeringCount}>{row.offeringCount}</span>,
     },
-  ];
+  ]
 
   /* ── Filter content for toolbar ── */
 
@@ -441,10 +446,8 @@ export function RoomManagementPage() {
                 checked={filterFacilities.includes(f.code)}
                 onChange={() => {
                   setFilterFacilities((prev) =>
-                    prev.includes(f.code)
-                      ? prev.filter((c) => c !== f.code)
-                      : [...prev, f.code],
-                  );
+                    prev.includes(f.code) ? prev.filter((c) => c !== f.code) : [...prev, f.code],
+                  )
                 }}
               />
               {f.code} — {f.label}
@@ -485,18 +488,14 @@ export function RoomManagementPage() {
         <>
           <div className={styles.filterDivider} />
           <div className={styles.filterActions}>
-            <button
-              type="button"
-              className={styles.filterClearButton}
-              onClick={clearFilters}
-            >
+            <button type="button" className={styles.filterClearButton} onClick={clearFilters}>
               Clear all filters
             </button>
           </div>
         </>
       )}
     </div>
-  );
+  )
 
   return (
     <>
@@ -506,7 +505,7 @@ export function RoomManagementPage() {
         actions={
           isAdmin ? (
             <Button icon={<Plus size={16} />} onClick={openCreate}>
-              + Add Room
+              Add Room
             </Button>
           ) : undefined
         }
@@ -567,8 +566,8 @@ export function RoomManagementPage() {
         total={filteredRooms.length}
         onPageChange={setPage}
         onPageSizeChange={(s) => {
-          setPageSize(s);
-          setPage(1);
+          setPageSize(s)
+          setPage(1)
         }}
         loading={loading}
         emptyIcon={<DoorOpen size={48} />}
@@ -581,7 +580,7 @@ export function RoomManagementPage() {
         emptyAction={
           isAdmin && !search && activeFilterCount === 0 ? (
             <Button icon={<Plus size={16} />} onClick={openCreate}>
-              + Add Room
+              Add Room
             </Button>
           ) : undefined
         }
@@ -686,5 +685,5 @@ export function RoomManagementPage() {
         loading={bulkDeleting}
       />
     </>
-  );
+  )
 }

@@ -1,14 +1,23 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Play, Eye, Calendar, XCircle, Search, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import { PageHeader } from '../components/ContentArea';
-import { Button } from '../components/Button';
-import { StatusBadge } from '../components/Badge';
-import { ConfirmDialog } from '../components/Modal';
-import { useToastStore } from '../store/toastStore';
-import { get, post } from '../lib/api';
-import type { ApiRequestError } from '../lib/api';
-import styles from './RunHistoryPage.module.css';
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Play,
+  Eye,
+  Calendar,
+  XCircle,
+  Search,
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react'
+import { PageHeader } from '../components/ContentArea'
+import { Button } from '../components/Button'
+import { StatusBadge } from '../components/Badge'
+import { ConfirmDialog } from '../components/Modal'
+import { useToastStore } from '../store/toastStore'
+import { get, post } from '../lib/api'
+import type { ApiRequestError } from '../lib/api'
+import styles from './RunHistoryPage.module.css'
 
 type RunStatus =
   | 'QUEUED'
@@ -18,37 +27,37 @@ type RunStatus =
   | 'SSA_INFEASIBLE'
   | 'PRE_GA_EMPTY'
   | 'CANCELLED'
-  | 'FAILED';
+  | 'FAILED'
 
 interface ScheduleRunSummary {
-  id: string;
-  status: RunStatus;
-  semesterId: number;
-  createdById: number;
-  bestFitness: number;
-  hardViolations: number;
-  softPenalty: number;
-  competencyMismatch: number;
-  generationsRun: number;
-  currentGeneration: number;
-  stagnatedEarly: boolean;
-  durationMs: number | null;
-  errorCode: string | null;
-  errorMessage: string | null;
-  startedAt: string | null;
-  completedAt: string | null;
-  createdAt: string;
+  id: string
+  status: RunStatus
+  semesterId: number
+  createdById: number
+  bestFitness: number
+  hardViolations: number
+  softPenalty: number
+  competencyMismatch: number
+  generationsRun: number
+  currentGeneration: number
+  stagnatedEarly: boolean
+  durationMs: number | null
+  errorCode: string | null
+  errorMessage: string | null
+  startedAt: string | null
+  completedAt: string | null
+  createdAt: string
 }
 
 interface ListMeta {
-  page: number;
-  pageSize: number;
-  total: number;
+  page: number
+  pageSize: number
+  total: number
 }
 
 interface RunListResponse {
-  data: ScheduleRunSummary[];
-  meta: ListMeta;
+  data: ScheduleRunSummary[]
+  meta: ListMeta
 }
 
 const ALL_STATUSES: RunStatus[] = [
@@ -60,121 +69,132 @@ const ALL_STATUSES: RunStatus[] = [
   'PRE_GA_EMPTY',
   'CANCELLED',
   'FAILED',
-];
+]
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
-const AUTO_REFRESH_MS = 10_000;
+const AUTO_REFRESH_MS = 10_000
 
 function formatDuration(ms: number | null): string {
-  if (ms === null) return '—';
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  const minutes = Math.floor(ms / 60_000);
-  const seconds = Math.round((ms % 60_000) / 1000);
-  return `${minutes}m ${seconds}s`;
+  if (ms === null) return '—'
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const minutes = Math.floor(ms / 60_000)
+  const seconds = Math.round((ms % 60_000) / 1000)
+  return `${minutes}m ${seconds}s`
 }
 
 function formatDate(iso: string): { date: string; time: string } {
-  const d = new Date(iso);
+  const d = new Date(iso)
   return {
     date: d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }),
     time: d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
-  };
+  }
 }
 
 function fitnessClass(value: number): string {
-  if (value > 0.9) return styles.fitnessGood;
-  if (value >= 0.7) return styles.fitnessWarning;
-  return styles.fitnessBad;
+  if (value > 0.9) return styles.fitnessGood
+  if (value >= 0.7) return styles.fitnessWarning
+  return styles.fitnessBad
 }
 
 export function RunHistoryPage() {
-  const navigate = useNavigate();
-  const addToast = useToastStore((s) => s.addToast);
+  const navigate = useNavigate()
+  const addToast = useToastStore((s) => s.addToast)
 
-  const [runs, setRuns] = useState<ScheduleRunSummary[]>([]);
-  const [meta, setMeta] = useState<ListMeta>({ page: 1, pageSize: 25, total: 0 });
-  const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<RunStatus | ''>('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortDesc, setSortDesc] = useState(true);
+  const [runs, setRuns] = useState<ScheduleRunSummary[]>([])
+  const [meta, setMeta] = useState<ListMeta>({ page: 1, pageSize: 25, total: 0 })
+  const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState<RunStatus | ''>('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortDesc, setSortDesc] = useState(true)
 
-  const [cancelTarget, setCancelTarget] = useState<ScheduleRunSummary | null>(null);
-  const [cancelling, setCancelling] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<ScheduleRunSummary | null>(null)
+  const [cancelling, setCancelling] = useState(false)
 
-  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchRuns = useCallback(async (page: number, pageSize: number, status: RunStatus | '', sort: boolean) => {
-    setLoading(true);
-    try {
-      const params: Record<string, unknown> = {
-        page,
-        pageSize,
-        sort: sort ? '-createdAt' : 'createdAt',
-      };
-      if (status) params.status = status;
-      const res = await get<RunListResponse>('/schedule-runs', params);
-      setRuns(res.data);
-      setMeta(res.meta);
-    } catch {
-      addToast({ type: 'error', title: 'Failed to load runs', message: 'Could not fetch schedule run history.' });
-    } finally {
-      setLoading(false);
-    }
-  }, [addToast]);
+  const fetchRuns = useCallback(
+    async (page: number, pageSize: number, status: RunStatus | '', sort: boolean) => {
+      setLoading(true)
+      try {
+        const params: Record<string, unknown> = {
+          page,
+          pageSize,
+          sort: sort ? '-createdAt' : 'createdAt',
+        }
+        if (status) params.status = status
+        const res = await get<RunListResponse>('/schedule-runs', params)
+        setRuns(res.data)
+        setMeta(res.meta)
+      } catch {
+        addToast({
+          type: 'error',
+          title: 'Failed to load runs',
+          message: 'Could not fetch schedule run history.',
+        })
+      } finally {
+        setLoading(false)
+      }
+    },
+    [addToast],
+  )
 
   useEffect(() => {
-    fetchRuns(meta.page, meta.pageSize, statusFilter, sortDesc);
-  }, [meta.page, meta.pageSize, statusFilter, sortDesc, fetchRuns]);
+    fetchRuns(meta.page, meta.pageSize, statusFilter, sortDesc)
+  }, [meta.page, meta.pageSize, statusFilter, sortDesc, fetchRuns])
 
   useEffect(() => {
-    const hasActiveRuns = runs.some((r) => r.status === 'RUNNING' || r.status === 'QUEUED');
+    const hasActiveRuns = runs.some((r) => r.status === 'RUNNING' || r.status === 'QUEUED')
 
     if (hasActiveRuns) {
       autoRefreshRef.current = setInterval(() => {
-        fetchRuns(meta.page, meta.pageSize, statusFilter, sortDesc);
-      }, AUTO_REFRESH_MS);
+        fetchRuns(meta.page, meta.pageSize, statusFilter, sortDesc)
+      }, AUTO_REFRESH_MS)
     }
 
     return () => {
       if (autoRefreshRef.current) {
-        clearInterval(autoRefreshRef.current);
-        autoRefreshRef.current = null;
+        clearInterval(autoRefreshRef.current)
+        autoRefreshRef.current = null
       }
-    };
-  }, [runs, meta.page, meta.pageSize, statusFilter, sortDesc, fetchRuns]);
+    }
+  }, [runs, meta.page, meta.pageSize, statusFilter, sortDesc, fetchRuns])
 
   const handlePageChange = useCallback((newPage: number) => {
-    setMeta((prev) => ({ ...prev, page: newPage }));
-  }, []);
+    setMeta((prev) => ({ ...prev, page: newPage }))
+  }, [])
 
   const handlePageSizeChange = useCallback((newSize: number) => {
-    setMeta((prev) => ({ ...prev, pageSize: newSize, page: 1 }));
-  }, []);
+    setMeta((prev) => ({ ...prev, pageSize: newSize, page: 1 }))
+  }, [])
 
   const handleCancelConfirm = useCallback(async () => {
-    if (!cancelTarget) return;
-    setCancelling(true);
+    if (!cancelTarget) return
+    setCancelling(true)
     try {
-      await post(`/schedule-runs/${cancelTarget.id}/cancel`);
-      addToast({ type: 'success', title: 'Run cancelled', message: 'The schedule run has been cancelled.' });
-      setCancelTarget(null);
-      fetchRuns(meta.page, meta.pageSize, statusFilter, sortDesc);
+      await post(`/schedule-runs/${cancelTarget.id}/cancel`)
+      addToast({
+        type: 'success',
+        title: 'Run cancelled',
+        message: 'The schedule run has been cancelled.',
+      })
+      setCancelTarget(null)
+      fetchRuns(meta.page, meta.pageSize, statusFilter, sortDesc)
     } catch (err) {
-      const e = err as ApiRequestError;
-      addToast({ type: 'error', title: 'Failed to cancel', message: e.message });
+      const e = err as ApiRequestError
+      addToast({ type: 'error', title: 'Failed to cancel', message: e.message })
     } finally {
-      setCancelling(false);
+      setCancelling(false)
     }
-  }, [cancelTarget, addToast, fetchRuns, meta.page, meta.pageSize, statusFilter, sortDesc]);
+  }, [cancelTarget, addToast, fetchRuns, meta.page, meta.pageSize, statusFilter, sortDesc])
 
   const filteredRuns = searchQuery
     ? runs.filter((r) => r.id.toLowerCase().includes(searchQuery.toLowerCase()))
-    : runs;
+    : runs
 
-  const totalPages = Math.max(1, Math.ceil(meta.total / meta.pageSize));
-  const rangeStart = meta.total === 0 ? 0 : (meta.page - 1) * meta.pageSize + 1;
-  const rangeEnd = Math.min(meta.page * meta.pageSize, meta.total);
+  const totalPages = Math.max(1, Math.ceil(meta.total / meta.pageSize))
+  const rangeStart = meta.total === 0 ? 0 : (meta.page - 1) * meta.pageSize + 1
+  const rangeEnd = Math.min(meta.page * meta.pageSize, meta.total)
 
   return (
     <>
@@ -183,7 +203,7 @@ export function RunHistoryPage() {
         description="View past runs and create new schedule generations."
         actions={
           <Button icon={<Play size={16} />} onClick={() => navigate('/runs/new')}>
-            + New Run
+            New Run
           </Button>
         }
       />
@@ -193,14 +213,16 @@ export function RunHistoryPage() {
           className={styles.filterSelect}
           value={statusFilter}
           onChange={(e) => {
-            setStatusFilter(e.target.value as RunStatus | '');
-            setMeta((prev) => ({ ...prev, page: 1 }));
+            setStatusFilter(e.target.value as RunStatus | '')
+            setMeta((prev) => ({ ...prev, page: 1 }))
           }}
           aria-label="Filter by status"
         >
           <option value="">All Statuses</option>
           {ALL_STATUSES.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s}>
+              {s}
+            </option>
           ))}
         </select>
 
@@ -259,7 +281,7 @@ export function RunHistoryPage() {
                 </thead>
                 <tbody>
                   {filteredRuns.map((run) => {
-                    const created = formatDate(run.createdAt);
+                    const created = formatDate(run.createdAt)
                     return (
                       <tr key={run.id} className={styles.tr}>
                         <td className={styles.td}>
@@ -269,17 +291,19 @@ export function RunHistoryPage() {
                           <div className={styles.createdPrimary}>
                             {created.date} {created.time}
                           </div>
-                          <div className={styles.createdSecondary}>
-                            by User #{run.createdById}
-                          </div>
+                          <div className={styles.createdSecondary}>by User #{run.createdById}</div>
                         </td>
                         <td className={`${styles.td} ${styles.mono}`}>
                           {run.currentGeneration} / {run.generationsRun}
                         </td>
-                        <td className={`${styles.td} ${styles.mono} ${fitnessClass(run.bestFitness)}`}>
+                        <td
+                          className={`${styles.td} ${styles.mono} ${fitnessClass(run.bestFitness)}`}
+                        >
                           {run.bestFitness.toFixed(4)}
                         </td>
-                        <td className={`${styles.td} ${styles.mono} ${run.hardViolations === 0 ? styles.violationsZero : styles.violationsNonZero}`}>
+                        <td
+                          className={`${styles.td} ${styles.mono} ${run.hardViolations === 0 ? styles.violationsZero : styles.violationsNonZero}`}
+                        >
                           {run.hardViolations}
                         </td>
                         <td className={`${styles.td} ${styles.mono}`}>
@@ -318,7 +342,7 @@ export function RunHistoryPage() {
                           </div>
                         </td>
                       </tr>
-                    );
+                    )
                   })}
                 </tbody>
               </table>
@@ -336,7 +360,9 @@ export function RunHistoryPage() {
                   aria-label="Page size"
                 >
                   {PAGE_SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size}>{size} / page</option>
+                    <option key={size} value={size}>
+                      {size} / page
+                    </option>
                   ))}
                 </select>
                 <button
@@ -375,7 +401,7 @@ export function RunHistoryPage() {
         loading={cancelling}
       />
     </>
-  );
+  )
 }
 
 function LoadingSkeleton() {
@@ -385,7 +411,7 @@ function LoadingSkeleton() {
     [140, 150, 120, 100, 120, 100, 90, 100],
     [100, 170, 110, 120, 100, 80, 100, 100],
     [130, 160, 120, 110, 120, 100, 80, 100],
-  ];
+  ]
 
   return (
     <>
@@ -401,5 +427,5 @@ function LoadingSkeleton() {
         </div>
       ))}
     </>
-  );
+  )
 }

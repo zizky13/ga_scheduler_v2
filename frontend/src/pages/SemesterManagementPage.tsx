@@ -1,49 +1,49 @@
-import { useState, useEffect, useCallback } from 'react';
-import { GraduationCap, Plus, Pencil, Trash2, CheckCircle } from 'lucide-react';
-import { PageHeader } from '../components/ContentArea';
-import { DataTable, type Column } from '../components/DataTable';
-import { Button } from '../components/Button';
-import { BooleanTag } from '../components/Badge';
-import { Modal, ConfirmDialog } from '../components/Modal';
-import { TextInput, FormSection, FormActions } from '../components/Form';
-import { useToastStore } from '../store/toastStore';
-import { get, post, patch, del } from '../lib/api';
-import type { ApiRequestError } from '../lib/api';
-import styles from './SemesterManagementPage.module.css';
+import { useState, useEffect, useCallback } from 'react'
+import { GraduationCap, Plus, Pencil, Trash2, CheckCircle } from 'lucide-react'
+import { PageHeader } from '../components/ContentArea'
+import { DataTable, type Column } from '../components/DataTable'
+import { Button } from '../components/Button'
+import { BooleanTag } from '../components/Badge'
+import { Modal, ConfirmDialog } from '../components/Modal'
+import { TextInput, FormSection, FormActions } from '../components/Form'
+import { useToastStore } from '../store/toastStore'
+import { get, post, patch, del } from '../lib/api'
+import type { ApiRequestError } from '../lib/api'
+import styles from './SemesterManagementPage.module.css'
 
 /* ── Types ── */
 
 interface Semester {
-  id: number;
-  code: string;
-  label: string;
-  startsOn: string;
-  endsOn: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  id: number
+  code: string
+  label: string
+  startsOn: string
+  endsOn: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 interface ListResponse<T> {
-  data: T[];
-  meta: { page: number; pageSize: number; total: number };
+  data: T[]
+  meta: { page: number; pageSize: number; total: number }
 }
 
 interface FormState {
-  code: string;
-  label: string;
-  startsOn: string;
-  endsOn: string;
+  code: string
+  label: string
+  startsOn: string
+  endsOn: string
 }
 
 interface FormErrors {
-  code?: string;
-  label?: string;
-  startsOn?: string;
-  endsOn?: string;
+  code?: string
+  label?: string
+  startsOn?: string
+  endsOn?: string
 }
 
-const EMPTY_FORM: FormState = { code: '', label: '', startsOn: '', endsOn: '' };
+const EMPTY_FORM: FormState = { code: '', label: '', startsOn: '', endsOn: '' }
 
 /* ── Helpers ── */
 
@@ -52,185 +52,201 @@ function formatDate(iso: string): string {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  });
+  })
 }
 
 function toInputDate(iso: string): string {
-  return iso.slice(0, 10);
+  return iso.slice(0, 10)
 }
 
 function validate(form: FormState, isEdit: boolean): FormErrors {
-  const errors: FormErrors = {};
-  if (!isEdit && !form.code.trim()) errors.code = 'Code is required';
-  if (!form.label.trim()) errors.label = 'Label is required';
-  if (!form.startsOn) errors.startsOn = 'Start date is required';
-  if (!form.endsOn) errors.endsOn = 'End date is required';
+  const errors: FormErrors = {}
+  if (!isEdit && !form.code.trim()) errors.code = 'Code is required'
+  if (!form.label.trim()) errors.label = 'Label is required'
+  if (!form.startsOn) errors.startsOn = 'Start date is required'
+  if (!form.endsOn) errors.endsOn = 'End date is required'
   if (form.startsOn && form.endsOn && form.startsOn >= form.endsOn) {
-    errors.endsOn = 'End date must be after start date';
+    errors.endsOn = 'End date must be after start date'
   }
-  return errors;
+  return errors
 }
 
 /* ── Component ── */
 
 export function SemesterManagementPage() {
-  const addToast = useToastStore((s) => s.addToast);
+  const addToast = useToastStore((s) => s.addToast)
 
-  const [semesters, setSemesters] = useState<Semester[]>([]);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [semesters, setSemesters] = useState<Semester[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
 
   // Create/Edit modal
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<Semester | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
-  const [saving, setSaving] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<Semester | null>(null)
+  const [form, setForm] = useState<FormState>(EMPTY_FORM)
+  const [formErrors, setFormErrors] = useState<FormErrors>({})
+  const [saving, setSaving] = useState(false)
 
   // Activate confirm
-  const [activateTarget, setActivateTarget] = useState<Semester | null>(null);
-  const [activating, setActivating] = useState(false);
-  const activeSemester = semesters.find((s) => s.isActive);
+  const [activateTarget, setActivateTarget] = useState<Semester | null>(null)
+  const [activating, setActivating] = useState(false)
+  const activeSemester = semesters.find((s) => s.isActive)
 
   // Delete confirm
-  const [deleteTarget, setDeleteTarget] = useState<Semester | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Semester | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   /* ── Fetch ── */
 
   const fetchSemesters = useCallback(
     async (p: number, ps: number) => {
-      setLoading(true);
+      setLoading(true)
       try {
         const res = await get<ListResponse<Semester>>('/semesters', {
           page: p,
           pageSize: ps,
           sort: '-createdAt',
-        });
-        setSemesters(res.data);
-        setTotal(res.meta.total);
+        })
+        setSemesters(res.data)
+        setTotal(res.meta.total)
       } catch {
-        addToast({ type: 'error', title: 'Failed to load semesters' });
+        addToast({ type: 'error', title: 'Failed to load semesters' })
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     },
     [addToast],
-  );
+  )
 
   useEffect(() => {
-    fetchSemesters(page, pageSize);
-  }, [page, pageSize, fetchSemesters]);
+    fetchSemesters(page, pageSize)
+  }, [page, pageSize, fetchSemesters])
 
   /* ── Create / Edit ── */
 
   function openCreate() {
-    setEditTarget(null);
-    setForm(EMPTY_FORM);
-    setFormErrors({});
-    setModalOpen(true);
+    setEditTarget(null)
+    setForm(EMPTY_FORM)
+    setFormErrors({})
+    setModalOpen(true)
   }
 
   function openEdit(sem: Semester) {
-    setEditTarget(sem);
+    setEditTarget(sem)
     setForm({
       code: sem.code,
       label: sem.label,
       startsOn: toInputDate(sem.startsOn),
       endsOn: toInputDate(sem.endsOn),
-    });
-    setFormErrors({});
-    setModalOpen(true);
+    })
+    setFormErrors({})
+    setModalOpen(true)
   }
 
   function updateField<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => ({ ...prev, [key]: value }))
     setFormErrors((prev) => {
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
   }
 
   async function handleSave() {
-    const isEdit = editTarget !== null;
-    const errors = validate(form, isEdit);
-    setFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    const isEdit = editTarget !== null
+    const errors = validate(form, isEdit)
+    setFormErrors(errors)
+    if (Object.keys(errors).length > 0) return
 
-    setSaving(true);
+    setSaving(true)
     try {
       if (isEdit) {
         await patch(`/semesters/${editTarget!.id}`, {
           label: form.label,
           startsOn: form.startsOn,
           endsOn: form.endsOn,
-        });
-        addToast({ type: 'success', title: 'Semester updated' });
+        })
+        addToast({ type: 'success', title: 'Semester updated' })
       } else {
         await post('/semesters', {
           code: form.code,
           label: form.label,
           startsOn: form.startsOn,
           endsOn: form.endsOn,
-        });
-        addToast({ type: 'success', title: 'Semester created' });
+        })
+        addToast({ type: 'success', title: 'Semester created' })
       }
-      setModalOpen(false);
-      fetchSemesters(page, pageSize);
+      setModalOpen(false)
+      fetchSemesters(page, pageSize)
     } catch (err) {
-      const e = err as ApiRequestError;
+      const e = err as ApiRequestError
       if (e.code === 'SEMESTER_CODE_TAKEN') {
-        setFormErrors((prev) => ({ ...prev, code: 'This code is already in use' }));
+        setFormErrors((prev) => ({ ...prev, code: 'This code is already in use' }))
       } else {
-        addToast({ type: 'error', title: isEdit ? 'Failed to update' : 'Failed to create', message: e.message });
+        addToast({
+          type: 'error',
+          title: isEdit ? 'Failed to update' : 'Failed to create',
+          message: e.message,
+        })
       }
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
   }
 
   /* ── Activate ── */
 
   async function handleActivate() {
-    if (!activateTarget) return;
-    setActivating(true);
+    if (!activateTarget) return
+    setActivating(true)
     try {
-      await post(`/semesters/${activateTarget.id}/activate`, {});
-      addToast({ type: 'success', title: 'Semester activated', message: `${activateTarget.code} is now the active semester.` });
-      setActivateTarget(null);
-      fetchSemesters(page, pageSize);
+      await post(`/semesters/${activateTarget.id}/activate`, {})
+      addToast({
+        type: 'success',
+        title: 'Semester activated',
+        message: `${activateTarget.code} is now the active semester.`,
+      })
+      setActivateTarget(null)
+      fetchSemesters(page, pageSize)
     } catch (err) {
-      const e = err as ApiRequestError;
-      addToast({ type: 'error', title: 'Failed to activate', message: e.message });
+      const e = err as ApiRequestError
+      addToast({ type: 'error', title: 'Failed to activate', message: e.message })
     } finally {
-      setActivating(false);
+      setActivating(false)
     }
   }
 
   /* ── Delete ── */
 
   async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
+    if (!deleteTarget) return
+    setDeleting(true)
     try {
-      await del(`/semesters/${deleteTarget.id}`);
-      addToast({ type: 'success', title: 'Semester deleted' });
-      setDeleteTarget(null);
-      fetchSemesters(page, pageSize);
+      await del(`/semesters/${deleteTarget.id}`)
+      addToast({ type: 'success', title: 'Semester deleted' })
+      setDeleteTarget(null)
+      fetchSemesters(page, pageSize)
     } catch (err) {
-      const e = err as ApiRequestError;
+      const e = err as ApiRequestError
       if (e.code === 'SEMESTER_ACTIVE') {
-        addToast({ type: 'error', title: 'Cannot delete', message: 'An active semester cannot be deleted. Deactivate it first.' });
+        addToast({
+          type: 'error',
+          title: 'Cannot delete',
+          message: 'An active semester cannot be deleted. Deactivate it first.',
+        })
       } else if (e.code === 'SEMESTER_HAS_RELATED_ROWS') {
-        addToast({ type: 'error', title: 'Cannot delete', message: 'This semester has related data. Remove all related records first.' });
+        addToast({
+          type: 'error',
+          title: 'Cannot delete',
+          message: 'This semester has related data. Remove all related records first.',
+        })
       } else {
-        addToast({ type: 'error', title: 'Failed to delete', message: e.message });
+        addToast({ type: 'error', title: 'Failed to delete', message: e.message })
       }
     } finally {
-      setDeleting(false);
+      setDeleting(false)
     }
   }
 
@@ -266,7 +282,7 @@ export function SemesterManagementPage() {
       width: '100px',
       render: (row) => <BooleanTag value={row.isActive} trueLabel="Active" falseLabel="Inactive" />,
     },
-  ];
+  ]
 
   return (
     <>
@@ -275,7 +291,7 @@ export function SemesterManagementPage() {
         description="Manage academic semesters. Only one semester can be active at a time."
         actions={
           <Button icon={<Plus size={16} />} onClick={openCreate}>
-            + New Semester
+            New Semester
           </Button>
         }
       />
@@ -288,7 +304,10 @@ export function SemesterManagementPage() {
         pageSize={pageSize}
         total={total}
         onPageChange={setPage}
-        onPageSizeChange={(s) => { setPageSize(s); setPage(1); }}
+        onPageSizeChange={(s) => {
+          setPageSize(s)
+          setPage(1)
+        }}
         loading={loading}
         rowClassName={(row) => (row.isActive ? styles.activeRow : undefined)}
         emptyIcon={<GraduationCap size={48} />}
@@ -296,7 +315,7 @@ export function SemesterManagementPage() {
         emptyDescription="Create your first semester to begin setting up schedule data."
         emptyAction={
           <Button icon={<Plus size={16} />} onClick={openCreate}>
-            + New Semester
+            New Semester
           </Button>
         }
         rowActions={(row) => (
@@ -420,5 +439,5 @@ export function SemesterManagementPage() {
         loading={deleting}
       />
     </>
-  );
+  )
 }
