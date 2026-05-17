@@ -13,6 +13,8 @@ import { Button } from '../components/Button';
 import { NumberInput, Select, FormSection, FormActions } from '../components/Form';
 import { ConfirmDialog } from '../components/Modal';
 import { useToastStore } from '../store/toastStore';
+import { useSemesterStore } from '../store/semesterStore';
+import type { SemesterItem } from '../store/semesterStore';
 import { useRateLimitCountdown } from '../hooks/useRateLimitCountdown';
 import { get, post } from '../lib/api';
 import type { ApiRequestError } from '../lib/api';
@@ -37,15 +39,8 @@ interface FormErrors {
   elitismCount?: string;
 }
 
-interface Semester {
-  id: number;
-  code: string;
-  label: string;
-  isActive: boolean;
-}
-
 interface PreflightData {
-  semester: Semester | null;
+  semester: SemesterItem | null;
   totalOfferings: number;
   fixedOfferings: number;
   roomsAvailable: number;
@@ -92,6 +87,7 @@ function validate(form: GAFormState): FormErrors {
 export function RunCreationPage() {
   const navigate = useNavigate();
   const addToast = useToastStore((s) => s.addToast);
+  const activeSemester = useSemesterStore((s) => s.activeSemester);
 
   const [form, setForm] = useState<GAFormState>(DEFAULTS);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -122,9 +118,6 @@ export function RunCreationPage() {
     async function loadPreflight() {
       setPreflightLoading(true);
       try {
-        const semRes = await get<ListResponse<Semester>>('/semesters', { isActive: true, page: 1, pageSize: 1 });
-        const activeSemester = semRes.data[0] ?? null;
-
         if (!activeSemester || cancelled) {
           if (!cancelled) setPreflight((p) => ({ ...p, semester: null }));
           setPreflightLoading(false);
@@ -160,7 +153,7 @@ export function RunCreationPage() {
 
     loadPreflight();
     return () => { cancelled = true; };
-  }, [addToast]);
+  }, [addToast, activeSemester]);
 
   function handleStartClick() {
     const errs = validate(form);

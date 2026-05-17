@@ -30,6 +30,7 @@ import {
 } from '../components/Form'
 import { useToastStore } from '../store/toastStore'
 import { useAuthStore } from '../store/authStore'
+import { useSemesterStore } from '../store/semesterStore'
 import { get, post, patch, del } from '../lib/api'
 import type { ApiRequestError } from '../lib/api'
 import styles from './CourseOfferingManagementPage.module.css'
@@ -84,11 +85,6 @@ interface LockedRoomWire {
   offeringId: number
   roomId: number
   reason: string | null
-}
-
-interface Semester {
-  id: number
-  isActive: boolean
 }
 
 interface ListResponse<T> {
@@ -317,6 +313,7 @@ export function CourseOfferingManagementPage() {
   const addToast = useToastStore((s) => s.addToast)
   const userRole = useAuthStore((s) => s.user?.role)
   const isAdmin = userRole === 'ADMIN'
+  const activeSemesterId = useSemesterStore((s) => s.activeSemester?.id ?? null)
 
   /* ── Reference data ── */
   const [allCourses, setAllCourses] = useState<CourseWire[]>([])
@@ -324,7 +321,6 @@ export function CourseOfferingManagementPage() {
   const [allLecturers, setAllLecturers] = useState<LecturerWire[]>([])
   const [allTimeslots, setAllTimeslots] = useState<TimeSlotWire[]>([])
   const [allLockedRooms, setAllLockedRooms] = useState<LockedRoomWire[]>([])
-  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null)
 
   /* ── Table data ── */
   const [offerings, setOfferings] = useState<OfferingEnriched[]>([])
@@ -363,14 +359,13 @@ export function CourseOfferingManagementPage() {
     async (p: number, ps: number) => {
       setLoading(true)
       try {
-        const [offRes, courseRes, roomRes, lecRes, tsRes, lockRes, semRes] = await Promise.all([
+        const [offRes, courseRes, roomRes, lecRes, tsRes, lockRes] = await Promise.all([
           get<ListResponse<CourseOfferingWire>>('/course-offerings', { page: p, pageSize: ps }),
           get<ListResponse<CourseWire>>('/courses', { page: 1, pageSize: 5000 }),
           get<ListResponse<RoomWire>>('/rooms', { page: 1, pageSize: 500 }),
           get<ListResponse<LecturerWire>>('/lecturers', { page: 1, pageSize: 500 }),
           get<ListResponse<TimeSlotWire>>('/timeslots', { page: 1, pageSize: 500 }),
           get<ListResponse<LockedRoomWire>>('/locked-rooms', { page: 1, pageSize: 5000 }),
-          get<ListResponse<Semester>>('/semesters', { isActive: true, page: 1, pageSize: 1 }),
         ])
 
         setAllCourses(courseRes.data)
@@ -378,7 +373,6 @@ export function CourseOfferingManagementPage() {
         setAllLecturers(lecRes.data)
         setAllTimeslots(tsRes.data)
         setAllLockedRooms(lockRes.data)
-        setActiveSemesterId(semRes.data[0]?.id ?? null)
 
         const courseMap = new Map(courseRes.data.map((c) => [c.id, c]))
         const roomMap = new Map(roomRes.data.map((r) => [r.id, r]))
@@ -418,7 +412,7 @@ export function CourseOfferingManagementPage() {
 
   useEffect(() => {
     fetchData(page, pageSize)
-  }, [page, pageSize, fetchData])
+  }, [page, pageSize, fetchData, activeSemesterId])
 
   /* ── Client-side filtering ── */
 

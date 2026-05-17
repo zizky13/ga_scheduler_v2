@@ -8,6 +8,7 @@ import { Modal, ConfirmDialog } from '../components/Modal'
 import { TextInput, NumberInput, MultiSelect, FormSection, FormActions } from '../components/Form'
 import { useToastStore } from '../store/toastStore'
 import { useAuthStore } from '../store/authStore'
+import { useSemesterStore } from '../store/semesterStore'
 import { get, post, patch, del } from '../lib/api'
 import type { ApiRequestError } from '../lib/api'
 import styles from './CourseManagementPage.module.css'
@@ -33,11 +34,6 @@ interface Facility {
 interface OfferingWire {
   id: number
   courseId: number
-}
-
-interface Semester {
-  id: number
-  isActive: boolean
 }
 
 interface ListResponse<T> {
@@ -209,10 +205,10 @@ export function CourseManagementPage() {
   const addToast = useToastStore((s) => s.addToast)
   const userRole = useAuthStore((s) => s.user?.role)
   const isAdmin = userRole === 'ADMIN'
+  const activeSemesterId = useSemesterStore((s) => s.activeSemester?.id ?? null)
 
   const [courses, setCourses] = useState<CourseEnriched[]>([])
   const [allFacilities, setAllFacilities] = useState<Facility[]>([])
-  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
@@ -246,15 +242,13 @@ export function CourseManagementPage() {
     async (p: number, ps: number) => {
       setLoading(true)
       try {
-        const [courseRes, facRes, offRes, semRes] = await Promise.all([
+        const [courseRes, facRes, offRes] = await Promise.all([
           get<ListResponse<Course>>('/courses', { page: p, pageSize: ps, sort: 'code' }),
           get<ListResponse<Facility>>('/facilities', { page: 1, pageSize: 500 }),
           get<ListResponse<OfferingWire>>('/course-offerings', { page: 1, pageSize: 5000 }),
-          get<ListResponse<Semester>>('/semesters', { isActive: true, page: 1, pageSize: 1 }),
         ])
 
         setAllFacilities(facRes.data)
-        setActiveSemesterId(semRes.data[0]?.id ?? null)
 
         const offeringCountMap = new Map<number, number>()
         for (const off of offRes.data) {
@@ -280,7 +274,7 @@ export function CourseManagementPage() {
 
   useEffect(() => {
     fetchData(page, pageSize)
-  }, [page, pageSize, fetchData])
+  }, [page, pageSize, fetchData, activeSemesterId])
 
   /* ── Derived data for filters ── */
 

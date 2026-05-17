@@ -8,6 +8,7 @@ import { Modal, ConfirmDialog } from '../components/Modal'
 import { TextInput, NumberInput, MultiSelect, FormSection, FormActions } from '../components/Form'
 import { useToastStore } from '../store/toastStore'
 import { useAuthStore } from '../store/authStore'
+import { useSemesterStore } from '../store/semesterStore'
 import { get, post, patch, del } from '../lib/api'
 import type { ApiRequestError } from '../lib/api'
 import styles from './RoomManagementPage.module.css'
@@ -31,12 +32,6 @@ interface Facility {
 interface OfferingWire {
   id: number
   roomId: number
-}
-
-interface Semester {
-  id: number
-  code: string
-  isActive: boolean
 }
 
 interface ListResponse<T> {
@@ -92,10 +87,10 @@ export function RoomManagementPage() {
   const addToast = useToastStore((s) => s.addToast)
   const userRole = useAuthStore((s) => s.user?.role)
   const isAdmin = userRole === 'ADMIN'
+  const activeSemesterId = useSemesterStore((s) => s.activeSemester?.id ?? null)
 
   const [rooms, setRooms] = useState<RoomEnriched[]>([])
   const [allFacilities, setAllFacilities] = useState<Facility[]>([])
-  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
@@ -129,7 +124,7 @@ export function RoomManagementPage() {
     async (p: number, ps: number) => {
       setLoading(true)
       try {
-        const [roomRes, facRes, offeringRes, semRes] = await Promise.all([
+        const [roomRes, facRes, offeringRes] = await Promise.all([
           get<ListResponse<Room>>('/rooms', {
             page: p,
             pageSize: ps,
@@ -137,11 +132,9 @@ export function RoomManagementPage() {
           }),
           get<ListResponse<Facility>>('/facilities', { page: 1, pageSize: 500 }),
           get<ListResponse<OfferingWire>>('/course-offerings', { page: 1, pageSize: 5000 }),
-          get<ListResponse<Semester>>('/semesters', { isActive: true, page: 1, pageSize: 1 }),
         ])
 
         setAllFacilities(facRes.data)
-        setActiveSemesterId(semRes.data[0]?.id ?? null)
 
         const enriched: RoomEnriched[] = roomRes.data.map((room) => ({
           ...room,
@@ -161,7 +154,7 @@ export function RoomManagementPage() {
 
   useEffect(() => {
     fetchData(page, pageSize)
-  }, [page, pageSize, fetchData])
+  }, [page, pageSize, fetchData, activeSemesterId])
 
   /* ── Client-side filtering ── */
 

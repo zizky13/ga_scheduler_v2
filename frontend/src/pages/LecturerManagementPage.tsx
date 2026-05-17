@@ -9,6 +9,7 @@ import { Modal, ConfirmDialog } from '../components/Modal'
 import { TextInput, Toggle, FormSection, FormActions, FormField } from '../components/Form'
 import { useToastStore } from '../store/toastStore'
 import { useAuthStore } from '../store/authStore'
+import { useSemesterStore } from '../store/semesterStore'
 import { get, post, patch, del } from '../lib/api'
 import type { ApiRequestError } from '../lib/api'
 import styles from './LecturerManagementPage.module.css'
@@ -40,11 +41,6 @@ interface OfferingLecturerWire {
 interface OfferingWire {
   id: number
   lecturers?: OfferingLecturerWire[]
-}
-
-interface Semester {
-  id: number
-  isActive: boolean
 }
 
 interface ListResponse<T> {
@@ -306,10 +302,10 @@ export function LecturerManagementPage() {
   const addToast = useToastStore((s) => s.addToast)
   const userRole = useAuthStore((s) => s.user?.role)
   const isAdmin = userRole === 'ADMIN'
+  const activeSemesterId = useSemesterStore((s) => s.activeSemester?.id ?? null)
 
   const [lecturers, setLecturers] = useState<LecturerEnriched[]>([])
   const [timeslots, setTimeslots] = useState<TimeSlotWire[]>([])
-  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
@@ -343,15 +339,13 @@ export function LecturerManagementPage() {
     async (p: number, ps: number) => {
       setLoading(true)
       try {
-        const [lecRes, tsRes, offRes, semRes] = await Promise.all([
+        const [lecRes, tsRes, offRes] = await Promise.all([
           get<ListResponse<Lecturer>>('/lecturers', { page: p, pageSize: ps, sort: 'name' }),
           get<ListResponse<TimeSlotWire>>('/timeslots', { page: 1, pageSize: 500 }),
           get<ListResponse<OfferingWire>>('/course-offerings', { page: 1, pageSize: 5000 }),
-          get<ListResponse<Semester>>('/semesters', { isActive: true, page: 1, pageSize: 1 }),
         ])
 
         setTimeslots(tsRes.data)
-        setActiveSemesterId(semRes.data[0]?.id ?? null)
 
         const offeringCountMap = new Map<number, number>()
         for (const off of offRes.data) {
@@ -379,7 +373,7 @@ export function LecturerManagementPage() {
 
   useEffect(() => {
     fetchData(page, pageSize)
-  }, [page, pageSize, fetchData])
+  }, [page, pageSize, fetchData, activeSemesterId])
 
   /* ── All known competencies (for filter) ── */
 

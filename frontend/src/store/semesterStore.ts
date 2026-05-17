@@ -13,7 +13,6 @@ interface SemesterState {
   semesters: SemesterItem[];
   activeSemester: SemesterItem | null;
   loading: boolean;
-  version: number;
 
   fetchSemesters: () => Promise<void>;
   activateSemester: (id: number) => Promise<void>;
@@ -34,7 +33,6 @@ export const useSemesterStore = create<SemesterState>((set, getState) => ({
   semesters: [],
   activeSemester: null,
   loading: false,
-  version: 0,
 
   fetchSemesters: async () => {
     set({ loading: true });
@@ -71,7 +69,6 @@ export const useSemesterStore = create<SemesterState>((set, getState) => ({
     set({
       semesters: updated,
       activeSemester: { ...target, isActive: true },
-      version: getState().version + 1,
     });
   },
 }));

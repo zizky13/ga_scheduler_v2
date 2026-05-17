@@ -8,6 +8,7 @@ import { Select, FormSection, FormActions, TimeInput } from '../components/Form'
 import type { SelectOption } from '../components/Form'
 import { useToastStore } from '../store/toastStore'
 import { useAuthStore } from '../store/authStore'
+import { useSemesterStore } from '../store/semesterStore'
 import { get, post, patch, del } from '../lib/api'
 import type { ApiRequestError } from '../lib/api'
 import styles from './TimeslotManagementPage.module.css'
@@ -27,12 +28,6 @@ interface TimeSlot {
 interface LecturerWire {
   id: number
   preferredTimeSlotIds: number[]
-}
-
-interface Semester {
-  id: number
-  code: string
-  isActive: boolean
 }
 
 interface ListResponse<T> {
@@ -155,9 +150,9 @@ export function TimeslotManagementPage() {
   const addToast = useToastStore((s) => s.addToast)
   const userRole = useAuthStore((s) => s.user?.role)
   const isAdmin = userRole === 'ADMIN'
+  const activeSemesterId = useSemesterStore((s) => s.activeSemester?.id ?? null)
 
   const [slots, setSlots] = useState<TimeSlotEnriched[]>([])
-  const [activeSemesterId, setActiveSemesterId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
 
@@ -181,17 +176,14 @@ export function TimeslotManagementPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const [slotRes, lecRes, semRes] = await Promise.all([
+      const [slotRes, lecRes] = await Promise.all([
         get<ListResponse<TimeSlot>>('/timeslots', {
           page: 1,
           pageSize: 500,
           sort: 'day,startTime',
         }),
         get<ListResponse<LecturerWire>>('/lecturers', { page: 1, pageSize: 500 }),
-        get<ListResponse<Semester>>('/semesters', { isActive: true, page: 1, pageSize: 1 }),
       ])
-
-      setActiveSemesterId(semRes.data[0]?.id ?? null)
 
       const lecturerCountMap = new Map<number, number>()
       for (const lec of lecRes.data) {
@@ -216,7 +208,7 @@ export function TimeslotManagementPage() {
 
   useEffect(() => {
     fetchData()
-  }, [fetchData])
+  }, [fetchData, activeSemesterId])
 
   /* ── Active days (for grid — skip empty weekend days) ── */
 

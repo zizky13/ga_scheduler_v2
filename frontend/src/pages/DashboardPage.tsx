@@ -22,6 +22,8 @@ import { StatCard } from '../components/Card';
 import { Button } from '../components/Button';
 import { StatusBadge } from '../components/Badge';
 import { useToastStore } from '../store/toastStore';
+import { useSemesterStore } from '../store/semesterStore';
+import type { SemesterItem } from '../store/semesterStore';
 import { get } from '../lib/api';
 import styles from './DashboardPage.module.css';
 
@@ -45,13 +47,6 @@ interface ScheduleRunSummary {
   createdAt: string;
 }
 
-interface Semester {
-  id: number;
-  code: string;
-  label: string;
-  isActive: boolean;
-}
-
 interface AuditLogEntry {
   id: number;
   actorId: number | null;
@@ -68,7 +63,7 @@ interface ListResponse<T> {
 }
 
 interface DashboardData {
-  semester: Semester | null;
+  semester: SemesterItem | null;
   roomCount: number;
   lecturerCount: number;
   courseCount: number;
@@ -136,6 +131,7 @@ function entityLabel(entityType: string): string {
 export function DashboardPage() {
   const navigate = useNavigate();
   const addToast = useToastStore((s) => s.addToast);
+  const activeSemester = useSemesterStore((s) => s.activeSemester);
 
   const [data, setData] = useState<DashboardData>({
     semester: null,
@@ -151,13 +147,6 @@ export function DashboardPage() {
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const semRes = await get<ListResponse<Semester>>('/semesters', {
-        isActive: true,
-        page: 1,
-        pageSize: 1,
-      });
-      const activeSemester = semRes.data[0] ?? null;
-
       const semesterId = activeSemester?.id;
 
       const [roomsRes, lecturersRes, coursesRes, offeringsRes, runsRes] =
@@ -207,7 +196,7 @@ export function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, activeSemester]);
 
   useEffect(() => {
     fetchDashboard();
