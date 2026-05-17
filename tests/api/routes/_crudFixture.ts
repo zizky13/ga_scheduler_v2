@@ -759,7 +759,7 @@ export function buildCrudFixture(): CrudFixture {
     async create(input) {
       if (!semesterStore.has(input.semesterId)) throw prismaForeignKey();
       if (!courseStore.has(input.courseId)) throw prismaForeignKey();
-      if (!roomStore.has(input.roomId)) throw prismaForeignKey();
+      if (input.roomId !== null && !roomStore.has(input.roomId)) throw prismaForeignKey();
       for (const lid of input.lecturerIds) {
         if (!lecturerStore.has(lid)) throw prismaForeignKey();
       }
@@ -808,7 +808,7 @@ export function buildCrudFixture(): CrudFixture {
         r.courseId = patch.courseId;
       }
       if (patch.roomId !== undefined) {
-        if (!roomStore.has(patch.roomId)) throw prismaForeignKey();
+        if (patch.roomId !== null && !roomStore.has(patch.roomId)) throw prismaForeignKey();
         r.roomId = patch.roomId;
       }
       if (patch.effectiveStudentCount !== undefined) {

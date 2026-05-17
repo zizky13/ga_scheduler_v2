@@ -190,6 +190,45 @@ describe('POST /course-offerings', () => {
     expect(res.body.fixedTimeSlotIds).toEqual([ids.timeSlotId]);
   });
 
+  it('201 without roomId, and GET returns roomId: null (Phase 7)', async () => {
+    seedUser();
+    const ids = seedDomain();
+    const createRes = await request(app)
+      .post('/api/v1/course-offerings')
+      .set('Authorization', userBearer())
+      .send({
+        semesterId: ids.semesterId,
+        courseId: ids.courseId,
+        effectiveStudentCount: 30,
+        lecturerIds: [ids.lecturerId],
+      });
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.roomId).toBeNull();
+
+    const getRes = await request(app)
+      .get(`/api/v1/course-offerings/${createRes.body.id}`)
+      .set('Authorization', userBearer());
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.roomId).toBeNull();
+  });
+
+  it('201 with explicit null roomId (Phase 7)', async () => {
+    seedUser();
+    const ids = seedDomain();
+    const res = await request(app)
+      .post('/api/v1/course-offerings')
+      .set('Authorization', userBearer())
+      .send({
+        semesterId: ids.semesterId,
+        courseId: ids.courseId,
+        roomId: null,
+        effectiveStudentCount: 30,
+        lecturerIds: [ids.lecturerId],
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.roomId).toBeNull();
+  });
+
   it('400 schema rejects empty lecturerIds', async () => {
     seedAdmin();
     const ids = seedDomain();
