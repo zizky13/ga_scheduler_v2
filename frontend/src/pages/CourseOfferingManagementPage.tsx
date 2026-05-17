@@ -95,7 +95,7 @@ interface ListResponse<T> {
 interface OfferingEnriched extends CourseOfferingWire {
   courseCode: string
   courseName: string
-  roomName: string
+  roomName: string | null
   lecturerNames: string[]
   parentCourseCode: string | null
   lockedRoomId: number | null
@@ -165,7 +165,7 @@ function exportCsv(offerings: OfferingEnriched[]) {
   const header = 'Course Code,Course Name,Room,Lecturers,Students,Fixed,Parent'
   const rows = offerings.map(
     (o) =>
-      `"${o.courseCode}","${o.courseName.replace(/"/g, '""')}","${o.roomName}","${o.lecturerNames.join(', ')}",${o.effectiveStudentCount},${o.isFixed ? 'Yes' : 'No'},"${o.parentCourseCode ?? ''}"`,
+      `"${o.courseCode}","${o.courseName.replace(/"/g, '""')}","${o.roomName ?? ''}","${o.lecturerNames.join(', ')}",${o.effectiveStudentCount},${o.isFixed ? 'Yes' : 'No'},"${o.parentCourseCode ?? ''}"`,
   )
   const csv = [header, ...rows].join('\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -397,7 +397,7 @@ export function CourseOfferingManagementPage() {
 
         const enriched: OfferingEnriched[] = offRes.data.map((o) => {
           const course = courseMap.get(o.courseId)
-          const room = roomMap.get(o.roomId)
+          const room = o.roomId != null ? roomMap.get(o.roomId) : undefined
           const parentOff = o.parentOfferingId
             ? offRes.data.find((x) => x.id === o.parentOfferingId)
             : null
@@ -407,7 +407,7 @@ export function CourseOfferingManagementPage() {
             ...o,
             courseCode: course?.code ?? `#${o.courseId}`,
             courseName: course?.name ?? 'Unknown',
-            roomName: room?.name ?? `#${o.roomId}`,
+            roomName: o.roomId == null ? null : (room?.name ?? `#${o.roomId}`),
             lecturerNames: o.lecturerIds.map((lid) => lecMap.get(lid)?.name ?? `#${lid}`),
             parentCourseCode:
               parentCourse?.code ?? (o.parentOfferingId ? `#${o.parentOfferingId}` : null),
@@ -759,7 +759,12 @@ export function CourseOfferingManagementPage() {
       key: 'room',
       header: 'Room',
       width: '140px',
-      render: (row) => <span>{row.roomName}</span>,
+      render: (row) =>
+        row.roomName ? (
+          <span>{row.roomName}</span>
+        ) : (
+          <span className={styles.dashPlaceholder}>GA-assigned</span>
+        ),
     },
     {
       key: 'lecturers',
