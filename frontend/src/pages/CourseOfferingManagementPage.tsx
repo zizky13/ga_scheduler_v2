@@ -43,7 +43,7 @@ interface CourseOfferingWire {
   id: number
   semesterId: number
   courseId: number
-  roomId: number
+  roomId: number | null
   effectiveStudentCount: number
   lecturerIds: number[]
   isFixed: boolean
@@ -154,7 +154,6 @@ const WEEKDAY_SHORT: Record<Weekday, string> = {
 function validateForm(form: FormState): FormErrors {
   const errors: FormErrors = {}
   if (!form.courseId) errors.courseId = 'Course is required'
-  if (!form.roomId) errors.roomId = 'Room is required'
   if (form.effectiveStudentCount < 0) errors.effectiveStudentCount = 'Must be 0 or greater'
   if (form.lecturerIds.length === 0) errors.lecturerIds = 'At least one lecturer is required'
   return errors
@@ -557,7 +556,6 @@ export function CourseOfferingManagementPage() {
     try {
       const body: Record<string, unknown> = {
         courseId: form.courseId,
-        roomId: form.roomId,
         effectiveStudentCount: form.effectiveStudentCount,
         lecturerIds: form.lecturerIds,
       }
@@ -1064,9 +1062,9 @@ export function CourseOfferingManagementPage() {
           </div>
         )}
 
-        {/* Section 1: Course & Room */}
+        {/* Section 1: Course */}
         <FormSection>
-          <p className={styles.sectionTitle}>Course & Room</p>
+          <p className={styles.sectionTitle}>Course</p>
 
           <Select
             label="Course"
@@ -1082,19 +1080,6 @@ export function CourseOfferingManagementPage() {
               setFormErrors((prev) => ({ ...prev, courseId: undefined }))
             }}
             error={formErrors.courseId}
-            required
-          />
-
-          <Select
-            label="Room"
-            placeholder="Select a room…"
-            options={roomOptions}
-            value={form.roomId ? String(form.roomId) : ''}
-            onChange={(v) => {
-              setForm((prev) => ({ ...prev, roomId: v ? Number(v) : null }))
-              setFormErrors((prev) => ({ ...prev, roomId: undefined }))
-            }}
-            error={formErrors.roomId}
             required
           />
 
