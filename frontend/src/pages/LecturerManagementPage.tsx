@@ -339,10 +339,32 @@ export function LecturerManagementPage() {
     async (p: number, ps: number) => {
       setLoading(true)
       try {
+        if (activeSemesterId === null) {
+          setLecturers([])
+          setTimeslots([])
+          setTotal(0)
+          setLoading(false)
+          return
+        }
+
+        const semesterScope = { semesterId: activeSemesterId }
         const [lecRes, tsRes, offRes] = await Promise.all([
-          get<ListResponse<Lecturer>>('/lecturers', { page: p, pageSize: ps, sort: 'name' }),
-          get<ListResponse<TimeSlotWire>>('/timeslots', { page: 1, pageSize: 500 }),
-          get<ListResponse<OfferingWire>>('/course-offerings', { page: 1, pageSize: 5000 }),
+          get<ListResponse<Lecturer>>('/lecturers', {
+            ...semesterScope,
+            page: p,
+            pageSize: ps,
+            sort: 'name',
+          }),
+          get<ListResponse<TimeSlotWire>>('/timeslots', {
+            ...semesterScope,
+            page: 1,
+            pageSize: 500,
+          }),
+          get<ListResponse<OfferingWire>>('/course-offerings', {
+            ...semesterScope,
+            page: 1,
+            pageSize: 5000,
+          }),
         ])
 
         setTimeslots(tsRes.data)
@@ -368,12 +390,12 @@ export function LecturerManagementPage() {
         setLoading(false)
       }
     },
-    [addToast],
+    [addToast, activeSemesterId],
   )
 
   useEffect(() => {
     fetchData(page, pageSize)
-  }, [page, pageSize, fetchData, activeSemesterId])
+  }, [page, pageSize, fetchData])
 
   /* ── All known competencies (for filter) ── */
 

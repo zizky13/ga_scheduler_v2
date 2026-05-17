@@ -359,13 +359,30 @@ export function CourseOfferingManagementPage() {
     async (p: number, ps: number) => {
       setLoading(true)
       try {
+        if (activeSemesterId === null) {
+          setOfferings([])
+          setTotal(0)
+          setAllLockedRooms([])
+          setLoading(false)
+          return
+        }
+
+        const semesterScope = { semesterId: activeSemesterId }
         const [offRes, courseRes, roomRes, lecRes, tsRes, lockRes] = await Promise.all([
-          get<ListResponse<CourseOfferingWire>>('/course-offerings', { page: p, pageSize: ps }),
+          get<ListResponse<CourseOfferingWire>>('/course-offerings', {
+            ...semesterScope,
+            page: p,
+            pageSize: ps,
+          }),
           get<ListResponse<CourseWire>>('/courses', { page: 1, pageSize: 5000 }),
           get<ListResponse<RoomWire>>('/rooms', { page: 1, pageSize: 500 }),
           get<ListResponse<LecturerWire>>('/lecturers', { page: 1, pageSize: 500 }),
           get<ListResponse<TimeSlotWire>>('/timeslots', { page: 1, pageSize: 500 }),
-          get<ListResponse<LockedRoomWire>>('/locked-rooms', { page: 1, pageSize: 5000 }),
+          get<ListResponse<LockedRoomWire>>('/locked-rooms', {
+            ...semesterScope,
+            page: 1,
+            pageSize: 5000,
+          }),
         ])
 
         setAllCourses(courseRes.data)
@@ -407,12 +424,12 @@ export function CourseOfferingManagementPage() {
         setLoading(false)
       }
     },
-    [addToast],
+    [addToast, activeSemesterId],
   )
 
   useEffect(() => {
     fetchData(page, pageSize)
-  }, [page, pageSize, fetchData, activeSemesterId])
+  }, [page, pageSize, fetchData])
 
   /* ── Client-side filtering ── */
 

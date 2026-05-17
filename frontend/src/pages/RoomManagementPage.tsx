@@ -124,14 +124,27 @@ export function RoomManagementPage() {
     async (p: number, ps: number) => {
       setLoading(true)
       try {
+        if (activeSemesterId === null) {
+          setRooms([])
+          setTotal(0)
+          setLoading(false)
+          return
+        }
+
+        const semesterScope = { semesterId: activeSemesterId }
         const [roomRes, facRes, offeringRes] = await Promise.all([
           get<ListResponse<Room>>('/rooms', {
+            ...semesterScope,
             page: p,
             pageSize: ps,
             sort: 'name',
           }),
           get<ListResponse<Facility>>('/facilities', { page: 1, pageSize: 500 }),
-          get<ListResponse<OfferingWire>>('/course-offerings', { page: 1, pageSize: 5000 }),
+          get<ListResponse<OfferingWire>>('/course-offerings', {
+            ...semesterScope,
+            page: 1,
+            pageSize: 5000,
+          }),
         ])
 
         setAllFacilities(facRes.data)
@@ -149,12 +162,12 @@ export function RoomManagementPage() {
         setLoading(false)
       }
     },
-    [addToast],
+    [addToast, activeSemesterId],
   )
 
   useEffect(() => {
     fetchData(page, pageSize)
-  }, [page, pageSize, fetchData, activeSemesterId])
+  }, [page, pageSize, fetchData])
 
   /* ── Client-side filtering ── */
 
