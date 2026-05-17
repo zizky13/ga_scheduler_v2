@@ -40,8 +40,8 @@ export interface CourseOffering {
   id: number;
   courseId: number;
   course: Course;
-  roomId: number;
-  room: Room;
+  roomId: number | null;
+  room: Room | null;
   lecturers: Lecturer[];       // team teaching = multiple
   effectiveStudentCount: number;
   isFixed: boolean;            // pinned by faculty — must not move
@@ -88,7 +88,7 @@ export interface PreGAValidationResult {
 export interface PreGACandidate {
   offeringId: number;
   courseId: number;
-  roomId: number;
+  roomId: number | null;
   lecturerIds: number[];
   /**
    * Number of parallel groups this offering is split into due to capacity.
