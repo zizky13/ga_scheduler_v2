@@ -145,7 +145,24 @@ export function createGeneFromCandidate(
   candidate: PreGACandidate,
   lookup?: SlotLookup
 ): Gene {
-  const { parallelSessionCount, sessionDuration, roomId } = candidate;
+  const { parallelSessionCount, sessionDuration } = candidate;
+
+  // When the offering has no chosen seed room (CourseOffering.roomId is null),
+  // pick a random initial seed from possibleRoomIds. FIXED candidates always
+  // carry a non-null roomId via LockedRoom or isFixed → roomId mapping.
+  let seedRoomId: number;
+  if (candidate.roomId != null) {
+    seedRoomId = candidate.roomId;
+  } else {
+    const pool = candidate.possibleRoomIds ?? [];
+    if (pool.length === 0) {
+      throw new Error(
+        `Candidate ${candidate.offeringId} has null roomId and empty possibleRoomIds — pre-GA validator should have filtered this offering as infeasible`
+      );
+    }
+    seedRoomId = pool[Math.floor(Math.random() * pool.length)]!;
+  }
+  const roomId = seedRoomId;
 
   let sessions: { roomId: number; timeSlotIds: number[] }[];
 
