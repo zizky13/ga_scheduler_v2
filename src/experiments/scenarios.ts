@@ -181,4 +181,30 @@ export const borderlineScenario: ScenarioSpec = {
   }),
 };
 
-// NOTE: `ALL_SCENARIOS` lands in task E3.21.
+/**
+ * Manifest of every scenario the ablation harness should sweep.
+ *
+ * Order matters for report readability — scenarios are listed by increasing
+ * SSA-pressure so a reader of `summary.json` / `raw-runs.csv` can read down
+ * the rows and see the story unfold:
+ *
+ *   1. `feasible-easy`            — baseline; SSA bypass is a no-op.
+ *   2. `feasible-tight`           — 4-room constraint pressure; SSA still
+ *                                   feasible, GA must work harder without it.
+ *   3. `borderline-ac3-prunes`    — Phase 0 + AC-3 prune meaningfully; SSA
+ *                                   FEASIBLE but domain pruning should
+ *                                   accelerate GA convergence.
+ *   4. `structurally-infeasible`  — headline scenario; SSA returns INFEASIBLE
+ *                                   and short-circuits, while bypass mode
+ *                                   wastes the full GA loop.
+ *
+ * Each member's full rationale lives in the JSDoc above its export. The
+ * harness imports this manifest as its default scenario set — see
+ * `src/experiments/ssa-ablation.ts`'s CLI entry.
+ */
+export const ALL_SCENARIOS: ScenarioSpec[] = [
+  feasibleEasyScenario,
+  feasibleTightScenario,
+  borderlineScenario,
+  structurallyInfeasibleScenario,
+];

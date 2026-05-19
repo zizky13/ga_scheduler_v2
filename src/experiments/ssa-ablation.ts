@@ -668,34 +668,45 @@ export function formatDryRunMatrix(
   ].join("\n");
 }
 
-if (isMain && process.argv.includes("--smoke")) {
+if (isMain && (process.argv.includes("--smoke") || process.argv.includes("--full"))) {
   void (async () => {
-    const { rooms, timeSlots, lecturers, courseOfferings } = await import("../db/seed.js");
+    const isFull = process.argv.includes("--full");
 
-    const smokeScenario: ScenarioSpec = {
-      id: "smoke-feasible",
-      label: "Smoke / canonical-feasible seed (E2.11 placeholder)",
-      build: () => ({
-        offerings: courseOfferings,
-        timeSlots,
-        rooms,
-        lecturers,
-      }),
-    };
+    // Full mode (E3.21 acceptance): import ALL_SCENARIOS and sweep the full
+    // matrix with the backlog-default 30 repetitions. Smoke mode keeps its
+    // fast inline placeholder scenario for harness-level smoke tests.
+    let scenarios: ScenarioSpec[];
+    let repetitions: number;
+    let gaConfigOverrides: Partial<GAConfig> | undefined;
+
+    if (isFull) {
+      const { ALL_SCENARIOS } = await import("./scenarios.js");
+      scenarios = ALL_SCENARIOS;
+      repetitions = 30;
+      gaConfigOverrides = undefined;
+    } else {
+      const { rooms, timeSlots, lecturers, courseOfferings } = await import("../db/seed.js");
+      scenarios = [{
+        id: "smoke-feasible",
+        label: "Smoke / canonical-feasible seed (E2.11 placeholder)",
+        build: () => ({ offerings: courseOfferings, timeSlots, rooms, lecturers }),
+      }];
+      repetitions = 2;
+      gaConfigOverrides = { generations: 20, populationSize: 20 };
+    }
 
     const outputDir = `${process.cwd()}/docs/experiments/data`;
-    const repetitions = 2;
     const parallelism = parseParallelismFlag(process.argv);
     const dryRun = process.argv.includes("--dry-run");
 
     if (dryRun) {
-      console.log(formatDryRunMatrix([smokeScenario], repetitions, parallelism));
+      console.log(formatDryRunMatrix(scenarios, repetitions, parallelism));
       // Still call the harness so the dry-run code path is exercised end-to-end;
       // it returns immediately without I/O.
       await runAblationExperiment({
         repetitions,
-        scenarios: [smokeScenario],
-        gaConfigOverrides: { generations: 20, populationSize: 20 },
+        scenarios,
+        gaConfigOverrides,
         outputDir,
         parallelism,
         dryRun: true,
@@ -703,14 +714,15 @@ if (isMain && process.argv.includes("--smoke")) {
       return;
     }
 
+    const modeLabel = isFull ? "full mode" : "smoke mode";
     console.log(
-      `[ssa-ablation] smoke mode — ${repetitions} reps × 2 modes × 1 scenario` +
+      `[ssa-ablation] ${modeLabel} — ${repetitions} reps × 2 modes × ${scenarios.length} scenario(s)` +
         (parallelism > 1 ? ` (parallelism=${parallelism})` : ""),
     );
     const report = await runAblationExperiment({
       repetitions,
-      scenarios: [smokeScenario],
-      gaConfigOverrides: { generations: 20, populationSize: 20 },
+      scenarios,
+      gaConfigOverrides,
       outputDir,
       parallelism,
     });
@@ -719,7 +731,7 @@ if (isMain && process.argv.includes("--smoke")) {
     // summary.json into `outputDir` itself (E2.13). No extra smoke-summary
     // file — `summary.json` serves that role.
     console.log(
-      `[ssa-ablation] smoke complete — ${report.totalRuns} runs → ${outputDir}/{raw-runs.jsonl,raw-runs.csv,summary.json}`,
+      `[ssa-ablation] ${modeLabel} complete — ${report.totalRuns} runs → ${outputDir}/{raw-runs.jsonl,raw-runs.csv,summary.json}`,
     );
   })().catch((err) => {
     console.error("[ssa-ablation] smoke failed:", err);
