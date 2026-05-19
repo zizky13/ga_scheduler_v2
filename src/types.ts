@@ -217,12 +217,27 @@ export interface GAConfig {
   hardPenaltyWeight: number;   // W_H — techspec §4.3 default 100
   softPenaltyWeight: number;   // W_S — techspec §4.3 default 1
   /**
-   * Experimental debug switch for the SSA ablation experiment under `src/experiments/`.
-   * MUST NOT be wired into any user-facing surface (REST API Zod schemas, frontend form,
-   * `/schedule-runs` request body). Production callers leave this unset; when undefined or
-   * `false`, SSA runs normally. Setting `true` skips the entire SSA layer in
-   * `src/orchestrator.ts` and feeds Pre-GA candidates straight to the GA — an intentionally
-   * unsafe operation reserved for the ablation study, not a production feature.
+   * **DEBUG-ONLY. NEVER EXPOSE THROUGH A USER-FACING SURFACE.**
+   *
+   * (a) **Purpose.** Exists solely to support the SSA ablation experiment
+   *     under `src/experiments/` (see `docs/backlog_experiment.md` Phase E0
+   *     and `docs/experiments/ssa-ablation-report.md`). The flag is the
+   *     independent variable of that study and has no production use case.
+   * (b) **Firewall.** MUST NOT be wired into any user-facing surface:
+   *     REST API Zod schemas under `src/api/schemas/*` (the
+   *     `/schedule-runs` request body schema must reject this field via
+   *     `.strict()` or an explicit allowlist), frontend forms, or any
+   *     other API consumer. Only the experiment harness
+   *     (`src/experiments/ssa-ablation.ts`) and the dedicated CLI flag
+   *     `--skip-ssa` are authorised callers. Phase E5 of
+   *     `docs/backlog_experiment.md` enforces this in code and tests.
+   * (c) **Production default.** All production callers leave this unset
+   *     (`undefined`) or explicitly set it to `false`. Setting `true`
+   *     skips the entire SSA layer in `src/orchestrator.ts` and feeds
+   *     Pre-GA candidates straight to the GA — on structurally infeasible
+   *     inputs the GA returns `status === 'SUCCESS'` with unresolved hard
+   *     constraint violations (see §4.4 of the ablation report). That is
+   *     not a safe production failure mode.
    */
   skipSSA?: boolean;
 }
@@ -266,23 +281,47 @@ export interface SchedulerResponse {
   preGASummary: { feasible: number; infeasible: PreGAInfeasibleEntry[] };
   ssaResult?: SSAResult;
   /**
-   * True when SSA was bypassed via `GAConfig.skipSSA` (experimental). False on
-   * the canonical pipeline. See `docs/backlog_experiment.md` Phase E0.
-   * Debug-only — never expose through the REST API or frontend.
+   * **DEBUG-ONLY TELEMETRY. NEVER EXPOSE THROUGH A USER-FACING SURFACE.**
+   *
+   * (a) **Purpose.** Reports whether SSA was bypassed via
+   *     `GAConfig.skipSSA` on this run. Consumed by the SSA ablation
+   *     harness in `src/experiments/ssa-ablation.ts` to verify that the
+   *     orchestrator honoured the configured mode; no production code
+   *     path branches on this field.
+   * (b) **Firewall.** MUST NOT be surfaced in REST API responses or
+   *     rendered in the frontend. The presence of this field on
+   *     `SchedulerResponse` is an internal contract between the
+   *     orchestrator and the experiment harness; API response schemas
+   *     must strip it before serialisation.
+   * (c) **Production default.** Always `false` on canonical pipeline
+   *     runs (`GAConfig.skipSSA` undefined or `false`). A `true` value
+   *     in a production log indicates an unauthorised debug toggle.
    */
   ssaSkipped: boolean;
   gaResult?: GAResult;
   durationMs: number;
   /**
-   * Wall-clock split of `durationMs` (E1 task 8 of docs/backlog_experiment.md).
-   * All three are populated whenever the matching layer executes; the layer
-   * that did not run reports `0`. Their sum equals `durationMs` within ±1ms
-   * rounding error (each field is independently `Math.round`-ed).
+   * **DEBUG-ONLY TELEMETRY. NEVER EXPOSE THROUGH A USER-FACING SURFACE.**
    *
-   * `ssaDurationMs` is `0` when `ssaSkipped === true` AND when the run aborted
-   * with `NO_FEASIBLE_CANDIDATES` before SSA could run.
-   * `gaDurationMs` is `0` when SSA returned `INFEASIBLE` or when the run
-   * aborted with `NO_FEASIBLE_CANDIDATES`.
+   * (a) **Purpose.** Per-phase wall-clock split of `durationMs`,
+   *     instrumented by E1 task 8 of `docs/backlog_experiment.md` to
+   *     support the SSA ablation experiment. The harness in
+   *     `src/experiments/ssa-ablation.ts` aggregates these into the
+   *     per-scenario duration tables in
+   *     `docs/experiments/ssa-ablation-report.md` §4. No production code
+   *     path branches on any of the three fields.
+   * (b) **Firewall.** MUST NOT be returned by the public REST API
+   *     (`/schedule-runs`) or rendered in the frontend. API response
+   *     schemas must strip these fields before serialisation; the public
+   *     contract for run duration is the aggregate `durationMs`.
+   * (c) **Production default.** All three fields are populated by
+   *     `runPipeline` on every run (the layer that did not execute
+   *     reports `0`). Their sum equals `durationMs` within ±1ms rounding
+   *     error (each field is independently `Math.round`-ed).
+   *     `ssaDurationMs` is `0` when `ssaSkipped === true` AND when the
+   *     run aborted with `NO_FEASIBLE_CANDIDATES` before SSA could run.
+   *     `gaDurationMs` is `0` when SSA returned `INFEASIBLE` or when the
+   *     run aborted with `NO_FEASIBLE_CANDIDATES`.
    *
    * Optional on the interface so older code paths or test fixtures that
    * construct a `SchedulerResponse` literal without timing instrumentation

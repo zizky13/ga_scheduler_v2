@@ -49,7 +49,14 @@
       "Bash(time npx tsx src/experiments/ssa-ablation.ts --smoke)",
       "Bash(npx tsx *)",
       "Bash(awk -F, '{print NF}' docs/experiments/data/raw-runs.csv)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(sed -n '40,80p')",
+      "Bash(sed -n '670,720p' \"/Users/zikarnurizky/Desktop/01_Project/Tugas Akhir/ga_scheduler_v2/src/experiments/ssa-ablation.ts\")",
+      "Bash(awk -F, 'NR>1 {print $1\",\"$2\",\"$10}' docs/experiments/data/raw-runs.csv)",
+      "Bash(cat .gitignore)",
+      "Bash(git check-ignore *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
