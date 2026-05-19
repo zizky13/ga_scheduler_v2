@@ -265,6 +265,12 @@ export interface SchedulerResponse {
   status: 'SUCCESS' | 'INFEASIBLE' | 'NO_FEASIBLE_CANDIDATES';
   preGASummary: { feasible: number; infeasible: PreGAInfeasibleEntry[] };
   ssaResult?: SSAResult;
+  /**
+   * True when SSA was bypassed via `GAConfig.skipSSA` (experimental). False on
+   * the canonical pipeline. See `docs/backlog_experiment.md` Phase E0.
+   * Debug-only — never expose through the REST API or frontend.
+   */
+  ssaSkipped: boolean;
   gaResult?: GAResult;
   durationMs: number;
 }

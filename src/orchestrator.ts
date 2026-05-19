@@ -87,6 +87,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       response: {
         status: 'NO_FEASIBLE_CANDIDATES',
         preGASummary,
+        ssaSkipped: false,
         durationMs: Math.round(performance.now() - start),
       },
       context: {
@@ -120,6 +121,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         status: 'SUCCESS',
         preGASummary,
         ssaResult: undefined,
+        ssaSkipped: true,
         gaResult,
         durationMs: Math.round(performance.now() - start),
       },
@@ -142,6 +144,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         status: 'INFEASIBLE',
         preGASummary,
         ssaResult,
+        ssaSkipped: false,
         durationMs: Math.round(performance.now() - start),
       },
       context: {
@@ -170,6 +173,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       status: 'SUCCESS',
       preGASummary,
       ssaResult,
+      ssaSkipped: false,
       gaResult,
       durationMs: Math.round(performance.now() - start),
     },
