@@ -606,6 +606,7 @@ export function buildCrudFixture(): CrudFixture {
         semesterId: input.semesterId,
         name: input.name,
         isStructural: input.isStructural,
+        maxSks: input.maxSks ?? (input.isStructural ? 6 : 12),
         preferredTimeSlotIds: [...input.preferredTimeSlotIds],
         competencies: [...input.competencies],
         createdById: input.createdById,
@@ -626,6 +627,7 @@ export function buildCrudFixture(): CrudFixture {
       }
       if (patch.name !== undefined) r.name = patch.name;
       if (patch.isStructural !== undefined) r.isStructural = patch.isStructural;
+      if (patch.maxSks !== undefined) r.maxSks = patch.maxSks;
       if (patch.competencies !== undefined) r.competencies = [...patch.competencies];
       r.updatedAt = new Date();
       return clone(r);
@@ -1142,11 +1144,13 @@ export function buildCrudFixture(): CrudFixture {
   }): LecturerRecord {
     const now = new Date();
     const id = l.id ?? nextLecturerId++;
+    const isStructural = l.isStructural ?? false;
     const row: LecturerRecord = {
       id,
       semesterId: l.semesterId,
       name: l.name,
-      isStructural: l.isStructural ?? false,
+      isStructural,
+      maxSks: l.maxSks ?? (isStructural ? 6 : 12),
       preferredTimeSlotIds: l.preferredTimeSlotIds ?? [],
       competencies: l.competencies ?? [],
       createdById: l.createdById ?? null,

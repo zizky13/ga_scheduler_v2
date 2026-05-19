@@ -18,6 +18,7 @@ export interface LecturerRecord {
   semesterId: number;
   name: string;
   isStructural: boolean;
+  maxSks: number;
   preferredTimeSlotIds: number[];
   competencies: string[];
   createdById: number | null;
@@ -29,6 +30,7 @@ export interface CreateLecturerInput {
   semesterId: number;
   name: string;
   isStructural: boolean;
+  maxSks?: number;
   preferredTimeSlotIds: number[];
   competencies: string[];
   createdById: number | null;
@@ -37,6 +39,7 @@ export interface CreateLecturerInput {
 export interface UpdateLecturerInput {
   name?: string;
   isStructural?: boolean;
+  maxSks?: number;
   preferredTimeSlotIds?: number[];
   competencies?: string[];
 }
@@ -98,6 +101,7 @@ function toRecord(row: LecturerWithSlots): LecturerRecord {
     semesterId: row.semesterId,
     name: row.name,
     isStructural: row.isStructural,
+    maxSks: row.maxSks,
     preferredTimeSlotIds: row.preferredSlots.map((p) => p.timeSlotId),
     competencies: [...row.competencies],
     createdById: row.createdById,
@@ -138,6 +142,7 @@ export function createLecturerRepository(prisma: PrismaClient): LecturerReposito
           semesterId: input.semesterId,
           name: input.name,
           isStructural: input.isStructural,
+          maxSks: input.maxSks ?? (input.isStructural ? 6 : 12),
           competencies: input.competencies,
           createdById: input.createdById,
           preferredSlots: {
@@ -164,6 +169,7 @@ export function createLecturerRepository(prisma: PrismaClient): LecturerReposito
         const data: Prisma.LecturerUpdateInput = {};
         if (patch.name !== undefined) data.name = patch.name;
         if (patch.isStructural !== undefined) data.isStructural = patch.isStructural;
+        if (patch.maxSks !== undefined) data.maxSks = patch.maxSks;
         if (patch.competencies !== undefined) data.competencies = patch.competencies;
         return tx.lecturer.update({
           where: { id },
