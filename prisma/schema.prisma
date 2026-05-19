@@ -172,6 +172,7 @@ model Lecturer {
   semesterId   Int
   name         String
   isStructural Boolean  @default(false) // techspec §2.2 — soft constraint
+  maxSks       Int      @default(12) // soft constraint — max teaching load in SKS
   // [HC-COMPETENCY] (techspec §5.5) / [ARCH-OBS-05] (api_design §3.5):
   // Postgres uses native String[]. For the SQLite target, change this column
   // to `String` and store a JSON-encoded array; the repository codec in
