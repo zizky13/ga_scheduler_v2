@@ -116,3 +116,201 @@ export function computeSsaCounterfactual(
     wouldHaveDeclaredInfeasible: ssa.status === "INFEASIBLE",
   };
 }
+
+// ─── E2.11 — Harness scaffold ─────────────────────────────────────
+// Types below are intentionally minimal. E2.12 fleshes out RunRecord;
+// E3.17–E3.21 supplies the scenario manifest from `./scenarios.js`.
+
+import type { CourseOffering, GAConfig, Lecturer, Room } from "../types.js";
+import { runPipeline } from "../orchestrator.js";
+
+/**
+ * One ablation scenario — a named composition of seed inputs that the harness
+ * sweeps `{withSSA, withoutSSA} × repetitions` times. The full manifest lands
+ * in E3 (`src/experiments/scenarios.ts` exporting `ALL_SCENARIOS`). E2.11
+ * defines the shape and provides one inline smoke-mode scenario.
+ */
+export interface ScenarioSpec {
+  /** Stable identifier used in the output JSON (e.g., `'feasible-easy'`). */
+  readonly id: string;
+  /** Human-readable label for logs and reports. */
+  readonly label: string;
+  /** Builds the orchestrator input for this scenario. Pure — call per run. */
+  readonly build: () => {
+    offerings: CourseOffering[];
+    timeSlots: import("../types.js").TimeSlot[];
+    rooms: Room[];
+    lecturers: Lecturer[];
+  };
+}
+
+export interface AblationOpts {
+  /** Number of times to repeat each (scenario, mode) combo. Backlog default: 30. */
+  repetitions: number;
+  /** Scenarios to sweep. Required at runtime; the smoke entry point supplies a built-in. */
+  scenarios: ScenarioSpec[];
+  /** Optional partial GAConfig override layered on top of the default. */
+  gaConfigOverrides?: Partial<GAConfig>;
+  /** Absolute path where the harness writes summary.json (and later raw-runs.jsonl/csv). */
+  outputDir: string;
+}
+
+/**
+ * Minimal record schema for E2.11. E2.12 expands this with
+ * firstFeasibleGeneration, per-phase durations, and counterfactual fields.
+ */
+export interface RunRecord {
+  scenarioId: string;
+  mode: "with-ssa" | "without-ssa";
+  repetitionIndex: number;
+  status: "SUCCESS" | "INFEASIBLE" | "NO_FEASIBLE_CANDIDATES";
+  bestFitness: number | null;
+  hardViolations: number | null;
+  softPenalty: number | null;
+  generationsRun: number | null;
+  stagnatedEarly: boolean | null;
+  totalDurationMs: number;
+}
+
+export interface AblationReport {
+  startedAt: string;
+  finishedAt: string;
+  repetitions: number;
+  scenarioCount: number;
+  totalRuns: number;
+  records: RunRecord[];
+}
+
+/**
+ * Hyperparameters mirror the CLI's `buildConfig` in `src/cli/run-pipeline.ts:32-44`.
+ * The smoke entry point overrides `generations` for speed; production harness
+ * runs use this baseline plus any `gaConfigOverrides` the caller layers in.
+ */
+const DEFAULT_GA_CONFIG: GAConfig = {
+  populationSize: 80,
+  generations: 200,
+  mutationRate: 0.1,
+  elitismCount: 3,
+  tournamentSize: 4,
+  crossoverType: "singlePoint",
+  noiseRate: 0.15,
+  hardPenaltyWeight: 100,
+  softPenaltyWeight: 1,
+};
+
+async function executeSingleRun(
+  scenario: ScenarioSpec,
+  mode: "with-ssa" | "without-ssa",
+  repetitionIndex: number,
+  baseConfig: GAConfig,
+): Promise<RunRecord> {
+  const built = scenario.build();
+  const config: GAConfig = { ...baseConfig, skipSSA: mode === "without-ssa" };
+
+  const realLog = console.log;
+  const realWarn = console.warn;
+  console.log = () => {};
+  console.warn = () => {};
+  let response;
+  try {
+    const out = await runPipeline({
+      offerings: built.offerings,
+      timeSlots: built.timeSlots,
+      rooms: built.rooms,
+      lecturers: built.lecturers,
+      config,
+    });
+    response = out.response;
+  } finally {
+    console.log = realLog;
+    console.warn = realWarn;
+  }
+
+  return {
+    scenarioId: scenario.id,
+    mode,
+    repetitionIndex,
+    status: response.status,
+    bestFitness: response.gaResult?.bestFitness ?? null,
+    hardViolations: response.gaResult?.hardViolations ?? null,
+    softPenalty: response.gaResult?.softPenalty ?? null,
+    generationsRun: response.gaResult?.generationsRun ?? null,
+    stagnatedEarly: response.gaResult?.stagnatedEarly ?? null,
+    totalDurationMs: response.durationMs,
+  };
+}
+
+export async function runAblationExperiment(opts: AblationOpts): Promise<AblationReport> {
+  const startedAt = new Date().toISOString();
+  const records: RunRecord[] = [];
+  const baseConfig: GAConfig = { ...DEFAULT_GA_CONFIG, ...(opts.gaConfigOverrides ?? {}) };
+  const modes: ReadonlyArray<"with-ssa" | "without-ssa"> = ["with-ssa", "without-ssa"];
+
+  for (const scenario of opts.scenarios) {
+    for (const mode of modes) {
+      for (let rep = 0; rep < opts.repetitions; rep += 1) {
+        const record = await executeSingleRun(scenario, mode, rep, baseConfig);
+        records.push(record);
+      }
+    }
+  }
+
+  const finishedAt = new Date().toISOString();
+  return {
+    startedAt,
+    finishedAt,
+    repetitions: opts.repetitions,
+    scenarioCount: opts.scenarios.length,
+    totalRuns: records.length,
+    records,
+  };
+}
+
+// ─── Smoke-mode CLI entry ────────────────────────────────────────
+// `tsx src/experiments/ssa-ablation.ts --smoke` produces a fast 2-rep
+// run against an inline canonical-seed scenario and writes a summary
+// JSON file under `outputDir`. The full harness CLI (with --dry-run /
+// --parallelism / structured logging / CSV writers) lands in E2.13–E2.15.
+
+// Project is CommonJS (`"type": "commonjs"` in package.json), so use the
+// classic `require.main === module` idiom rather than `import.meta.url`.
+declare const require: { main?: unknown } | undefined;
+declare const module: unknown;
+const isMain = typeof require !== "undefined" && require.main === module;
+
+if (isMain && process.argv.includes("--smoke")) {
+  void (async () => {
+    const { rooms, timeSlots, lecturers, courseOfferings } = await import("../db/seed.js");
+
+    const smokeScenario: ScenarioSpec = {
+      id: "smoke-feasible",
+      label: "Smoke / canonical-feasible seed (E2.11 placeholder)",
+      build: () => ({
+        offerings: courseOfferings,
+        timeSlots,
+        rooms,
+        lecturers,
+      }),
+    };
+
+    const outputDir = `${process.cwd()}/docs/experiments/data`;
+
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(outputDir, { recursive: true });
+
+    console.log("[ssa-ablation] smoke mode — 2 reps × 2 modes × 1 scenario");
+    const report = await runAblationExperiment({
+      repetitions: 2,
+      scenarios: [smokeScenario],
+      gaConfigOverrides: { generations: 20, populationSize: 20 },
+      outputDir,
+    });
+
+    const outPath = `${outputDir}/smoke-summary.json`;
+    await writeFile(outPath, JSON.stringify(report, null, 2));
+    console.log(`[ssa-ablation] smoke complete — ${report.totalRuns} runs → ${outPath}`);
+  })().catch((err) => {
+    console.error("[ssa-ablation] smoke failed:", err);
+    process.exitCode = 1;
+  });
+}
