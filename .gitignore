@@ -2,4 +2,10 @@ node_modules/
 .env
 .env.local
 .claude/
-docs/
+docs/*
+!docs/experiments/
+docs/experiments/*
+!docs/experiments/data/
+docs/experiments/data/*
+!docs/experiments/data/raw-runs.csv
+!docs/experiments/data/summary.json
