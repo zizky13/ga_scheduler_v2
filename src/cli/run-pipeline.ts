@@ -29,7 +29,10 @@ import { formatGeneLines, formatSession, isContiguous } from "./_format.js";
 const DIVIDER = "═".repeat(60);
 const SDIVIDER = "─".repeat(60);
 
-function buildConfig(crossoverType: GAConfig["crossoverType"]): GAConfig {
+function buildConfig(
+  crossoverType: GAConfig["crossoverType"],
+  skipSSA: boolean = false,
+): GAConfig {
   return {
     populationSize: 80,
     generations: 200,
@@ -40,6 +43,7 @@ function buildConfig(crossoverType: GAConfig["crossoverType"]): GAConfig {
     noiseRate: 0.15,
     hardPenaltyWeight: 100,
     softPenaltyWeight: 1,
+    skipSSA,
   };
 }
 
@@ -49,6 +53,15 @@ async function main(): Promise<void> {
   console.log("  Three-Layer Architecture Backbone Validation");
   console.log(DIVIDER);
   console.log();
+
+  const skipSSA = process.argv.includes("--skip-ssa");
+  if (skipSSA) {
+    console.log("┌─────────────────────────────────────────────────┐");
+    console.log("│  ⚠️  EXPERIMENTAL: --skip-ssa active.           │");
+    console.log("│  SSA layer bypassed. Debug-only flag.           │");
+    console.log("│  See docs/backlog_experiment.md Phase E0.       │");
+    console.log("└─────────────────────────────────────────────────┘\n");
+  }
 
   const pipelineStart = performance.now();
 
@@ -76,7 +89,7 @@ async function main(): Promise<void> {
     timeSlots,
     rooms,
     lecturers,
-    config: buildConfig(crossoverTypes[0]),
+    config: buildConfig(crossoverTypes[0], skipSSA),
   });
   console.log = realLog;
   console.warn = realWarn;
@@ -114,42 +127,52 @@ async function main(): Promise<void> {
   // ═══════════════════════════════════════════════════════════════
   // LAYER 2: Static Structural Analysis (SSA)
   // ═══════════════════════════════════════════════════════════════
-  console.log("┌─────────────────────────────────────────────────┐");
-  console.log("│  LAYER 2: Static Structural Analysis (SSA)      │");
-  console.log("│  Deterministic. O(E√V) complexity.              │");
-  console.log("└─────────────────────────────────────────────────┘\n");
-
-  const { lockedCoordinates } = runStaticExclusion(candidates);
-  if (lockedCoordinates.size > 0) {
-    console.log(`  Phase 0 — Static Exclusion:`);
-    console.log(`    Locked coordinates: ${lockedCoordinates.size}`);
-    for (const coord of lockedCoordinates) {
-      const [roomId, slotId] = coord.split(":");
-      const room = rooms.find((r) => r.id === Number(roomId));
-      const slot = timeSlots.find((s) => s.id === Number(slotId));
-      console.log(
-        `      🔐 ${room?.name ?? `Room#${roomId}`} × ${slot ? `${slot.day.slice(0, 3)} ${slot.startTime}` : `Slot#${slotId}`}`,
-      );
-    }
-    console.log();
-  }
-
-  const ssaResult = firstRun.response.ssaResult!;
-  console.log(`  Status:            ${ssaResult.status}`);
-  console.log(`  Total Sessions:    ${ssaResult.totalSessionsRequired}`);
-  console.log(`  Max Matchable:     ${ssaResult.maximumAchievableMatching}`);
-
-  if (firstRun.response.status === "INFEASIBLE") {
-    console.log(`\n  🛑 STRUCTURAL_INFEASIBILITY — GA blocked.`);
-    console.log(`  Code: ${ssaResult.deadlockReport?.code}`);
-    console.log(`  Message: ${ssaResult.deadlockReport?.message}`);
+  if (skipSSA) {
+    console.log("┌─────────────────────────────────────────────────┐");
+    console.log("│  LAYER 2: BYPASSED (--skip-ssa)                 │");
+    console.log("│  Structural feasibility NOT verified.           │");
+    console.log("└─────────────────────────────────────────────────┘\n");
     console.log(
-      `  Affected: [${ssaResult.deadlockReport?.affectedOfferingIds.join(", ")}]`,
+      `  ⏭️  Skipping SSA — proceeding directly to GA on raw candidates.\n`,
     );
-    process.exit(1);
-  }
+  } else {
+    console.log("┌─────────────────────────────────────────────────┐");
+    console.log("│  LAYER 2: Static Structural Analysis (SSA)      │");
+    console.log("│  Deterministic. O(E√V) complexity.              │");
+    console.log("└─────────────────────────────────────────────────┘\n");
 
-  console.log(`\n  ✅ Layer 2 passed — feasibility confirmed.\n`);
+    const { lockedCoordinates } = runStaticExclusion(candidates);
+    if (lockedCoordinates.size > 0) {
+      console.log(`  Phase 0 — Static Exclusion:`);
+      console.log(`    Locked coordinates: ${lockedCoordinates.size}`);
+      for (const coord of lockedCoordinates) {
+        const [roomId, slotId] = coord.split(":");
+        const room = rooms.find((r) => r.id === Number(roomId));
+        const slot = timeSlots.find((s) => s.id === Number(slotId));
+        console.log(
+          `      🔐 ${room?.name ?? `Room#${roomId}`} × ${slot ? `${slot.day.slice(0, 3)} ${slot.startTime}` : `Slot#${slotId}`}`,
+        );
+      }
+      console.log();
+    }
+
+    const ssaResult = firstRun.response.ssaResult!;
+    console.log(`  Status:            ${ssaResult.status}`);
+    console.log(`  Total Sessions:    ${ssaResult.totalSessionsRequired}`);
+    console.log(`  Max Matchable:     ${ssaResult.maximumAchievableMatching}`);
+
+    if (firstRun.response.status === "INFEASIBLE") {
+      console.log(`\n  🛑 STRUCTURAL_INFEASIBILITY — GA blocked.`);
+      console.log(`  Code: ${ssaResult.deadlockReport?.code}`);
+      console.log(`  Message: ${ssaResult.deadlockReport?.message}`);
+      console.log(
+        `  Affected: [${ssaResult.deadlockReport?.affectedOfferingIds.join(", ")}]`,
+      );
+      process.exit(1);
+    }
+
+    console.log(`\n  ✅ Layer 2 passed — feasibility confirmed.\n`);
+  }
 
   // ═══════════════════════════════════════════════════════════════
   // LAYER 3: GA Core (Genetic Algorithm)
@@ -189,7 +212,7 @@ async function main(): Promise<void> {
       timeSlots,
       rooms,
       lecturers,
-      config: buildConfig(crossoverType),
+      config: buildConfig(crossoverType, skipSSA),
     });
 
     const gaResult = run.response.gaResult!;
@@ -463,6 +486,7 @@ async function main(): Promise<void> {
       noiseRate: 0.15,
       hardPenaltyWeight: 100,
       softPenaltyWeight: 1,
+      skipSSA,
     },
   });
   console.log = realLog2;

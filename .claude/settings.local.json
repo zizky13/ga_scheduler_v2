@@ -41,7 +41,8 @@
       "Bash(npm create *)",
       "Bash(npx vite *)",
       "Bash(awk -F'.' '{print $1}')",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(timeout 20 npx tsx src/cli/run-pipeline.ts)"
     ]
   }
 }
