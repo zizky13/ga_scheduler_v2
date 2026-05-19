@@ -44,5 +44,28 @@
  * no seedable RNG refactor. The GA stays Math.random()-based.
  */
 
-// Implementation lands in E2.11. Intentionally empty.
-export {};
+import type { GenerationSnapshot } from "../ga/runGA.js";
+
+/**
+ * Returns the generation number of the first snapshot with `hardViolations === 0`,
+ * or `null` if no snapshot in the stream reached feasibility.
+ *
+ * Generations are 1-indexed in `GenerationSnapshot.generation` (see
+ * `src/ga/runGA.ts:178` — the hook fires `generation: gen + 1`). The returned
+ * value preserves that 1-indexed convention, so `firstFeasibleGeneration === 1`
+ * means the initial population (after repair) already produced a feasible
+ * chromosome.
+ *
+ * The harness collects snapshots via `GAHooks.onGeneration` (E2 task 11).
+ * Reason this lives outside the GA core: it is a pure post-processing pass,
+ * has no value to the GA loop itself, and would needlessly couple the
+ * algorithm to the ablation report.
+ */
+export function firstFeasibleGeneration(
+  snapshots: readonly GenerationSnapshot[]
+): number | null {
+  for (const s of snapshots) {
+    if (s.hardViolations === 0) return s.generation;
+  }
+  return null;
+}
