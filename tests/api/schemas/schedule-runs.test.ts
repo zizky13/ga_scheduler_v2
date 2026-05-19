@@ -39,6 +39,25 @@ describe('gaConfigSchema', () => {
     const result = gaConfigSchema.safeParse({ ...validConfig, crossoverType: 'megaSwap' });
     expect(result.success).toBe(false);
   });
+
+  it('rejects the experimental `skipSSA` flag (E5 firewall)', () => {
+    // Phase E5 of docs/backlog_experiment.md: `GAConfig.skipSSA` is the
+    // independent variable of the SSA ablation experiment and must never
+    // be reachable through the public REST API. The `.strict()` modifier
+    // on `gaConfigSchema` enforces this by rejecting any unknown key.
+    const result = gaConfigSchema.safeParse({ ...validConfig, skipSSA: true });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // Zod's `.strict()` reports unknown keys via `unrecognized_keys` issues
+      // whose path is `[]` and whose `keys` array lists the offenders.
+      const mentionsSkipSsa = result.error.issues.some(
+        (i) =>
+          i.path.includes('skipSSA') ||
+          ((i as { keys?: string[] }).keys?.includes('skipSSA') ?? false),
+      );
+      expect(mentionsSkipSsa).toBe(true);
+    }
+  });
 });
 
 describe('createScheduleRunBodySchema', () => {
@@ -63,5 +82,25 @@ describe('createScheduleRunBodySchema', () => {
       idempotencyKey: 'should-be-a-header-not-a-body-field',
     });
     expect(result.success).toBe(false);
+  });
+
+  it('rejects a POST body that smuggles `skipSSA: true` into config (E5 firewall)', () => {
+    // Backlog E5 task 27: a malicious or curious API client must not be
+    // able to bypass SSA on a production run by posting
+    // `{"config": {"skipSSA": true}}`. The strict `gaConfigSchema` blocks
+    // this at the nested `config` level.
+    const result = createScheduleRunBodySchema.safeParse({
+      semesterId: 1,
+      config: { ...validConfig, skipSSA: true },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const mentionsSkipSsa = result.error.issues.some(
+        (i) =>
+          i.path.includes('skipSSA') ||
+          ((i as { keys?: string[] }).keys?.includes('skipSSA') ?? false),
+      );
+      expect(mentionsSkipSsa).toBe(true);
+    }
   });
 });
