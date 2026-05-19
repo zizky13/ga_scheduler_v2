@@ -12,7 +12,9 @@
     "worker": "tsx src/worker/index.ts",
     "db:seed": "tsx prisma/seed.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "experiment": "tsx src/experiments/ssa-ablation.ts --full",
+    "experiment:smoke": "tsx src/experiments/ssa-ablation.ts --smoke"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -320,6 +320,8 @@ GA configuration (`populationSize`, `generations`, `mutationRate`, `elitismCount
 | `db:seed` | `npm run db:seed` | Idempotently upserts the canonical fixture data |
 | `test` | `npm test` | Runs the Vitest suite once and exits |
 | `test:watch` | `npm run test:watch` | Vitest in watch mode |
+| `experiment` | `npm run experiment` | Runs the full SSA ablation sweep (4 scenarios × 2 modes × 30 reps). See [Experiments](#experiments). |
+| `experiment:smoke` | `npm run experiment:smoke` | Fast smoke run of the SSA ablation harness (4 runs, < 1 min). |
 
 ### Frontend (from `frontend/`)
 
@@ -632,6 +634,26 @@ The test suite (44 files) covers:
 - **Black-box (§10.2)**: 11 scenarios exercising the full `runPipeline` as a black box for thesis Chapter 4 validation -- feasible simple, SSA Phase 0 trigger, AC-3 abort, Hopcroft-Karp abort, partial infeasibility, parallel class, team teaching, fixed room invariant, competency mismatch, competency open assignment, crossover comparison
 
 See `docs/blackbox-test-documentation.md` for detailed scenario descriptions, inputs, expected outputs, and results.
+
+---
+
+## Experiments
+
+The repository carries an offline ablation study that quantifies the contribution of the Structural Symmetry Analyser (SSA) layer to the scheduling pipeline. The full methodology, per-scenario results tables, and conclusions are documented in **[`docs/experiments/ssa-ablation-report.md`](docs/experiments/ssa-ablation-report.md)**; raw data is committed alongside the report under `docs/experiments/data/`.
+
+Two npm scripts wrap the harness so a thesis defence panellist can reproduce the study with one command:
+
+```bash
+# Fast harness smoke (4 runs, < 1 min) — verifies the wiring works
+npm run experiment:smoke
+
+# Full sweep (4 scenarios × 2 modes × 30 reps = 240 runs, ~20–60 min unattended)
+npm run experiment
+```
+
+Both invocations write `raw-runs.jsonl`, `raw-runs.csv`, and `summary.json` to `docs/experiments/data/`. The harness is purely in-memory — no database, no Redis, no API — so it runs on a fresh clone with `npm install` alone.
+
+The ablation flag (`GAConfig.skipSSA`) is **debug-only** and is firewalled from every user-facing surface (REST API Zod schemas, frontend forms, the `/schedule-runs` request body). See `src/types.ts` for the JSDoc contract and `tests/api/schemas/schedule-runs.test.ts` for the firewall assertions.
 
 ---
 
