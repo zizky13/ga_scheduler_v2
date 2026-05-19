@@ -216,6 +216,15 @@ export interface GAConfig {
   noiseRate: number;
   hardPenaltyWeight: number;   // W_H — techspec §4.3 default 100
   softPenaltyWeight: number;   // W_S — techspec §4.3 default 1
+  /**
+   * Experimental debug switch for the SSA ablation experiment under `src/experiments/`.
+   * MUST NOT be wired into any user-facing surface (REST API Zod schemas, frontend form,
+   * `/schedule-runs` request body). Production callers leave this unset; when undefined or
+   * `false`, SSA runs normally. Setting `true` skips the entire SSA layer in
+   * `src/orchestrator.ts` and feeds Pre-GA candidates straight to the GA — an intentionally
+   * unsafe operation reserved for the ablation study, not a production feature.
+   */
+  skipSSA?: boolean;
 }
 
 export interface GAResult {
