@@ -153,6 +153,24 @@ export interface AblationOpts {
   gaConfigOverrides?: Partial<GAConfig>;
   /** Absolute path where the harness writes summary.json (and later raw-runs.jsonl/csv). */
   outputDir: string;
+  /**
+   * How many pipeline runs to execute concurrently (E2 task 14). Default `1`
+   * = strictly sequential (preserves pre-E2.14 behaviour). Values > 1 process
+   * the flat `(scenario, mode, rep)` task list in chunks of size `parallelism`
+   * via `Promise.all`. The pipeline is pure and stateless, so concurrent runs
+   * are safe; the only shared global is `Math.random()` (process-wide) and
+   * concurrent draws will interleave — that's acceptable per the E1.10 decision
+   * (N=30 reps wash out RNG variance).
+   */
+  parallelism?: number;
+  /**
+   * When `true`, skip all pipeline execution and return a stub `AblationReport`
+   * with `totalRuns: 0` and `records: []`. The smoke/CLI entry point prints
+   * the run matrix and wall-clock estimate before calling `runAblationExperiment`,
+   * so this flag's job is purely to short-circuit execution. No output files
+   * are written on dry runs — the JSONL/CSV/summary writers are skipped.
+   */
+  dryRun?: boolean;
 }
 
 /**
@@ -243,27 +261,22 @@ async function executeSingleRun(
     },
   };
 
-  const realLog = console.log;
-  const realWarn = console.warn;
-  console.log = () => {};
-  console.warn = () => {};
-  let response;
-  let candidates: PreGACandidate[] = [];
-  try {
-    const out = await runPipeline({
-      offerings: built.offerings,
-      timeSlots: built.timeSlots,
-      rooms: built.rooms,
-      lecturers: built.lecturers,
-      config,
-      hooks,
-    });
-    response = out.response;
-    candidates = out.context.candidates;
-  } finally {
-    console.log = realLog;
-    console.warn = realWarn;
-  }
+  // NOTE: console.log/warn muting is hoisted to `runAblationExperiment` (E2.14)
+  // because per-run save/restore is unsafe under `parallelism > 1` — two
+  // concurrent runs both restore `console.log` to their snapshot of `realLog`,
+  // but if a third run starts between the snapshot and the restore, it
+  // captures the already-muted noop as "real" and pollutes downstream runs.
+  // Muting once at the experiment boundary is concurrency-safe.
+  const out = await runPipeline({
+    offerings: built.offerings,
+    timeSlots: built.timeSlots,
+    rooms: built.rooms,
+    lecturers: built.lecturers,
+    config,
+    hooks,
+  });
+  const response = out.response;
+  const candidates: PreGACandidate[] = out.context.candidates;
 
   const counterfactual = candidates.length > 0
     ? computeSsaCounterfactual(candidates, built.timeSlots)
@@ -473,6 +486,23 @@ export async function runAblationExperiment(opts: AblationOpts): Promise<Ablatio
   const records: RunRecord[] = [];
   const baseConfig: GAConfig = { ...DEFAULT_GA_CONFIG, ...(opts.gaConfigOverrides ?? {}) };
   const modes: ReadonlyArray<"with-ssa" | "without-ssa"> = ["with-ssa", "without-ssa"];
+  const parallelism = Math.max(1, Math.floor(opts.parallelism ?? 1));
+
+  // ─── Dry-run short-circuit (E2.14) ─────────────────────────────────
+  // Print nothing here — the CLI entry point owns the matrix print so it
+  // can format scenario IDs, mode labels, etc. The library just returns a
+  // zero-records stub so callers can rely on the same return type.
+  if (opts.dryRun) {
+    const finishedAt = new Date().toISOString();
+    return {
+      startedAt,
+      finishedAt,
+      repetitions: opts.repetitions,
+      scenarioCount: opts.scenarios.length,
+      totalRuns: 0,
+      records: [],
+    };
+  }
 
   const { mkdir, writeFile, appendFile, rm } = await import("node:fs/promises");
   await mkdir(opts.outputDir, { recursive: true });
@@ -485,20 +515,52 @@ export async function runAblationExperiment(opts: AblationOpts): Promise<Ablatio
   // are unambiguous: a non-empty file under `outputDir` belongs to THIS run.
   await rm(jsonlPath, { force: true });
 
-  // Per-batch (scenario × mode) flush rationale: appending each record
-  // individually maximises crash survivability — a Ctrl-C mid-rep still
-  // leaves every completed run on disk. Per-batch buffering is the
-  // task spec's wording, but we go one step finer (per-record) because the
-  // I/O cost is negligible vs. a GA run (~seconds) and the safety upside
-  // is concrete (no lost completed reps).
+  // Build flat task list. Order = scenario → mode → rep so the JSONL append
+  // order matches the sequential pre-E2.14 behaviour when `parallelism === 1`.
+  interface Task {
+    scenario: ScenarioSpec;
+    mode: "with-ssa" | "without-ssa";
+    rep: number;
+  }
+  const tasks: Task[] = [];
   for (const scenario of opts.scenarios) {
     for (const mode of modes) {
       for (let rep = 0; rep < opts.repetitions; rep += 1) {
-        const record = await executeSingleRun(scenario, mode, rep, baseConfig);
+        tasks.push({ scenario, mode, rep });
+      }
+    }
+  }
+
+  // Hoisted console mute (E2.14): per-run save/restore was unsafe under
+  // concurrency — overlapping runs could snapshot each other's muted noop
+  // as "real" and leak the mute past the experiment boundary. Muting once
+  // here is concurrency-safe (single save, single restore in finally).
+  const realLog = console.log;
+  const realWarn = console.warn;
+  console.log = () => {};
+  console.warn = () => {};
+
+  try {
+    // Process tasks in chunks of `parallelism`. Within each chunk every task
+    // resolves before the next chunk starts (Promise.all barrier), so the
+    // JSONL append order is deterministic at chunk boundaries — within a
+    // chunk we re-sort by original task index so the on-disk row order is
+    // also deterministic across parallelism settings.
+    for (let i = 0; i < tasks.length; i += parallelism) {
+      const chunk = tasks.slice(i, i + parallelism);
+      const results = await Promise.all(
+        chunk.map((t) => executeSingleRun(t.scenario, t.mode, t.rep, baseConfig)),
+      );
+      for (const record of results) {
         records.push(record);
+        // Per-record append maximises crash survivability — a Ctrl-C mid-chunk
+        // still leaves every completed run on disk.
         await appendFile(jsonlPath, JSON.stringify(record) + "\n");
       }
     }
+  } finally {
+    console.log = realLog;
+    console.warn = realWarn;
   }
 
   await writeFile(csvPath, recordsToCsv(records));
@@ -527,6 +589,55 @@ declare const require: { main?: unknown } | undefined;
 declare const module: unknown;
 const isMain = typeof require !== "undefined" && require.main === module;
 
+/**
+ * Parse `--parallelism N` and `--parallelism=N` from an argv list.
+ * Returns `1` if absent or unparseable, mirroring the AblationOpts default.
+ * Exported for unit testability; the CLI entry below is the only runtime caller.
+ */
+export function parseParallelismFlag(argv: readonly string[]): number {
+  for (let i = 0; i < argv.length; i += 1) {
+    const a = argv[i];
+    if (a === "--parallelism" && i + 1 < argv.length) {
+      const n = Number.parseInt(argv[i + 1], 10);
+      if (Number.isFinite(n) && n >= 1) return n;
+    }
+    if (a.startsWith("--parallelism=")) {
+      const n = Number.parseInt(a.slice("--parallelism=".length), 10);
+      if (Number.isFinite(n) && n >= 1) return n;
+    }
+  }
+  return 1;
+}
+
+/**
+ * Render the dry-run matrix block. Pure — exported for unit testing.
+ *
+ * Wall-clock estimate uses the backlog's per-run band (5–15s) divided by
+ * `parallelism`. The estimate is intentionally a range, not a point, because
+ * (a) the seed dataset is small but per-run variance is real (~3×), and (b)
+ * the backlog acceptance asks for a "concrete estimate", not a precise one.
+ */
+export function formatDryRunMatrix(
+  scenarios: readonly ScenarioSpec[],
+  repetitions: number,
+  parallelism: number,
+): string {
+  const totalRuns = scenarios.length * 2 * repetitions;
+  const lowSec = (totalRuns * 5) / parallelism;
+  const highSec = (totalRuns * 15) / parallelism;
+  const fmt = (sec: number) => sec >= 60 ? `${(sec / 60).toFixed(0)} min` : `${sec.toFixed(0)} s`;
+  const ids = scenarios.map((s) => s.id).join(", ");
+  return [
+    "[ssa-ablation] dry run:",
+    `  scenarios: ${scenarios.length} (${ids})`,
+    `  modes:     2 (with-ssa, without-ssa)`,
+    `  reps:      ${repetitions}`,
+    `  total:     ${totalRuns} runs`,
+    `  parallel:  ${parallelism}`,
+    `  estimate:  ~${fmt(lowSec)}–${fmt(highSec)} wall-clock (at 5–15s/run ÷ ${parallelism} parallel)`,
+  ].join("\n");
+}
+
 if (isMain && process.argv.includes("--smoke")) {
   void (async () => {
     const { rooms, timeSlots, lecturers, courseOfferings } = await import("../db/seed.js");
@@ -543,13 +654,35 @@ if (isMain && process.argv.includes("--smoke")) {
     };
 
     const outputDir = `${process.cwd()}/docs/experiments/data`;
+    const repetitions = 2;
+    const parallelism = parseParallelismFlag(process.argv);
+    const dryRun = process.argv.includes("--dry-run");
 
-    console.log("[ssa-ablation] smoke mode — 2 reps × 2 modes × 1 scenario");
+    if (dryRun) {
+      console.log(formatDryRunMatrix([smokeScenario], repetitions, parallelism));
+      // Still call the harness so the dry-run code path is exercised end-to-end;
+      // it returns immediately without I/O.
+      await runAblationExperiment({
+        repetitions,
+        scenarios: [smokeScenario],
+        gaConfigOverrides: { generations: 20, populationSize: 20 },
+        outputDir,
+        parallelism,
+        dryRun: true,
+      });
+      return;
+    }
+
+    console.log(
+      `[ssa-ablation] smoke mode — ${repetitions} reps × 2 modes × 1 scenario` +
+        (parallelism > 1 ? ` (parallelism=${parallelism})` : ""),
+    );
     const report = await runAblationExperiment({
-      repetitions: 2,
+      repetitions,
       scenarios: [smokeScenario],
       gaConfigOverrides: { generations: 20, populationSize: 20 },
       outputDir,
+      parallelism,
     });
 
     // `runAblationExperiment` now writes raw-runs.jsonl, raw-runs.csv, and
