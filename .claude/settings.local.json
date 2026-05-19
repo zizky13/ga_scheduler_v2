@@ -44,7 +44,9 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash(timeout 20 npx tsx src/cli/run-pipeline.ts)",
       "Bash(node --input-type=module -e ' *)",
-      "Bash(grep -nA1 \"^10\\\\. \\\\[\" docs/backlog_experiment.md)"
+      "Bash(grep -nA1 \"^10\\\\. \\\\[\" docs/backlog_experiment.md)",
+      "Bash(time timeout 60 npx tsx src/experiments/ssa-ablation.ts --smoke)",
+      "Bash(time npx tsx src/experiments/ssa-ablation.ts --smoke)"
     ]
   }
 }

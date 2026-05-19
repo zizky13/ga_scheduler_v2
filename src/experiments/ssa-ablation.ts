@@ -44,7 +44,7 @@
  * no seedable RNG refactor. The GA stays Math.random()-based.
  */
 
-import type { GenerationSnapshot } from "../ga/runGA.js";
+import type { GAHooks, GenerationSnapshot } from "../ga/runGA.js";
 import { runStaticExclusion } from "../ssa/staticExclusion.js";
 import { runSSA } from "../ssa/index.js";
 import type { PreGACandidate, TimeSlot } from "../types.js";
@@ -156,20 +156,49 @@ export interface AblationOpts {
 }
 
 /**
- * Minimal record schema for E2.11. E2.12 expands this with
- * firstFeasibleGeneration, per-phase durations, and counterfactual fields.
+ * Per-run output record — the JSON shape emitted to `raw-runs.jsonl` /
+ * `raw-runs.csv` (E2.13 writers) and consumed by the report tables (E4).
+ *
+ * Schema set by E2 task 12 of `docs/backlog_experiment.md`. Every field is
+ * always populated; numeric fields default to `0` when the underlying layer
+ * did not run, except `firstFeasibleGeneration` which is `null` when the
+ * GA never reached `hardViolations === 0` (or did not run at all).
+ *
+ * `ssaWouldHavePrunedCoordinates` and `ssaWouldHaveDeclaredInfeasible` are
+ * the counterfactual SSA telemetry from E1.9 — they describe what SSA WOULD
+ * have done on this input, irrespective of whether the orchestrator actually
+ * ran SSA. They are identical across `with-ssa` and `without-ssa` modes for
+ * the same `(scenarioId, repetitionIndex)` because both modes start from
+ * the same Pre-GA candidate set.
  */
 export interface RunRecord {
+  // ─── Identity
   scenarioId: string;
   mode: "with-ssa" | "without-ssa";
   repetitionIndex: number;
+
+  // ─── Pipeline outcome
   status: "SUCCESS" | "INFEASIBLE" | "NO_FEASIBLE_CANDIDATES";
+
+  // ─── GA result (null when GA did not run — INFEASIBLE / NO_FEASIBLE_CANDIDATES)
   bestFitness: number | null;
   hardViolations: number | null;
   softPenalty: number | null;
   generationsRun: number | null;
   stagnatedEarly: boolean | null;
+
+  // ─── Convergence derived field (null when GA never reached feasibility or did not run)
+  firstFeasibleGeneration: number | null;
+
+  // ─── Wall-clock split (`0` when the layer did not run)
+  preGADurationMs: number;
+  ssaDurationMs: number;
+  gaDurationMs: number;
   totalDurationMs: number;
+
+  // ─── Counterfactual SSA telemetry (E1.9 — same value for both modes of a given rep)
+  ssaWouldHavePrunedCoordinates: number;
+  ssaWouldHaveDeclaredInfeasible: boolean;
 }
 
 export interface AblationReport {
@@ -207,11 +236,19 @@ async function executeSingleRun(
   const built = scenario.build();
   const config: GAConfig = { ...baseConfig, skipSSA: mode === "without-ssa" };
 
+  const snapshots: GenerationSnapshot[] = [];
+  const hooks: GAHooks = {
+    onGeneration: (snapshot) => {
+      snapshots.push(snapshot);
+    },
+  };
+
   const realLog = console.log;
   const realWarn = console.warn;
   console.log = () => {};
   console.warn = () => {};
   let response;
+  let candidates: PreGACandidate[] = [];
   try {
     const out = await runPipeline({
       offerings: built.offerings,
@@ -219,12 +256,18 @@ async function executeSingleRun(
       rooms: built.rooms,
       lecturers: built.lecturers,
       config,
+      hooks,
     });
     response = out.response;
+    candidates = out.context.candidates;
   } finally {
     console.log = realLog;
     console.warn = realWarn;
   }
+
+  const counterfactual = candidates.length > 0
+    ? computeSsaCounterfactual(candidates, built.timeSlots)
+    : { wouldHavePrunedCoordinates: 0, wouldHaveDeclaredInfeasible: false };
 
   return {
     scenarioId: scenario.id,
@@ -236,7 +279,13 @@ async function executeSingleRun(
     softPenalty: response.gaResult?.softPenalty ?? null,
     generationsRun: response.gaResult?.generationsRun ?? null,
     stagnatedEarly: response.gaResult?.stagnatedEarly ?? null,
+    firstFeasibleGeneration: firstFeasibleGeneration(snapshots),
+    preGADurationMs: response.preGADurationMs ?? 0,
+    ssaDurationMs: response.ssaDurationMs ?? 0,
+    gaDurationMs: response.gaDurationMs ?? 0,
     totalDurationMs: response.durationMs,
+    ssaWouldHavePrunedCoordinates: counterfactual.wouldHavePrunedCoordinates,
+    ssaWouldHaveDeclaredInfeasible: counterfactual.wouldHaveDeclaredInfeasible,
   };
 }
 
