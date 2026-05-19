@@ -171,6 +171,15 @@ export interface AblationOpts {
    * are written on dry runs — the JSONL/CSV/summary writers are skipped.
    */
   dryRun?: boolean;
+  /**
+   * Progress log cadence (E2 task 15). When a run's 1-based completion index
+   * is a multiple of `logEveryN` — or it is the final run — the harness emits
+   * one line via the *unmuted* `console.log` reference saved before the
+   * harness-wide mute kicks in. Default `1` (log every completed run); the
+   * smoke run's 4 records all log. Full 240-run sweeps can pass `10` to
+   * throttle. Ignored entirely under `dryRun: true`.
+   */
+  logEveryN?: number;
 }
 
 /**
@@ -540,6 +549,14 @@ export async function runAblationExperiment(opts: AblationOpts): Promise<Ablatio
   console.log = () => {};
   console.warn = () => {};
 
+  // Progress logging (E2.15). `progressLog` captures `realLog` BEFORE the
+  // mute below assigns the noop, so progress lines bypass the harness-wide
+  // mute. Counter is incremented as each record resolves; cadence is
+  // `logEveryN` (default 1) plus a guaranteed line for the final run.
+  const logEveryN = Math.max(1, Math.floor(opts.logEveryN ?? 1));
+  const progressLog: (line: string) => void = (line) => { realLog(line); };
+  let completed = 0;
+
   try {
     // Process tasks in chunks of `parallelism`. Within each chunk every task
     // resolves before the next chunk starts (Promise.all barrier), so the
@@ -556,6 +573,19 @@ export async function runAblationExperiment(opts: AblationOpts): Promise<Ablatio
         // Per-record append maximises crash survivability — a Ctrl-C mid-chunk
         // still leaves every completed run on disk.
         await appendFile(jsonlPath, JSON.stringify(record) + "\n");
+        completed += 1;
+        const isLast = completed === tasks.length;
+        if (completed % logEveryN === 0 || isLast) {
+          const fitness = record.bestFitness === null
+            ? "n/a"
+            : record.bestFitness.toFixed(3);
+          const duration = Math.round(record.totalDurationMs);
+          progressLog(
+            `[${record.scenarioId}][${record.mode}]` +
+              `[rep ${record.repetitionIndex + 1}/${opts.repetitions}] ` +
+              `status=${record.status} fitness=${fitness} duration=${duration}ms`,
+          );
+        }
       }
     }
   } finally {
