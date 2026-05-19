@@ -108,7 +108,7 @@ export function runPreGA(
     const candidate: PreGACandidate = {
       offeringId: offering.id,
       courseId: offering.courseId,
-      roomId: offering.roomId,
+      roomId: offering.roomId ?? null,
       lecturerIds: offering.lecturers.map(l => l.id),
       parallelSessionCount,
       sessionDuration: offering.course.sks,

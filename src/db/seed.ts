@@ -499,3 +499,19 @@ export const infeasibleOfferings: CourseOffering[] = [
 
 // Backward-compatible alias (used by existing CLI runners)
 export const infeasibleOffering = infeasibleFacility;
+
+/**
+ * Exercises the nullable `roomId` path introduced in Phase 7:
+ * no seed room is chosen, so the GA picks an initial room from possibleRoomIds.
+ * Kept as a separate export to avoid disturbing fixture counts in existing tests.
+ */
+export const nullRoomOffering: CourseOffering = {
+  id: 16,
+  courseId: 1,
+  course: courses[0]!,
+  roomId: null,
+  room: null,
+  lecturers: [lecturers[1]!],
+  effectiveStudentCount: 28,
+  isFixed: false,
+};

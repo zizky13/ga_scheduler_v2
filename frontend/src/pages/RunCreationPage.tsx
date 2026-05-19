@@ -127,8 +127,8 @@ export function RunCreationPage() {
         const sid = activeSemester.id;
         const [offeringsRes, roomsRes, timeslotsRes] = await Promise.all([
           get<ListResponse<{ id: number; isFixed: boolean }>>('/course-offerings', { semesterId: sid, page: 1, pageSize: 200 }),
-          get<ListResponse<{ id: number }>>('/rooms', { page: 1, pageSize: 1 }),
-          get<ListResponse<{ id: number }>>('/timeslots', { page: 1, pageSize: 1 }),
+          get<ListResponse<{ id: number }>>('/rooms', { semesterId: sid, page: 1, pageSize: 1 }),
+          get<ListResponse<{ id: number }>>('/timeslots', { semesterId: sid, page: 1, pageSize: 1 }),
         ]);
 
         if (cancelled) return;
@@ -187,7 +187,11 @@ export function RunCreationPage() {
       setShowConfirm(false);
       const e = err as ApiRequestError;
       if (e.code === 'NO_ACTIVE_SEMESTER') {
-        addToast({ type: 'error', title: 'No active semester', message: 'Please activate a semester before starting a run.' });
+        addToast({
+          type: 'error',
+          title: 'No offerings to schedule',
+          message: 'The active semester has no course offerings. Create offerings before starting a run.',
+        });
       } else if (e.code === 'RATE_LIMITED') {
         addToast({ type: 'error', title: 'Rate limited', message: e.message });
       } else {
@@ -309,6 +313,11 @@ export function RunCreationPage() {
             <div className={styles.noSemester}>
               No active semester found. Please activate a semester before creating a run.
             </div>
+          ) : preflight.totalOfferings === 0 ? (
+            <div className={styles.noSemester}>
+              Semester {preflight.semester.code} has no course offerings. Create offerings on
+              the Course Offerings page before starting a run.
+            </div>
           ) : (
             <div className={styles.preflightGrid}>
               <PreflightItem
@@ -357,7 +366,14 @@ export function RunCreationPage() {
             variant="primary"
             size="lg"
             onClick={handleStartClick}
-            disabled={!preflight.semester || preflightLoading || hasErrors || submitting || rateLimited}
+            disabled={
+              !preflight.semester ||
+              preflightLoading ||
+              hasErrors ||
+              submitting ||
+              rateLimited ||
+              preflight.totalOfferings === 0
+            }
             icon={rateLimited ? <Clock size={16} /> : undefined}
           >
             {rateLimited ? `Retry in ${rateLimitRemaining}s` : 'Start Run'}

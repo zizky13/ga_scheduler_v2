@@ -176,13 +176,25 @@ export function TimeslotManagementPage() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
+      if (activeSemesterId === null) {
+        setSlots([])
+        setLoading(false)
+        return
+      }
+
+      const semesterScope = { semesterId: activeSemesterId }
       const [slotRes, lecRes] = await Promise.all([
         get<ListResponse<TimeSlot>>('/timeslots', {
+          ...semesterScope,
           page: 1,
           pageSize: 500,
           sort: 'day,startTime',
         }),
-        get<ListResponse<LecturerWire>>('/lecturers', { page: 1, pageSize: 500 }),
+        get<ListResponse<LecturerWire>>('/lecturers', {
+          ...semesterScope,
+          page: 1,
+          pageSize: 500,
+        }),
       ])
 
       const lecturerCountMap = new Map<number, number>()
@@ -204,11 +216,11 @@ export function TimeslotManagementPage() {
     } finally {
       setLoading(false)
     }
-  }, [addToast])
+  }, [addToast, activeSemesterId])
 
   useEffect(() => {
     fetchData()
-  }, [fetchData, activeSemesterId])
+  }, [fetchData])
 
   /* ── Active days (for grid — skip empty weekend days) ── */
 

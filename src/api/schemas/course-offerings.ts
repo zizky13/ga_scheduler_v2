@@ -20,7 +20,7 @@ export const createCourseOfferingBodySchema = z
   .object({
     semesterId: numericIdSchema,
     courseId: numericIdSchema,
-    roomId: numericIdSchema,
+    roomId: numericIdSchema.optional().nullable(),
     effectiveStudentCount: z.number().int().nonnegative().max(10000),
     lecturerIds: z.array(numericIdSchema).min(1, 'at least one lecturer is required').max(16),
     isFixed: z.boolean().optional(),
@@ -34,7 +34,7 @@ export type CreateCourseOfferingBody = z.infer<typeof createCourseOfferingBodySc
 export const updateCourseOfferingBodySchema = z
   .object({
     courseId: numericIdSchema.optional(),
-    roomId: numericIdSchema.optional(),
+    roomId: numericIdSchema.optional().nullable(),
     effectiveStudentCount: z.number().int().nonnegative().max(10000).optional(),
     lecturerIds: z.array(numericIdSchema).min(1).max(16).optional(),
     isFixed: z.boolean().optional(),

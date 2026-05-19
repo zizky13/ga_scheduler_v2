@@ -241,7 +241,7 @@ model CourseOffering {
   id                    Int      @id @default(autoincrement())
   semesterId            Int
   courseId              Int
-  roomId                Int // proposed default; may be overridden by LockedRoom
+  roomId                Int? // optional seed; LockedRoom is the source of truth for locked rooms, otherwise the GA picks from possibleRoomIds
   effectiveStudentCount Int // techspec §1.3 — used to derive requiredSessions
   isFixed               Boolean  @default(false) // mirrors src/types.ts CourseOffering.isFixed
   parentOfferingId      Int? // for parallel-split (Sesi A / Sesi B)
@@ -251,7 +251,7 @@ model CourseOffering {
 
   semester    Semester                  @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   course      Course                    @relation(fields: [courseId], references: [id], onDelete: Restrict)
-  room        Room                      @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  room        Room?                     @relation(fields: [roomId], references: [id], onDelete: Restrict)
   parent      CourseOffering?           @relation("ParallelSplit", fields: [parentOfferingId], references: [id])
   children    CourseOffering[]          @relation("ParallelSplit")
   lecturers   CourseOfferingLecturer[]

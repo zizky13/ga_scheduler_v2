@@ -43,7 +43,7 @@ interface CourseOfferingWire {
   id: number
   semesterId: number
   courseId: number
-  roomId: number
+  roomId: number | null
   effectiveStudentCount: number
   lecturerIds: number[]
   isFixed: boolean
@@ -95,7 +95,7 @@ interface ListResponse<T> {
 interface OfferingEnriched extends CourseOfferingWire {
   courseCode: string
   courseName: string
-  roomName: string
+  roomName: string | null
   lecturerNames: string[]
   parentCourseCode: string | null
   lockedRoomId: number | null
@@ -154,7 +154,6 @@ const WEEKDAY_SHORT: Record<Weekday, string> = {
 function validateForm(form: FormState): FormErrors {
   const errors: FormErrors = {}
   if (!form.courseId) errors.courseId = 'Course is required'
-  if (!form.roomId) errors.roomId = 'Room is required'
   if (form.effectiveStudentCount < 0) errors.effectiveStudentCount = 'Must be 0 or greater'
   if (form.lecturerIds.length === 0) errors.lecturerIds = 'At least one lecturer is required'
   return errors
@@ -166,7 +165,7 @@ function exportCsv(offerings: OfferingEnriched[]) {
   const header = 'Course Code,Course Name,Room,Lecturers,Students,Fixed,Parent'
   const rows = offerings.map(
     (o) =>
-      `"${o.courseCode}","${o.courseName.replace(/"/g, '""')}","${o.roomName}","${o.lecturerNames.join(', ')}",${o.effectiveStudentCount},${o.isFixed ? 'Yes' : 'No'},"${o.parentCourseCode ?? ''}"`,
+      `"${o.courseCode}","${o.courseName.replace(/"/g, '""')}","${o.roomName ?? ''}","${o.lecturerNames.join(', ')}",${o.effectiveStudentCount},${o.isFixed ? 'Yes' : 'No'},"${o.parentCourseCode ?? ''}"`,
   )
   const csv = [header, ...rows].join('\n')
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -359,13 +358,30 @@ export function CourseOfferingManagementPage() {
     async (p: number, ps: number) => {
       setLoading(true)
       try {
+        if (activeSemesterId === null) {
+          setOfferings([])
+          setTotal(0)
+          setAllLockedRooms([])
+          setLoading(false)
+          return
+        }
+
+        const semesterScope = { semesterId: activeSemesterId }
         const [offRes, courseRes, roomRes, lecRes, tsRes, lockRes] = await Promise.all([
-          get<ListResponse<CourseOfferingWire>>('/course-offerings', { page: p, pageSize: ps }),
+          get<ListResponse<CourseOfferingWire>>('/course-offerings', {
+            ...semesterScope,
+            page: p,
+            pageSize: ps,
+          }),
           get<ListResponse<CourseWire>>('/courses', { page: 1, pageSize: 5000 }),
           get<ListResponse<RoomWire>>('/rooms', { page: 1, pageSize: 500 }),
           get<ListResponse<LecturerWire>>('/lecturers', { page: 1, pageSize: 500 }),
           get<ListResponse<TimeSlotWire>>('/timeslots', { page: 1, pageSize: 500 }),
-          get<ListResponse<LockedRoomWire>>('/locked-rooms', { page: 1, pageSize: 5000 }),
+          get<ListResponse<LockedRoomWire>>('/locked-rooms', {
+            ...semesterScope,
+            page: 1,
+            pageSize: 5000,
+          }),
         ])
 
         setAllCourses(courseRes.data)
@@ -381,7 +397,7 @@ export function CourseOfferingManagementPage() {
 
         const enriched: OfferingEnriched[] = offRes.data.map((o) => {
           const course = courseMap.get(o.courseId)
-          const room = roomMap.get(o.roomId)
+          const room = o.roomId != null ? roomMap.get(o.roomId) : undefined
           const parentOff = o.parentOfferingId
             ? offRes.data.find((x) => x.id === o.parentOfferingId)
             : null
@@ -391,7 +407,7 @@ export function CourseOfferingManagementPage() {
             ...o,
             courseCode: course?.code ?? `#${o.courseId}`,
             courseName: course?.name ?? 'Unknown',
-            roomName: room?.name ?? `#${o.roomId}`,
+            roomName: o.roomId == null ? null : (room?.name ?? `#${o.roomId}`),
             lecturerNames: o.lecturerIds.map((lid) => lecMap.get(lid)?.name ?? `#${lid}`),
             parentCourseCode:
               parentCourse?.code ?? (o.parentOfferingId ? `#${o.parentOfferingId}` : null),
@@ -407,12 +423,12 @@ export function CourseOfferingManagementPage() {
         setLoading(false)
       }
     },
-    [addToast],
+    [addToast, activeSemesterId],
   )
 
   useEffect(() => {
     fetchData(page, pageSize)
-  }, [page, pageSize, fetchData, activeSemesterId])
+  }, [page, pageSize, fetchData])
 
   /* ── Client-side filtering ── */
 
@@ -540,7 +556,6 @@ export function CourseOfferingManagementPage() {
     try {
       const body: Record<string, unknown> = {
         courseId: form.courseId,
-        roomId: form.roomId,
         effectiveStudentCount: form.effectiveStudentCount,
         lecturerIds: form.lecturerIds,
       }
@@ -744,7 +759,12 @@ export function CourseOfferingManagementPage() {
       key: 'room',
       header: 'Room',
       width: '140px',
-      render: (row) => <span>{row.roomName}</span>,
+      render: (row) =>
+        row.roomName ? (
+          <span>{row.roomName}</span>
+        ) : (
+          <span className={styles.dashPlaceholder}>GA-assigned</span>
+        ),
     },
     {
       key: 'lecturers',
@@ -1047,9 +1067,9 @@ export function CourseOfferingManagementPage() {
           </div>
         )}
 
-        {/* Section 1: Course & Room */}
+        {/* Section 1: Course */}
         <FormSection>
-          <p className={styles.sectionTitle}>Course & Room</p>
+          <p className={styles.sectionTitle}>Course</p>
 
           <Select
             label="Course"
@@ -1065,19 +1085,6 @@ export function CourseOfferingManagementPage() {
               setFormErrors((prev) => ({ ...prev, courseId: undefined }))
             }}
             error={formErrors.courseId}
-            required
-          />
-
-          <Select
-            label="Room"
-            placeholder="Select a room…"
-            options={roomOptions}
-            value={form.roomId ? String(form.roomId) : ''}
-            onChange={(v) => {
-              setForm((prev) => ({ ...prev, roomId: v ? Number(v) : null }))
-              setFormErrors((prev) => ({ ...prev, roomId: undefined }))
-            }}
-            error={formErrors.roomId}
             required
           />
 

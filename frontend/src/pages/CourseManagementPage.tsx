@@ -242,10 +242,27 @@ export function CourseManagementPage() {
     async (p: number, ps: number) => {
       setLoading(true)
       try {
+        if (activeSemesterId === null) {
+          setCourses([])
+          setTotal(0)
+          setLoading(false)
+          return
+        }
+
+        const semesterScope = { semesterId: activeSemesterId }
         const [courseRes, facRes, offRes] = await Promise.all([
-          get<ListResponse<Course>>('/courses', { page: p, pageSize: ps, sort: 'code' }),
+          get<ListResponse<Course>>('/courses', {
+            ...semesterScope,
+            page: p,
+            pageSize: ps,
+            sort: 'code',
+          }),
           get<ListResponse<Facility>>('/facilities', { page: 1, pageSize: 500 }),
-          get<ListResponse<OfferingWire>>('/course-offerings', { page: 1, pageSize: 5000 }),
+          get<ListResponse<OfferingWire>>('/course-offerings', {
+            ...semesterScope,
+            page: 1,
+            pageSize: 5000,
+          }),
         ])
 
         setAllFacilities(facRes.data)
@@ -269,12 +286,12 @@ export function CourseManagementPage() {
         setLoading(false)
       }
     },
-    [addToast],
+    [addToast, activeSemesterId],
   )
 
   useEffect(() => {
     fetchData(page, pageSize)
-  }, [page, pageSize, fetchData, activeSemesterId])
+  }, [page, pageSize, fetchData])
 
   /* ── Derived data for filters ── */
 

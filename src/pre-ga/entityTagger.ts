@@ -22,12 +22,16 @@ export function tagEntities(
   return candidates.map(candidate => {
     const lockedRoomId = lockedRoomMap.get(candidate.offeringId);
     if (lockedRoomId !== undefined) {
+      // Null-safe: lock unconditionally overwrites candidate.roomId, so a null
+      // seed from an offering with no chosen room still resolves to the locked id.
       return {
         ...candidate,
         roomId: lockedRoomId,
         isFixedRoom: true,
       };
     }
+    // No lock: candidate.roomId may be null here — the GA chromosome seeder
+    // picks a random initial room from possibleRoomIds in that case.
     return { ...candidate, isFixedRoom: false };
   });
 }

@@ -148,14 +148,27 @@ export function DashboardPage() {
     setLoading(true);
     try {
       const semesterId = activeSemester?.id;
+      const semesterScope = semesterId ? { semesterId } : {};
 
       const [roomsRes, lecturersRes, coursesRes, offeringsRes, runsRes] =
         await Promise.all([
-          get<ListResponse<{ id: number }>>('/rooms', { page: 1, pageSize: 1 }),
-          get<ListResponse<{ id: number }>>('/lecturers', { page: 1, pageSize: 1 }),
-          get<ListResponse<{ id: number }>>('/courses', { page: 1, pageSize: 1 }),
+          get<ListResponse<{ id: number }>>('/rooms', {
+            ...semesterScope,
+            page: 1,
+            pageSize: 1,
+          }),
+          get<ListResponse<{ id: number }>>('/lecturers', {
+            ...semesterScope,
+            page: 1,
+            pageSize: 1,
+          }),
+          get<ListResponse<{ id: number }>>('/courses', {
+            ...semesterScope,
+            page: 1,
+            pageSize: 1,
+          }),
           get<ListResponse<{ id: number }>>('/course-offerings', {
-            ...(semesterId ? { semesterId } : {}),
+            ...semesterScope,
             page: 1,
             pageSize: 1,
           }),

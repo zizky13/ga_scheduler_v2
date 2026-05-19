@@ -42,7 +42,7 @@ interface CourseOfferingWirePayload {
   id: number;
   semesterId: number;
   courseId: number;
-  roomId: number;
+  roomId: number | null;
   effectiveStudentCount: number;
   lecturerIds: number[];
   isFixed: boolean;
@@ -172,7 +172,7 @@ async function postCreate(req: Request, res: Response, next: NextFunction): Prom
       const created = await repos.courseOfferings.create({
         semesterId: body.semesterId,
         courseId: body.courseId,
-        roomId: body.roomId,
+        roomId: body.roomId ?? null,
         effectiveStudentCount: body.effectiveStudentCount,
         lecturerIds: body.lecturerIds,
         isFixed,
@@ -216,7 +216,7 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
 
     const patchInput: {
       courseId?: number;
-      roomId?: number;
+      roomId?: number | null;
       effectiveStudentCount?: number;
       lecturerIds?: number[];
       isFixed?: boolean;

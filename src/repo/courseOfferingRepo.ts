@@ -22,7 +22,7 @@ export interface CourseOfferingRecord {
   id: number;
   semesterId: number;
   courseId: number;
-  roomId: number;
+  roomId: number | null;
   effectiveStudentCount: number;
   lecturerIds: number[];
   isFixed: boolean;
@@ -36,7 +36,7 @@ export interface CourseOfferingRecord {
 export interface CreateCourseOfferingInput {
   semesterId: number;
   courseId: number;
-  roomId: number;
+  roomId: number | null;
   effectiveStudentCount: number;
   lecturerIds: number[];
   isFixed: boolean;
@@ -47,7 +47,7 @@ export interface CreateCourseOfferingInput {
 
 export interface UpdateCourseOfferingInput {
   courseId?: number;
-  roomId?: number;
+  roomId?: number | null;
   effectiveStudentCount?: number;
   lecturerIds?: number[];
   isFixed?: boolean;
@@ -211,7 +211,10 @@ export function createCourseOfferingRepository(
           data.course = { connect: { id: patch.courseId } };
         }
         if (patch.roomId !== undefined) {
-          data.room = { connect: { id: patch.roomId } };
+          data.room =
+            patch.roomId === null
+              ? { disconnect: true }
+              : { connect: { id: patch.roomId } };
         }
         if (patch.effectiveStudentCount !== undefined) {
           data.effectiveStudentCount = patch.effectiveStudentCount;
