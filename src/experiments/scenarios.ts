@@ -13,6 +13,7 @@
  */
 
 import {
+  borderlineOfferings,
   courseOfferings,
   lecturers,
   rooms,
@@ -138,4 +139,46 @@ export const structurallyInfeasibleScenario: ScenarioSpec = {
   }),
 };
 
-// NOTE: `ALL_SCENARIOS` and scenario D land in tasks E3.20–E3.21.
+/**
+ * Scenario D — `borderline-ac3-prunes` (AC-3 stress, SSA helps but doesn't
+ * declare infeasibility).
+ *
+ * Composition: `[...courseOfferings, ...borderlineOfferings]` — the 15
+ * canonical offerings plus 7 additive borderline entries defined in
+ * `src/db/seed.ts` (4 fixed + 3 flexible). The point of this scenario is
+ * to exercise the middle band of SSA's behaviour: Phase 0 (Static
+ * Exclusion) locks a non-trivial number of (room, slot) coordinates and
+ * AC-3 prunes the flexible offerings' domains significantly, yet Phase 2
+ * (Hopcroft-Karp) still finds a maximum matching — so the SSA verdict is
+ * FEASIBLE, not INFEASIBLE.
+ *
+ * Why this matters for the ablation report:
+ *   With-SSA mode hands the GA a pre-pruned candidate set (domains already
+ *   stripped of structurally impossible (room, slot) coordinates). Without
+ *   SSA, the GA's initial population samples from the full unpruned domain
+ *   and burns generations rediscovering those exclusions via the fitness
+ *   penalty. This is the scenario where SSA's domain pruning should
+ *   manifest as faster convergence / earlier `firstFeasibleGeneration` /
+ *   higher success rate, without the binary short-circuit signal scenario
+ *   C provides.
+ *
+ * Empirical SSA verdict on the composed input (verified by the companion
+ * test `tests/experiments/scenarios.borderline-ac3.test.ts`):
+ *   `runStaticExclusion(...).lockedCoordinates.size === 17`
+ *     (6 from existing fixed offerings 6 & 15 + 11 from the four new
+ *     borderline fixed offerings 300–303).
+ *   `runSSA(candidates, timeSlots).status === 'FEASIBLE'`.
+ */
+export const borderlineScenario: ScenarioSpec = {
+  id: "borderline-ac3-prunes",
+  label:
+    "Scenario D — borderline-ac3-prunes (Phase 0 + AC-3 prune meaningfully, Phase 2 still finds matching)",
+  build: () => ({
+    offerings: [...courseOfferings, ...borderlineOfferings],
+    timeSlots,
+    rooms,
+    lecturers,
+  }),
+};
+
+// NOTE: `ALL_SCENARIOS` lands in task E3.21.

@@ -562,6 +562,137 @@ export const structurallyInfeasibleOfferings: CourseOffering[] = Array.from(
   }),
 );
 
+// ═══════════════════════════════════════════════════════════════════
+// BORDERLINE OFFERINGS (Phase E3 task 20 — scenario D)
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Additive offerings that compose the `borderline-ac3-prunes` ablation
+ * scenario (Phase E3 task 20). The goal is to construct an input where
+ * Phase 0 (Static Exclusion) + AC-3 prune a non-trivial number of
+ * candidate domain coordinates, but Phase 2 (Hopcroft-Karp) still
+ * confirms a maximum matching exists — i.e. SSA returns FEASIBLE while
+ * the GA receives a meaningfully smaller / better-shaped initial search
+ * space than it would without SSA.
+ *
+ * Construction (additive — composed with `courseOfferings` by the
+ * scenario builder; the canonical export is unmodified):
+ *
+ *   FIXED offerings (4, each locking sks contiguous (room, slot) coords):
+ *     - 300: Struktur Data    (sks=3) → R-101 (id 1) at slots [4,5,6]   — Hesti
+ *     - 301: Jaringan Komputer(sks=3) → R-102 (id 2) at slots [15,16,17]— Budi
+ *     - 302: Sistem Operasi   (sks=3) → LAB-A (id 4) at slots [37,38,39]— Gunawan
+ *     - 303: TA Seminar       (sks=2) → R-101 (id 1) at slots [10,11]   — Hesti
+ *     Locks added by these four = 3+3+3+2 = 11 coordinates, none of which
+ *     collide with the seed's existing fixed offerings 6 (R-201 slots 1–3)
+ *     and 15 (R-201 slots 12–14), nor with each other.
+ *
+ *   FLEXIBLE offerings (3, all sharing rooms that the new fixed offerings
+ *   lock — so AC-3 prunes their domains meaningfully):
+ *     - 304: Struktur Data    (sks=3) → R-101 (general PROJECTOR room) — Hesti
+ *     - 305: Jaringan Komputer(sks=3) → R-102 (general PROJECTOR room) — Budi
+ *     - 306: TA Seminar       (sks=2) → R-101 (general PROJECTOR room) — Hesti
+ *     Pre-GA computes `possibleRoomIds` for each from facility/capacity
+ *     matching (the three general rooms R-101/R-102/R-201 all qualify for
+ *     non-LAB / non-STUDIO courses), so each flexible offering has a
+ *     broad room domain that overlaps multiple locked rooms.
+ *
+ * Acceptance contract (task E3.20):
+ *   - `runStaticExclusion(candidates).lockedCoordinates.size ≥ 4`. On the
+ *     full composed input the realised size is 17 (6 from existing fixed
+ *     offerings 6 & 15 + 11 from the four new fixed entries).
+ *   - `runSSA(candidates, timeSlots).status === 'FEASIBLE'` — Hopcroft-Karp
+ *     still finds a maximum matching covering all sessions despite the
+ *     domain pruning.
+ *   - The canonical `courseOfferings`, `infeasibleOfferings`, and
+ *     `structurallyInfeasibleOfferings` exports remain unchanged.
+ *
+ * IDs (300–306) are picked outside the ranges already used by canonical
+ * (1–15), infeasible (91–94), structurally-infeasible (200–249), and the
+ * nullable-room exerciser (16). Lecturer + course pairings respect the
+ * required competencies; capacities are well below room limits; no two
+ * fixed offerings share a (room, slot) coordinate.
+ */
+export const borderlineOfferings: CourseOffering[] = [
+  // ── Fixed offerings (lock 11 coordinates across R-101, R-102, LAB-A) ──
+  {
+    id: 300,
+    courseId: 2,
+    course: courses[1]!, // Struktur Data, sks=3, no facility required
+    roomId: 1,
+    room: rooms[0]!, // R-101
+    lecturers: [lecturers[7]!], // Hesti (algorithms competency)
+    effectiveStudentCount: 30,
+    isFixed: true,
+    fixedTimeSlotIds: [4, 5, 6], // Monday 10:00–13:20
+  },
+  {
+    id: 301,
+    courseId: 4,
+    course: courses[3]!, // Jaringan Komputer, sks=3, no facility required
+    roomId: 2,
+    room: rooms[1]!, // R-102
+    lecturers: [lecturers[1]!], // Budi (networks competency)
+    effectiveStudentCount: 32,
+    isFixed: true,
+    fixedTimeSlotIds: [15, 16, 17], // Tuesday 11:40-style mid-afternoon block
+  },
+  {
+    id: 302,
+    courseId: 9,
+    course: courses[8]!, // Sistem Operasi, sks=3, requires LAB
+    roomId: 4,
+    room: rooms[3]!, // LAB-A
+    lecturers: [lecturers[6]!], // Gunawan (os competency)
+    effectiveStudentCount: 26,
+    isFixed: true,
+    fixedTimeSlotIds: [37, 38, 39], // Thursday 07:30–10:00
+  },
+  {
+    id: 303,
+    courseId: 8,
+    course: courses[7]!, // TA Seminar, sks=2, no facility / competency required
+    roomId: 1,
+    room: rooms[0]!, // R-101
+    lecturers: [lecturers[7]!], // Hesti (no required competency)
+    effectiveStudentCount: 24,
+    isFixed: true,
+    fixedTimeSlotIds: [10, 11], // Monday 15:00–16:40
+  },
+
+  // ── Flexible offerings (broad room domain overlapping locked rooms) ──
+  {
+    id: 304,
+    courseId: 2,
+    course: courses[1]!, // Struktur Data, sks=3
+    roomId: 1,
+    room: rooms[0]!, // R-101 (Pre-GA derives possibleRoomIds = [1, 2, 3])
+    lecturers: [lecturers[7]!], // Hesti
+    effectiveStudentCount: 34,
+    isFixed: false,
+  },
+  {
+    id: 305,
+    courseId: 4,
+    course: courses[3]!, // Jaringan Komputer, sks=3
+    roomId: 2,
+    room: rooms[1]!, // R-102 (possibleRoomIds = [1, 2, 3])
+    lecturers: [lecturers[1]!], // Budi
+    effectiveStudentCount: 30,
+    isFixed: false,
+  },
+  {
+    id: 306,
+    courseId: 8,
+    course: courses[7]!, // TA Seminar, sks=2
+    roomId: 1,
+    room: rooms[0]!, // R-101 (possibleRoomIds = [1, 2, 3])
+    lecturers: [lecturers[7]!], // Hesti
+    effectiveStudentCount: 28,
+    isFixed: false,
+  },
+];
+
 /**
  * Exercises the nullable `roomId` path introduced in Phase 7:
  * no seed room is chosen, so the GA picks an initial room from possibleRoomIds.
