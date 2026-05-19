@@ -46,7 +46,9 @@
       "Bash(node --input-type=module -e ' *)",
       "Bash(grep -nA1 \"^10\\\\. \\\\[\" docs/backlog_experiment.md)",
       "Bash(time timeout 60 npx tsx src/experiments/ssa-ablation.ts --smoke)",
-      "Bash(time npx tsx src/experiments/ssa-ablation.ts --smoke)"
+      "Bash(time npx tsx src/experiments/ssa-ablation.ts --smoke)",
+      "Bash(npx tsx *)",
+      "Bash(awk -F, '{print NF}' docs/experiments/data/raw-runs.csv)"
     ]
   }
 }

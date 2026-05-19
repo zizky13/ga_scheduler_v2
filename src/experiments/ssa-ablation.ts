@@ -289,20 +289,220 @@ async function executeSingleRun(
   };
 }
 
+// ─── E2.13 — Output writers (raw-runs.jsonl, raw-runs.csv, summary.json) ──
+
+/**
+ * Ordered column list for `raw-runs.csv`. Order is the single source of truth
+ * for both header row and per-row cell order, so a single typo cannot cause
+ * column-mismatch errors when the CSV is opened in Excel / Numbers.
+ *
+ * Mirrors `RunRecord` exactly; the type-level `satisfies` guard below catches
+ * additions/renames at compile time.
+ */
+const CSV_COLUMNS = [
+  "scenarioId",
+  "mode",
+  "repetitionIndex",
+  "status",
+  "bestFitness",
+  "hardViolations",
+  "softPenalty",
+  "generationsRun",
+  "stagnatedEarly",
+  "firstFeasibleGeneration",
+  "preGADurationMs",
+  "ssaDurationMs",
+  "gaDurationMs",
+  "totalDurationMs",
+  "ssaWouldHavePrunedCoordinates",
+  "ssaWouldHaveDeclaredInfeasible",
+] as const satisfies ReadonlyArray<keyof RunRecord>;
+
+/**
+ * Escape a single CSV cell. Quotes any string containing comma, quote, or
+ * newline (RFC 4180 minimal-quoting). Null → empty cell; booleans → literal
+ * `true`/`false`; numbers stringified as-is (no thousands separators, no
+ * locale formatting — Excel parses them as numbers either way).
+ */
+function csvEscape(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  const s = String(value);
+  if (s.includes(",") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+/** Pure: render one RunRecord as a CSV row (no trailing newline). */
+export function recordToCsvRow(record: RunRecord): string {
+  return CSV_COLUMNS.map((col) => csvEscape(record[col])).join(",");
+}
+
+/** Pure: render the full CSV (header + rows, LF-separated, trailing newline). */
+export function recordsToCsv(records: readonly RunRecord[]): string {
+  const header = CSV_COLUMNS.join(",");
+  const body = records.map(recordToCsvRow);
+  return [header, ...body].join("\n") + "\n";
+}
+
+export interface NumericAggregate {
+  /** Count of finite, non-null values aggregated (nulls are skipped). */
+  count: number;
+  mean: number | null;
+  median: number | null;
+  stddev: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+/**
+ * Population standard deviation over the finite subset of `values`.
+ * Returns the all-null aggregate when no finite values are present.
+ *
+ * Nulls and non-finite numbers (`NaN`, `±Infinity`) are skipped. Documented
+ * here rather than at each call site so the report's methodology section can
+ * cite a single source of truth.
+ */
+export function aggregate(values: ReadonlyArray<number | null>): NumericAggregate {
+  const finite: number[] = [];
+  for (const v of values) {
+    if (v !== null && Number.isFinite(v)) finite.push(v);
+  }
+  if (finite.length === 0) {
+    return { count: 0, mean: null, median: null, stddev: null, min: null, max: null };
+  }
+  const sorted = [...finite].sort((a, b) => a - b);
+  const sum = finite.reduce((a, b) => a + b, 0);
+  const mean = sum / finite.length;
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+  const variance = finite.reduce((acc, v) => acc + (v - mean) ** 2, 0) / finite.length;
+  const stddev = Math.sqrt(variance);
+  return {
+    count: finite.length,
+    mean,
+    median,
+    stddev,
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+  };
+}
+
+export interface GroupSummary {
+  scenarioId: string;
+  mode: "with-ssa" | "without-ssa";
+  /** Number of runs in this group (all reps, including failures). */
+  n: number;
+  /** Fraction with `status === 'SUCCESS'` AND `hardViolations === 0`. */
+  successRate: number;
+  fitness: NumericAggregate;
+  hardViolations: NumericAggregate;
+  durations: {
+    total: NumericAggregate;
+    preGA: NumericAggregate;
+    ssa: NumericAggregate;
+    ga: NumericAggregate;
+  };
+  /**
+   * First-feasible-generation distribution. `nullCount` is the number of runs
+   * that never reached `hardViolations === 0` (or did not run GA at all); the
+   * numeric aggregates are over the non-null subset.
+   */
+  firstFeasibleGeneration: NumericAggregate & { nullCount: number };
+}
+
+export interface ExperimentSummary {
+  generatedAt: string;
+  groups: GroupSummary[];
+}
+
+/**
+ * Group `records` by `(scenarioId, mode)` and compute aggregates.
+ * Pure — safe to call from tests or the smoke entry point without I/O.
+ */
+export function summarize(records: readonly RunRecord[]): ExperimentSummary {
+  const groups = new Map<string, RunRecord[]>();
+  for (const r of records) {
+    const key = `${r.scenarioId}::${r.mode}`;
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(r);
+    else groups.set(key, [r]);
+  }
+
+  const out: GroupSummary[] = [];
+  for (const [, runs] of groups) {
+    const n = runs.length;
+    const successes = runs.filter(
+      (r) => r.status === "SUCCESS" && r.hardViolations === 0,
+    ).length;
+    const ffgValues = runs.map((r) => r.firstFeasibleGeneration);
+    const ffgNullCount = ffgValues.filter((v) => v === null).length;
+    out.push({
+      scenarioId: runs[0].scenarioId,
+      mode: runs[0].mode,
+      n,
+      successRate: n > 0 ? successes / n : 0,
+      fitness: aggregate(runs.map((r) => r.bestFitness)),
+      hardViolations: aggregate(runs.map((r) => r.hardViolations)),
+      durations: {
+        total: aggregate(runs.map((r) => r.totalDurationMs)),
+        preGA: aggregate(runs.map((r) => r.preGADurationMs)),
+        ssa: aggregate(runs.map((r) => r.ssaDurationMs)),
+        ga: aggregate(runs.map((r) => r.gaDurationMs)),
+      },
+      firstFeasibleGeneration: {
+        ...aggregate(ffgValues),
+        nullCount: ffgNullCount,
+      },
+    });
+  }
+  out.sort((a, b) =>
+    a.scenarioId === b.scenarioId
+      ? a.mode.localeCompare(b.mode)
+      : a.scenarioId.localeCompare(b.scenarioId),
+  );
+  return { generatedAt: new Date().toISOString(), groups: out };
+}
+
 export async function runAblationExperiment(opts: AblationOpts): Promise<AblationReport> {
   const startedAt = new Date().toISOString();
   const records: RunRecord[] = [];
   const baseConfig: GAConfig = { ...DEFAULT_GA_CONFIG, ...(opts.gaConfigOverrides ?? {}) };
   const modes: ReadonlyArray<"with-ssa" | "without-ssa"> = ["with-ssa", "without-ssa"];
 
+  const { mkdir, writeFile, appendFile, rm } = await import("node:fs/promises");
+  await mkdir(opts.outputDir, { recursive: true });
+
+  const jsonlPath = `${opts.outputDir}/raw-runs.jsonl`;
+  const csvPath = `${opts.outputDir}/raw-runs.csv`;
+  const summaryPath = `${opts.outputDir}/summary.json`;
+
+  // Truncate any stale JSONL from a previous run so partial-crash semantics
+  // are unambiguous: a non-empty file under `outputDir` belongs to THIS run.
+  await rm(jsonlPath, { force: true });
+
+  // Per-batch (scenario × mode) flush rationale: appending each record
+  // individually maximises crash survivability — a Ctrl-C mid-rep still
+  // leaves every completed run on disk. Per-batch buffering is the
+  // task spec's wording, but we go one step finer (per-record) because the
+  // I/O cost is negligible vs. a GA run (~seconds) and the safety upside
+  // is concrete (no lost completed reps).
   for (const scenario of opts.scenarios) {
     for (const mode of modes) {
       for (let rep = 0; rep < opts.repetitions; rep += 1) {
         const record = await executeSingleRun(scenario, mode, rep, baseConfig);
         records.push(record);
+        await appendFile(jsonlPath, JSON.stringify(record) + "\n");
       }
     }
   }
+
+  await writeFile(csvPath, recordsToCsv(records));
+  await writeFile(summaryPath, JSON.stringify(summarize(records), null, 2));
 
   const finishedAt = new Date().toISOString();
   return {
@@ -344,9 +544,6 @@ if (isMain && process.argv.includes("--smoke")) {
 
     const outputDir = `${process.cwd()}/docs/experiments/data`;
 
-    const { mkdir, writeFile } = await import("node:fs/promises");
-    await mkdir(outputDir, { recursive: true });
-
     console.log("[ssa-ablation] smoke mode — 2 reps × 2 modes × 1 scenario");
     const report = await runAblationExperiment({
       repetitions: 2,
@@ -355,9 +552,12 @@ if (isMain && process.argv.includes("--smoke")) {
       outputDir,
     });
 
-    const outPath = `${outputDir}/smoke-summary.json`;
-    await writeFile(outPath, JSON.stringify(report, null, 2));
-    console.log(`[ssa-ablation] smoke complete — ${report.totalRuns} runs → ${outPath}`);
+    // `runAblationExperiment` now writes raw-runs.jsonl, raw-runs.csv, and
+    // summary.json into `outputDir` itself (E2.13). No extra smoke-summary
+    // file — `summary.json` serves that role.
+    console.log(
+      `[ssa-ablation] smoke complete — ${report.totalRuns} runs → ${outputDir}/{raw-runs.jsonl,raw-runs.csv,summary.json}`,
+    );
   })().catch((err) => {
     console.error("[ssa-ablation] smoke failed:", err);
     process.exitCode = 1;
