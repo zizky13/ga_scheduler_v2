@@ -99,6 +99,41 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     };
   }
 
+  /*
+   * Experimental SSA bypass — see GAConfig.skipSSA JSDoc and
+   * docs/backlog_experiment.md Phase E0. The bypass omits ssaResult from
+   * the response so consumers can detect it (further enhanced by E0.3).
+   */
+  if (config.skipSSA === true) {
+    const gaResult = await runGA(
+      candidates,
+      lecturerStructuralMap,
+      lecturerPreferenceMap,
+      config,
+      competencyEligibilityMap,
+      timeSlots,
+      hooks
+    );
+
+    return {
+      response: {
+        status: 'SUCCESS',
+        preGASummary,
+        ssaResult: undefined,
+        gaResult,
+        durationMs: Math.round(performance.now() - start),
+      },
+      context: {
+        validation,
+        candidates,
+        ssaResult: undefined,
+        lecturerStructuralMap,
+        lecturerPreferenceMap,
+        competencyEligibilityMap,
+      },
+    };
+  }
+
   const ssaResult = runSSA(candidates, timeSlots);
 
   if (ssaResult.status === 'INFEASIBLE') {
