@@ -12,7 +12,13 @@
  * are stable.
  */
 
-import { courseOfferings, lecturers, rooms, timeSlots } from "../db/seed.js";
+import {
+  courseOfferings,
+  lecturers,
+  rooms,
+  structurallyInfeasibleOfferings,
+  timeSlots,
+} from "../db/seed.js";
 import type { ScenarioSpec } from "./ssa-ablation.js";
 
 /**
@@ -86,4 +92,50 @@ export const feasibleTightScenario: ScenarioSpec = {
   }),
 };
 
-// NOTE: `ALL_SCENARIOS` and scenarios C/D land in tasks E3.19–E3.21.
+/**
+ * Scenario C — `structurally-infeasible` (the headline scenario).
+ *
+ * Composition: `[...courseOfferings, ...structurallyInfeasibleOfferings]` —
+ * the 15 canonical offerings plus 50 additive LAB sections defined in
+ * `src/db/seed.ts`. Every added offering individually satisfies all Pre-GA
+ * Layer-1 checks (valid lecturer + competency, LAB-A room with sufficient
+ * capacity, LAB facility present, isFixed:false), but their aggregate
+ * demand of 65 sessions exceeds the bipartite right-side capacity that
+ * SSA's Hopcroft–Karp searches over — the right nodes are distinct
+ * block-start slot IDs (not (room, slot) coordinates), so the matching
+ * is upper-bounded by the number of usable slot IDs across the week.
+ *
+ * Empirical verdict (verified during E3.19 authoring):
+ *   `runPreGA([...courseOfferings, ...structurallyInfeasibleOfferings])` →
+ *     65 feasible, 0 infeasible.
+ *   `runSSA(candidates, timeSlots)` →
+ *     status='INFEASIBLE', code=BIPARTITE_MATCHING_INSUFFICIENT,
+ *     totalSessionsRequired=65, maximumAchievableMatching=37.
+ *
+ * Why this proves SSA's value (E3.19 acceptance contract):
+ *   - `with-ssa` mode: orchestrator short-circuits on SSA's INFEASIBLE
+ *     verdict, returns `gaResult === undefined` in milliseconds.
+ *   - `without-ssa` mode: GA runs the full loop on a hopeless input,
+ *     producing either `hardViolations > 0` (no real schedule exists) or
+ *     `stagnatedEarly === true` (cannot improve past a local optimum).
+ *
+ * Note: the original task 19 premise (use `infeasibleOfferings`) was
+ * empirically incorrect — Pre-GA rejects all four entries before SSA
+ * runs, so SSA only ever sees 15 feasible candidates and returns
+ * FEASIBLE. The structurally-infeasible scenario must therefore be
+ * constructed from offerings that pass Pre-GA individually but
+ * collectively over-subscribe SSA's matching capacity.
+ */
+export const structurallyInfeasibleScenario: ScenarioSpec = {
+  id: "structurally-infeasible",
+  label:
+    "Scenario C — structurally-infeasible (65 sessions vs ~37 matchable, SSA must detect)",
+  build: () => ({
+    offerings: [...courseOfferings, ...structurallyInfeasibleOfferings],
+    timeSlots,
+    rooms,
+    lecturers,
+  }),
+};
+
+// NOTE: `ALL_SCENARIOS` and scenario D land in tasks E3.20–E3.21.

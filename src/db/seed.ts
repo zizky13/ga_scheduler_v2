@@ -500,6 +500,68 @@ export const infeasibleOfferings: CourseOffering[] = [
 // Backward-compatible alias (used by existing CLI runners)
 export const infeasibleOffering = infeasibleFacility;
 
+// ═══════════════════════════════════════════════════════════════════
+// STRUCTURALLY-INFEASIBLE OFFERINGS (Phase E3 task 19 — scenario C)
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Additive offerings that compose the `structurally-infeasible` ablation
+ * scenario. The original backlog premise (using `infeasibleOfferings` to
+ * make SSA report INFEASIBLE) was empirically wrong: Pre-GA filters all
+ * four `infeasibleOfferings` as Layer-1 violations before SSA runs, so
+ * SSA only ever sees the 15 surviving canonical offerings and returns
+ * FEASIBLE. Task 19's revised approach builds a real over-subscription:
+ * each offering below individually passes every Pre-GA check, but their
+ * aggregate demand exceeds the bipartite matching capacity that SSA's
+ * Hopcroft–Karp searches over (the right-hand side of the bipartite
+ * graph consists of distinct block-start slot IDs, not (room, slot)
+ * coordinates — see `src/ssa/bipartiteGraph.ts:1-21`), so
+ * `maximumAchievableMatching < totalSessionsRequired` and SSA returns
+ * `INFEASIBLE` with code `BIPARTITE_MATCHING_INSUFFICIENT`.
+ *
+ * Construction:
+ *   - 50 extra sections of `IF101 Algoritma & Pemrograman` (course id 1,
+ *     sks=3, requires LAB facility and `algorithms` competency).
+ *   - Each pinned to LAB-A (room id 4, capacity 30, facilities=[LAB,PROJECTOR]).
+ *   - Each taught by lecturer Hesti Kusuma (id 8) — she has the
+ *     `algorithms` competency and no preference constraint.
+ *   - `isFixed: false`, no `fixedTimeSlotIds`.
+ *   - `effectiveStudentCount: 28` (≤ LAB-A's capacity of 30).
+ *
+ * Why this exceeds Hopcroft-Karp's capacity:
+ *   The bipartite right side is keyed by slot IDs, not (room, slot)
+ *   pairs. With 11 slots per day × 5 days = 55 total slot IDs and a
+ *   3-SKS course needing 3 contiguous same-day slots, only 9 valid
+ *   block-starts exist per day → 45 right-hand-side nodes available
+ *   for sks=3 candidates. The canonical `courseOfferings` already
+ *   produces 15 sessions, so adding 50 LAB sessions pushes total
+ *   demand to 65 vs at most ~37 simultaneously matchable — guaranteed
+ *   infeasibility.
+ *
+ * Empirical SSA verdict on `[...courseOfferings, ...structurallyInfeasibleOfferings]`:
+ *   `status === 'INFEASIBLE'` (BIPARTITE_MATCHING_INSUFFICIENT),
+ *   `totalSessionsRequired = 65`, `maximumAchievableMatching` strictly
+ *   less than 65.
+ *
+ * Scope:
+ *   Additive only — the canonical `courseOfferings`, `infeasibleOfferings`,
+ *   and every other existing export are untouched. Consumed only by
+ *   `src/experiments/scenarios.ts` (the ablation harness).
+ */
+export const structurallyInfeasibleOfferings: CourseOffering[] = Array.from(
+  { length: 50 },
+  (_, i): CourseOffering => ({
+    id: 200 + i,
+    courseId: 1,
+    course: courses[0]!,
+    roomId: 4,
+    room: rooms[3]!,
+    lecturers: [lecturers[7]!],
+    effectiveStudentCount: 28,
+    isFixed: false,
+  }),
+);
+
 /**
  * Exercises the nullable `roomId` path introduced in Phase 7:
  * no seed room is chosen, so the GA picks an initial room from possibleRoomIds.
