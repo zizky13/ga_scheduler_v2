@@ -522,6 +522,7 @@ async function applyPlan(prisma: PrismaClient, plan: SeedPlan): Promise<void> {
           data: {
             isStructural: l.isStructural,
             competencies: l.competencies,
+            maxSks: l.isStructural ? 6 : 12,
           },
         })
       : await prisma.lecturer.create({
@@ -530,6 +531,7 @@ async function applyPlan(prisma: PrismaClient, plan: SeedPlan): Promise<void> {
             name: l.name,
             isStructural: l.isStructural,
             competencies: l.competencies,
+            maxSks: l.isStructural ? 6 : 12,
           },
         });
     lecturerIdByName.set(l.name, row.id);
