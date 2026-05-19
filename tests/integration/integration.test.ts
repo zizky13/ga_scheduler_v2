@@ -95,11 +95,11 @@ function buildEasyDataset(): {
   }
 
   const lecturers: Lecturer[] = [
-    { id: 1, name: 'Lec A', isStructural: false, preferredTimeSlotIds: [], competencies: ['core'] },
-    { id: 2, name: 'Lec B', isStructural: false, preferredTimeSlotIds: [], competencies: ['core'] },
-    { id: 3, name: 'Lec C', isStructural: false, preferredTimeSlotIds: [], competencies: ['core'] },
-    { id: 4, name: 'Lec D', isStructural: false, preferredTimeSlotIds: [], competencies: ['core'] },
-    { id: 5, name: 'Lec E', isStructural: false, preferredTimeSlotIds: [], competencies: ['core'] },
+    { id: 1, name: 'Lec A', isStructural: false, maxSks: 12, preferredTimeSlotIds: [], competencies: ['core'] },
+    { id: 2, name: 'Lec B', isStructural: false, maxSks: 12, preferredTimeSlotIds: [], competencies: ['core'] },
+    { id: 3, name: 'Lec C', isStructural: false, maxSks: 12, preferredTimeSlotIds: [], competencies: ['core'] },
+    { id: 4, name: 'Lec D', isStructural: false, maxSks: 12, preferredTimeSlotIds: [], competencies: ['core'] },
+    { id: 5, name: 'Lec E', isStructural: false, maxSks: 12, preferredTimeSlotIds: [], competencies: ['core'] },
   ];
 
   const offerings: CourseOffering[] = lecturers.map((lec, idx) => {

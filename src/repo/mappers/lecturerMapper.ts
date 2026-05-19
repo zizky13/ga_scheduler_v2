@@ -14,6 +14,7 @@ export interface LecturerRowFull {
   id: number;
   name: string;
   isStructural: boolean;
+  maxSks: number;
   /** Postgres: `string[]`. SQLite: JSON-encoded `string`. */
   competencies: string | string[] | null | undefined;
   preferredSlots: ReadonlyArray<{ timeSlotId: number }>;
@@ -24,6 +25,7 @@ export function mapLecturerRow(row: LecturerRowFull): Lecturer {
     id: row.id,
     name: row.name,
     isStructural: row.isStructural,
+    maxSks: row.maxSks,
     preferredTimeSlotIds: row.preferredSlots.map((p) => p.timeSlotId),
     competencies: decodeCompetencies(row.competencies),
   };

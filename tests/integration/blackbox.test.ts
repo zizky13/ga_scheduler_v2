@@ -67,6 +67,7 @@ function makeLecturer(
     id,
     name: `Lec-${id}`,
     isStructural: false,
+    maxSks: 12,
     preferredTimeSlotIds: [],
     competencies,
     ...opts,

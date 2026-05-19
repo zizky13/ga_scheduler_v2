@@ -40,7 +40,13 @@
       "Bash(node -e \"const b = require\\('bullmq'\\); console.log\\(Object.keys\\(b\\).filter\\(k => /Queue|Worker|Job/.test\\(k\\)\\).slice\\(0, 20\\)\\)\")",
       "Bash(npm create *)",
       "Bash(npx vite *)",
-      "Bash(xargs -I{} psql \"{}\" -c \"SELECT id, name, \\\\\"isStructural\\\\\", \\\\\"maxSks\\\\\" FROM lecturers ORDER BY id LIMIT 10;\")"
+      "Bash(xargs -I{} psql \"{}\" -c \"SELECT id, name, \\\\\"isStructural\\\\\", \\\\\"maxSks\\\\\" FROM lecturers ORDER BY id LIMIT 10;\")",
+      "Bash(sed -n '340,365p' src/cli/run-pipeline.ts)",
+      "Bash(sed -n '60,90p' tests/integration/blackbox.test.ts)",
+      "Bash(sed -n '95,130p' tests/integration/integration.test.ts)",
+      "Bash(sed -n '195,215p' tests/repo/mappers.test.ts)",
+      "Bash(sed -n '45,70p' tests/pre-ga/checks.test.ts)",
+      "Bash(sed -n '80,120p' tests/orchestrator/preGASummary.test.ts)"
     ]
   }
 }

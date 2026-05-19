@@ -23,6 +23,7 @@ export interface Lecturer {
   id: number;
   name: string;
   isStructural: boolean;         // e.g., department head — soft constraint
+  maxSks: number;                // max teaching load in SKS — soft constraint
   preferredTimeSlotIds: number[]; // slots the lecturer prefers (soft constraint)
   competencies: string[];        // e.g., ['algorithms', 'databases']
 }

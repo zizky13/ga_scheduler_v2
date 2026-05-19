@@ -43,6 +43,7 @@ export function toLecturer(
     id: row.id,
     name: row.name,
     isStructural: row.isStructural,
+    maxSks: row.maxSks,
     preferredTimeSlotIds: extras.preferredTimeSlotIds,
     competencies: decodeCompetencies(row.competencies),
   };

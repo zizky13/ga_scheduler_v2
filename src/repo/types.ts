@@ -17,6 +17,7 @@ export type LecturerRow = {
   id: number;
   name: string;
   isStructural: boolean;
+  maxSks: number;
   /** Postgres: `string[]`. SQLite: JSON-encoded `string`. */
   competencies: string | string[];
   // Other Prisma scalars (semesterId, createdAt, etc.) and relation joins

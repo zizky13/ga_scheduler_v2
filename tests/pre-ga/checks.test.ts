@@ -51,6 +51,7 @@ function buildLecturer(id: number, name: string, competencies: string[]): Lectur
     id,
     name,
     isStructural: false,
+    maxSks: 12,
     preferredTimeSlotIds: [],
     competencies,
   };

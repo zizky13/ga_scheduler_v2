@@ -82,19 +82,19 @@ function buildTimeSlots(): TimeSlot[] {
 function buildLecturers(): Lecturer[] {
   return [
     {
-      id: 1, name: 'Lec Algorithms', isStructural: false,
+      id: 1, name: 'Lec Algorithms', isStructural: false, maxSks: 12,
       preferredTimeSlotIds: [], competencies: ['algorithms'],
     },
     {
-      id: 2, name: 'Lec Databases', isStructural: false,
+      id: 2, name: 'Lec Databases', isStructural: false, maxSks: 12,
       preferredTimeSlotIds: [], competencies: ['databases'],
     },
     {
-      id: 3, name: 'Lec Networks', isStructural: false,
+      id: 3, name: 'Lec Networks', isStructural: false, maxSks: 12,
       preferredTimeSlotIds: [], competencies: ['networks'],
     },
     {
-      id: 4, name: 'Lec NoCompetencies', isStructural: false,
+      id: 4, name: 'Lec NoCompetencies', isStructural: false, maxSks: 12,
       preferredTimeSlotIds: [], competencies: [],
     },
   ];

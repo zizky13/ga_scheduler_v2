@@ -79,6 +79,7 @@ export const lecturers: Lecturer[] = [
     id: 1,
     name: "Dr. Andi Suryadi",
     isStructural: true,
+    maxSks: 6,
     preferredTimeSlotIds: [1, 2, 3, 4, 12, 13, 14, 15], // Mon & Tue mornings (dept head)
     competencies: ["ai-ml", "networks", "algorithms"],
   },
@@ -86,6 +87,7 @@ export const lecturers: Lecturer[] = [
     id: 2,
     name: "Budi Hartono, M.Kom",
     isStructural: false,
+    maxSks: 12,
     preferredTimeSlotIds: [
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
       22,
@@ -96,6 +98,7 @@ export const lecturers: Lecturer[] = [
     id: 3,
     name: "Citra Lestari, M.T.",
     isStructural: false,
+    maxSks: 12,
     preferredTimeSlotIds: [
       23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
       41, 42, 43, 44,
@@ -106,6 +109,7 @@ export const lecturers: Lecturer[] = [
     id: 4,
     name: "Dewi Anggraeni, Ph.D.",
     isStructural: false,
+    maxSks: 12,
     preferredTimeSlotIds: [
       12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
       30, 31, 32, 33,
@@ -116,6 +120,7 @@ export const lecturers: Lecturer[] = [
     id: 5,
     name: "Eko Prasetyo, M.Sc.",
     isStructural: true,
+    maxSks: 6,
     preferredTimeSlotIds: [1, 2, 12, 13, 23, 24, 34, 35, 45, 46], // Morning only (08:00–10:00)
     competencies: ["software-engineering", "cloud", "ai-ml"],
   },
@@ -123,6 +128,7 @@ export const lecturers: Lecturer[] = [
     id: 6,
     name: "Fani Rahayu, M.Kom",
     isStructural: false,
+    maxSks: 12,
     preferredTimeSlotIds: [
       7, 8, 9, 18, 19, 20, 29, 30, 31, 40, 41, 42, 51, 52, 53,
     ], // Afternoon only (13:00–15:00)
@@ -132,6 +138,7 @@ export const lecturers: Lecturer[] = [
     id: 7,
     name: "Gunawan Wibowo, M.T.",
     isStructural: false,
+    maxSks: 12,
     preferredTimeSlotIds: [
       34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51,
       52, 53, 54, 55,
@@ -142,6 +149,7 @@ export const lecturers: Lecturer[] = [
     id: 8,
     name: "Hesti Kusuma, Ph.D.",
     isStructural: false,
+    maxSks: 12,
     preferredTimeSlotIds: [], // No preference (fully flexible)
     competencies: ["ai-ml", "algorithms", "math"],
   },
