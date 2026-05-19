@@ -42,7 +42,8 @@
       "Bash(npx vite *)",
       "Bash(awk -F'.' '{print $1}')",
       "Bash(echo \"EXIT=$?\")",
-      "Bash(timeout 20 npx tsx src/cli/run-pipeline.ts)"
+      "Bash(timeout 20 npx tsx src/cli/run-pipeline.ts)",
+      "Bash(node --input-type=module -e ' *)"
     ]
   }
 }

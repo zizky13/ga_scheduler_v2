@@ -45,6 +45,9 @@
  */
 
 import type { GenerationSnapshot } from "../ga/runGA.js";
+import { runStaticExclusion } from "../ssa/staticExclusion.js";
+import { runSSA } from "../ssa/index.js";
+import type { PreGACandidate, TimeSlot } from "../types.js";
 
 /**
  * Returns the generation number of the first snapshot with `hardViolations === 0`,
@@ -68,4 +71,48 @@ export function firstFeasibleGeneration(
     if (s.hardViolations === 0) return s.generation;
   }
   return null;
+}
+
+/**
+ * Counterfactual telemetry: what SSA *would* have done on this input.
+ *
+ * Computed by the harness even on bypass-mode runs (E1 task 9 of
+ * docs/backlog_experiment.md) so the report can quantify the "opportunity
+ * cost of skipping SSA" — domain coordinates the GA never gets pruned,
+ * and runs SSA would have caught as structurally infeasible before any
+ * GA cycle was spent.
+ */
+export interface SsaCounterfactual {
+  /** Size of `runStaticExclusion(candidates).lockedCoordinates`. */
+  wouldHavePrunedCoordinates: number;
+  /** True iff a separate `runSSA(...)` would have returned status `'INFEASIBLE'`. */
+  wouldHaveDeclaredInfeasible: boolean;
+}
+
+/**
+ * Re-runs SSA's Phase 0 (static exclusion) and the full SSA pipeline against
+ * the same Pre-GA candidates the orchestrator handed to the GA. Returns the
+ * counterfactual signal the report uses to justify SSA.
+ *
+ * Pass `timeSlots` so `runSSA` builds the multi-slot bipartite graph the
+ * same way the orchestrator would have — otherwise SSA falls back to the
+ * legacy per-slot graph and the infeasibility verdict differs from a
+ * canonical run (see `src/ssa/index.ts:16-21`).
+ *
+ * Pure and safe to call from any context — no GA-loop or orchestrator
+ * dependency, no I/O.
+ */
+export function computeSsaCounterfactual(
+  candidates: readonly PreGACandidate[],
+  timeSlots: readonly TimeSlot[],
+): SsaCounterfactual {
+  // `runStaticExclusion` and `runSSA` accept `PreGACandidate[]` and
+  // `TimeSlot[]` (mutable). The helper's signature is `readonly` to keep
+  // callers honest; spread once to satisfy the underlying signatures.
+  const exclusion = runStaticExclusion([...candidates]);
+  const ssa = runSSA([...candidates], [...timeSlots]);
+  return {
+    wouldHavePrunedCoordinates: exclusion.lockedCoordinates.size,
+    wouldHaveDeclaredInfeasible: ssa.status === "INFEASIBLE",
+  };
 }
