@@ -136,4 +136,35 @@ describe('orchestrator skipSSA — bypass branch', () => {
 
     expect(response.ssaSkipped).toBe(false);
   });
+
+  // E1 task 8 — per-phase wall-clock breakdown. The bypass run is the
+  // cleanest signal: Pre-GA + GA executed, SSA did not, so ssaDurationMs
+  // must be exactly 0 and the three fields must sum to durationMs within
+  // a small slack for orchestrator glue between markers.
+  it('per-phase durations: bypass run sums to durationMs within ±5ms', async () => {
+    const offerings = buildOfferings();
+
+    const { response } = await runPipeline({
+      offerings,
+      timeSlots: starvedTimeSlots,
+      rooms,
+      lecturers,
+      config: { ...buildBaseConfig(), skipSSA: true },
+    });
+
+    expect(response.preGADurationMs).toBeDefined();
+    expect(response.ssaDurationMs).toBeDefined();
+    expect(response.gaDurationMs).toBeDefined();
+
+    const preGA = response.preGADurationMs!;
+    const ssa = response.ssaDurationMs!;
+    const ga = response.gaDurationMs!;
+
+    expect(ssa).toBe(0);
+    expect(preGA).toBeGreaterThanOrEqual(0);
+    expect(ga).toBeGreaterThan(0);
+
+    const sum = preGA + ssa + ga;
+    expect(Math.abs(sum - response.durationMs)).toBeLessThanOrEqual(5);
+  });
 });

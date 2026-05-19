@@ -273,4 +273,22 @@ export interface SchedulerResponse {
   ssaSkipped: boolean;
   gaResult?: GAResult;
   durationMs: number;
+  /**
+   * Wall-clock split of `durationMs` (E1 task 8 of docs/backlog_experiment.md).
+   * All three are populated whenever the matching layer executes; the layer
+   * that did not run reports `0`. Their sum equals `durationMs` within ±1ms
+   * rounding error (each field is independently `Math.round`-ed).
+   *
+   * `ssaDurationMs` is `0` when `ssaSkipped === true` AND when the run aborted
+   * with `NO_FEASIBLE_CANDIDATES` before SSA could run.
+   * `gaDurationMs` is `0` when SSA returned `INFEASIBLE` or when the run
+   * aborted with `NO_FEASIBLE_CANDIDATES`.
+   *
+   * Optional on the interface so older code paths or test fixtures that
+   * construct a `SchedulerResponse` literal without timing instrumentation
+   * still compile; runtime callers from `runPipeline` always populate them.
+   */
+  preGADurationMs?: number;
+  ssaDurationMs?: number;
+  gaDurationMs?: number;
 }

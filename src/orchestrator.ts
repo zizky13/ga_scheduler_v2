@@ -58,7 +58,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     lecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
   );
 
+  const preGAStart = performance.now();
   const { validation, candidates } = runPreGA(offerings, timeSlots, rooms);
+  const preGADurationMs = Math.round(performance.now() - preGAStart);
 
   const competencyEligibilityMap = new Map<number, Set<number>>(
     validation.feasible.map(o => [
@@ -89,6 +91,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         preGASummary,
         ssaSkipped: false,
         durationMs: Math.round(performance.now() - start),
+        preGADurationMs,
+        ssaDurationMs: 0,
+        gaDurationMs: 0,
       },
       context: {
         validation,
@@ -106,6 +111,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
    * the response so consumers can detect it (further enhanced by E0.3).
    */
   if (config.skipSSA === true) {
+    const gaStart = performance.now();
     const gaResult = await runGA(
       candidates,
       lecturerStructuralMap,
@@ -115,6 +121,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       timeSlots,
       hooks
     );
+    const gaDurationMs = Math.round(performance.now() - gaStart);
 
     return {
       response: {
@@ -124,6 +131,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         ssaSkipped: true,
         gaResult,
         durationMs: Math.round(performance.now() - start),
+        preGADurationMs,
+        ssaDurationMs: 0,
+        gaDurationMs,
       },
       context: {
         validation,
@@ -136,7 +146,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     };
   }
 
+  const ssaStart = performance.now();
   const ssaResult = runSSA(candidates, timeSlots);
+  const ssaDurationMs = Math.round(performance.now() - ssaStart);
 
   if (ssaResult.status === 'INFEASIBLE') {
     return {
@@ -146,6 +158,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         ssaResult,
         ssaSkipped: false,
         durationMs: Math.round(performance.now() - start),
+        preGADurationMs,
+        ssaDurationMs,
+        gaDurationMs: 0,
       },
       context: {
         validation,
@@ -158,6 +173,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     };
   }
 
+  const gaStart = performance.now();
   const gaResult = await runGA(
     candidates,
     lecturerStructuralMap,
@@ -167,6 +183,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     timeSlots,
     hooks
   );
+  const gaDurationMs = Math.round(performance.now() - gaStart);
 
   return {
     response: {
@@ -176,6 +193,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       ssaSkipped: false,
       gaResult,
       durationMs: Math.round(performance.now() - start),
+      preGADurationMs,
+      ssaDurationMs,
+      gaDurationMs,
     },
     context: {
       validation,
