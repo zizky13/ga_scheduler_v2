@@ -6,7 +6,7 @@ import { TableToolbar } from '../components/TableToolbar'
 import { Button } from '../components/Button'
 import { BooleanTag } from '../components/Badge'
 import { Modal, ConfirmDialog } from '../components/Modal'
-import { TextInput, Toggle, FormSection, FormActions, FormField } from '../components/Form'
+import { TextInput, NumberInput, Toggle, FormSection, FormActions, FormField } from '../components/Form'
 import { useToastStore } from '../store/toastStore'
 import { useAuthStore } from '../store/authStore'
 import { useSemesterStore } from '../store/semesterStore'
@@ -23,6 +23,7 @@ interface Lecturer {
   semesterId: number
   name: string
   isStructural: boolean
+  maxSks: number
   competencies: string[]
   preferredTimeSlotIds: number[]
 }
@@ -55,17 +56,20 @@ interface LecturerEnriched extends Lecturer {
 interface FormState {
   name: string
   isStructural: boolean
+  maxSks: number
   competencies: string[]
   preferredTimeSlotIds: number[]
 }
 
 interface FormErrors {
   name?: string
+  maxSks?: string
 }
 
 const EMPTY_FORM: FormState = {
   name: '',
   isStructural: false,
+  maxSks: 12,
   competencies: [],
   preferredTimeSlotIds: [],
 }
@@ -93,6 +97,9 @@ const WEEKDAY_SHORT: Record<Weekday, string> = {
 function validate(form: FormState): FormErrors {
   const errors: FormErrors = {}
   if (!form.name.trim()) errors.name = 'Name is required'
+  if (!Number.isInteger(form.maxSks) || form.maxSks < 0) {
+    errors.maxSks = 'Max SKS must be a non-negative integer'
+  }
   return errors
 }
 
@@ -442,6 +449,7 @@ export function LecturerManagementPage() {
     setForm({
       name: lec.name,
       isStructural: lec.isStructural,
+      maxSks: lec.maxSks,
       competencies: [...lec.competencies],
       preferredTimeSlotIds: [...lec.preferredTimeSlotIds],
     })
@@ -467,6 +475,7 @@ export function LecturerManagementPage() {
     try {
       const body: Record<string, unknown> = {
         name: form.name,
+        maxSks: form.maxSks,
         competencies: form.competencies,
         preferredTimeSlotIds: form.preferredTimeSlotIds,
       }
@@ -878,6 +887,20 @@ export function LecturerManagementPage() {
               onChange={(v) => setForm((prev) => ({ ...prev, isStructural: v }))}
             />
           )}
+
+          <NumberInput
+            label="Max SKS"
+            helperText="Maximum teaching load per semester (0 = on leave)."
+            value={form.maxSks}
+            onChange={(v) => {
+              setForm((prev) => ({ ...prev, maxSks: v }))
+              setFormErrors((prev) => ({ ...prev, maxSks: undefined }))
+            }}
+            error={formErrors.maxSks}
+            min={0}
+            step={1}
+            required
+          />
 
           <TagInput
             label="Competencies"
