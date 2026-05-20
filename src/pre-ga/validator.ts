@@ -120,11 +120,15 @@ export function runPreGA(
     return candidate;
   });
 
-  // Build lockedRoomMap from CourseOffering.isFixed
-  // (In the full stack, this comes from the LockedRoom DB table via FR-01)
+  // Legacy in-process proxy for the LockedRoom DB table (techspec §5.4 / FR-01).
+  // Phase 7 made roomId nullable and decoupled it from isFixed: `isFixed` now
+  // means "fixed time slots only", while room-locking lives in LockedRoom. An
+  // offering with `isFixed: true, roomId: null` is a "fixed time, flexible room"
+  // candidate — the GA seeds its room from `possibleRoomIds` via the chromosome
+  // seeder, so it must NOT appear in this map.
   const lockedRoomMap = new Map<number, number>(
     feasible
-      .filter(o => o.isFixed)
+      .filter((o): o is CourseOffering & { roomId: number } => o.isFixed && o.roomId !== null)
       .map(o => [o.id, o.roomId])
   );
 
