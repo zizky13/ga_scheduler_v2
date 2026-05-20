@@ -56,6 +56,7 @@ interface ScheduleRunDetail {
   hardViolations: number;
   softPenalty: number;
   competencyMismatch: number;
+  loadPenalty: number;
   generationsRun: number;
   currentGeneration: number;
   stagnatedEarly: boolean;
@@ -207,6 +208,7 @@ export function RunDetailPage() {
         hardViolations: data.hardViolations,
         softPenalty: data.softPenalty,
         competencyMismatch: data.competencyMismatch,
+        loadPenalty: data.loadPenalty,
       };
     });
     setChartData((prev) => [
@@ -442,6 +444,15 @@ export function RunDetailPage() {
               <p className={styles.statLabel}>Competency Mismatch</p>
               <p className={`${styles.statValue} ${run.competencyMismatch === 0 ? styles.statGreen : styles.statRed}`}>
                 {run.competencyMismatch}
+              </p>
+            </div>
+            <div
+              className={styles.statCard}
+              title="Sum of SKS over each lecturer's maxSks cap (soft constraint)."
+            >
+              <p className={styles.statLabel}>Load Penalty (SKS over cap)</p>
+              <p className={`${styles.statValue} ${run.loadPenalty === 0 ? styles.statGreen : styles.statRed}`}>
+                {run.loadPenalty}
               </p>
             </div>
           </div>

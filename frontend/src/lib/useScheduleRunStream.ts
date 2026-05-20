@@ -12,6 +12,7 @@ export interface SSEProgressPayload {
   competencyMismatch: number;
   structuralPenalty: number;
   preferencePenalty: number;
+  loadPenalty: number;
 }
 
 export interface SSEStatePayload {
