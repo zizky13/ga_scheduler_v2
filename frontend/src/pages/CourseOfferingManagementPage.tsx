@@ -70,6 +70,7 @@ interface RoomWire {
 interface LecturerWire {
   id: number
   name: string
+  maxSks: number
   competencies: string[]
 }
 
@@ -323,6 +324,9 @@ export function CourseOfferingManagementPage() {
 
   /* ── Table data ── */
   const [offerings, setOfferings] = useState<OfferingEnriched[]>([])
+  // Full semester offering list (unpaginated) — drives `loadInfoByLecturerId`
+  // so per-lecturer SKS sums stay correct across pagination.
+  const [allOfferings, setAllOfferings] = useState<CourseOfferingWire[]>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
@@ -360,6 +364,7 @@ export function CourseOfferingManagementPage() {
       try {
         if (activeSemesterId === null) {
           setOfferings([])
+          setAllOfferings([])
           setTotal(0)
           setAllLockedRooms([])
           setLoading(false)
@@ -367,11 +372,16 @@ export function CourseOfferingManagementPage() {
         }
 
         const semesterScope = { semesterId: activeSemesterId }
-        const [offRes, courseRes, roomRes, lecRes, tsRes, lockRes] = await Promise.all([
+        const [offRes, allOffRes, courseRes, roomRes, lecRes, tsRes, lockRes] = await Promise.all([
           get<ListResponse<CourseOfferingWire>>('/course-offerings', {
             ...semesterScope,
             page: p,
             pageSize: ps,
+          }),
+          get<ListResponse<CourseOfferingWire>>('/course-offerings', {
+            ...semesterScope,
+            page: 1,
+            pageSize: 5000,
           }),
           get<ListResponse<CourseWire>>('/courses', { page: 1, pageSize: 5000 }),
           get<ListResponse<RoomWire>>('/rooms', { page: 1, pageSize: 500 }),
@@ -384,6 +394,7 @@ export function CourseOfferingManagementPage() {
           }),
         ])
 
+        setAllOfferings(allOffRes.data)
         setAllCourses(courseRes.data)
         setAllRooms(roomRes.data)
         setAllLecturers(lecRes.data)
@@ -429,6 +440,36 @@ export function CourseOfferingManagementPage() {
   useEffect(() => {
     fetchData(page, pageSize)
   }, [page, pageSize, fetchData])
+
+  // Per-lecturer load info derived from all offerings in the active semester.
+  // Team-taught offerings contribute full course.sks to each assigned lecturer
+  // — mirrors LecturerManagementPage's `currentSksByLecturerId` and the GA's
+  // `calculateLoadPenalty` so UI and fitness agree.
+  const loadInfoByLecturerId = useMemo<
+    Record<number, { currentSks: number; maxSks: number; isOverloaded: boolean }>
+  >(() => {
+    const sksByCourse = new Map<number, number>()
+    for (const c of allCourses) sksByCourse.set(c.id, c.sks)
+    const currentSks: Record<number, number> = {}
+    for (const l of allLecturers) currentSks[l.id] = 0
+    for (const off of allOfferings) {
+      const sks = sksByCourse.get(off.courseId) ?? 0
+      if (sks === 0) continue
+      for (const lid of off.lecturerIds) {
+        currentSks[lid] = (currentSks[lid] ?? 0) + sks
+      }
+    }
+    const result: Record<
+      number,
+      { currentSks: number; maxSks: number; isOverloaded: boolean }
+    > = {}
+    for (const l of allLecturers) {
+      const cs = currentSks[l.id] ?? 0
+      result[l.id] = { currentSks: cs, maxSks: l.maxSks, isOverloaded: cs > l.maxSks }
+    }
+    return result
+  }, [allLecturers, allOfferings, allCourses])
+  void loadInfoByLecturerId
 
   /* ── Client-side filtering ── */
 
