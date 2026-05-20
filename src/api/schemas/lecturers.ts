@@ -21,6 +21,7 @@ export const createLecturerBodySchema = z
     semesterId: numericIdSchema,
     name: z.string().trim().min(1).max(128),
     isStructural: z.boolean().optional(),
+    maxSks: z.number().int().min(0).optional(),
     preferredTimeSlotIds: idArraySchema.default([]),
     competencies: competencyArraySchema.default([]),
   })
@@ -32,6 +33,7 @@ export const updateLecturerBodySchema = z
   .object({
     name: z.string().trim().min(1).max(128).optional(),
     isStructural: z.boolean().optional(),
+    maxSks: z.number().int().min(0).optional(),
     preferredTimeSlotIds: idArraySchema.optional(),
     competencies: competencyArraySchema.optional(),
   })
