@@ -119,6 +119,7 @@ export async function processGaPipelineJob(
       hardViolations: number;
       softPenalty: number;
       competencyMismatch: number;
+      loadPenalty: number;
     }> = [];
 
     const { response } = await runPipeline({
@@ -137,6 +138,7 @@ export async function processGaPipelineJob(
             hardViolations: snapshot.hardViolations,
             softPenalty: snapshot.softPenalty,
             competencyMismatch: snapshot.competencyMismatch,
+            loadPenalty: snapshot.loadPenalty,
           });
           await safePublish(redis, runId, { type: 'progress', snapshot });
         },
@@ -236,6 +238,7 @@ export async function processGaPipelineJob(
         hardViolations: gaResult.hardViolations,
         softPenalty: gaResult.softPenalty,
         competencyMismatch: latestCompetencyMismatch(pendingFitnessRows),
+        loadPenalty: latestLoadPenalty(pendingFitnessRows),
         currentGeneration: gaResult.generationsRun,
         generationsRun: gaResult.generationsRun,
         stagnatedEarly: gaResult.stagnatedEarly,
@@ -279,6 +282,13 @@ function latestCompetencyMismatch(
 ): number {
   if (rows.length === 0) return 0;
   return rows[rows.length - 1]!.competencyMismatch;
+}
+
+function latestLoadPenalty(
+  rows: Array<{ loadPenalty: number }>,
+): number {
+  if (rows.length === 0) return 0;
+  return rows[rows.length - 1]!.loadPenalty;
 }
 
 async function safePublish(

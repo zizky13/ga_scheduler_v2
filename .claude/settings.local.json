@@ -49,7 +49,8 @@
       "Bash(sed -n '80,120p' tests/orchestrator/preGASummary.test.ts)",
       "Bash(sed -n '289,295p' tests/integration/integration.test.ts)",
       "Bash(sed -n '377,383p' tests/integration/integration.test.ts)",
-      "Bash(sed -n '429,435p' tests/integration/integration.test.ts)"
+      "Bash(sed -n '429,435p' tests/integration/integration.test.ts)",
+      "Bash(grep -nB1 -A 20 \"^export interface GAResult\\\\b\" src/types.ts src/ga/runGA.ts)"
     ]
   }
 }

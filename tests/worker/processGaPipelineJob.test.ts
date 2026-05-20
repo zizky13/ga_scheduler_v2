@@ -47,6 +47,7 @@ interface ScheduleRunRecord {
   hardViolations?: number;
   softPenalty?: number;
   competencyMismatch?: number;
+  loadPenalty?: number;
   currentGeneration?: number;
   generationsRun?: number;
   stagnatedEarly?: boolean;

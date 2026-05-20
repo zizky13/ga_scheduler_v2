@@ -344,6 +344,9 @@ model ScheduleRun {
   // the per-run aggregate so the audit log can attribute hard violations to
   // [HC-COMPETENCY] specifically rather than a single opaque integer.
   competencyMismatch Int     @default(0)
+  // Per-run aggregate of `EvaluatedChromosome.loadPenalty` (Phase 8) — sum of
+  // SKS over each lecturer's `maxSks` cap. Surfaced via run-detail + telemetry.
+  loadPenalty        Int     @default(0)
   stagnatedEarly     Boolean @default(false)
 
   // Raw history retained for techspec §8.2 compatibility; also normalized below.
@@ -426,6 +429,12 @@ model FitnessHistory {
   // (techspec §4.3). Lets the chart UI overlay competency violations on top of
   // the global hardViolations curve for traceability.
   competencyMismatch Int
+  // Per-generation `loadPenalty` (Phase 8) — sum of SKS over each lecturer's
+  // `maxSks` cap. Mirrors `competencyMismatch` placement so the chart UI can
+  // overlay load penalty on top of the soft-penalty curve. Has @default(0)
+  // because the column is added to an already-populated table; siblings
+  // (`competencyMismatch`) were created with the table so didn't need one.
+  loadPenalty        Int      @default(0)
   recordedAt         DateTime @default(now())
 
   run ScheduleRun @relation(fields: [runId], references: [id], onDelete: Cascade)

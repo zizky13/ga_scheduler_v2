@@ -267,6 +267,7 @@ interface ScheduleRunSummaryWire {
   hardViolations: number;
   softPenalty: number;
   competencyMismatch: number;
+  loadPenalty: number;
   generationsRun: number;
   currentGeneration: number;
   stagnatedEarly: boolean;
@@ -288,6 +289,7 @@ function toSummaryWire(r: ScheduleRunSummaryRecord): ScheduleRunSummaryWire {
     hardViolations: r.hardViolations,
     softPenalty: r.softPenalty,
     competencyMismatch: r.competencyMismatch,
+    loadPenalty: r.loadPenalty,
     generationsRun: r.generationsRun,
     currentGeneration: r.currentGeneration,
     stagnatedEarly: r.stagnatedEarly,
@@ -628,6 +630,7 @@ async function getStream(
             competencyMismatch: event.snapshot.competencyMismatch,
             structuralPenalty: event.snapshot.structuralPenalty,
             preferencePenalty: event.snapshot.preferencePenalty,
+            loadPenalty: event.snapshot.loadPenalty,
           });
           break;
         case "state":
