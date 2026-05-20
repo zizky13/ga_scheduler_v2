@@ -14,6 +14,7 @@ import {
   evaluateHardFitness,
   calculateStructuralPenalty,
   calculatePreferencePenalty,
+  calculateLoadPenalty,
 } from '../../src/ga/fitness.js';
 import type { Chromosome, FlexibleGene, PreGACandidate } from '../../src/types.js';
 
