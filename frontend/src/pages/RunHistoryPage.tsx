@@ -17,7 +17,7 @@ import { StatusBadge } from '../components/Badge'
 import { ConfirmDialog } from '../components/Modal'
 import { useToastStore } from '../store/toastStore'
 import { useAuthStore } from '../store/authStore'
-import { get, post } from '../lib/api'
+import { get, post, del } from '../lib/api'
 import type { ApiRequestError } from '../lib/api'
 import styles from './RunHistoryPage.module.css'
 
@@ -114,6 +114,7 @@ export function RunHistoryPage() {
   const [cancelTarget, setCancelTarget] = useState<ScheduleRunSummary | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ScheduleRunSummary | null>(null)
   const [cancelling, setCancelling] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -191,6 +192,26 @@ export function RunHistoryPage() {
       setCancelling(false)
     }
   }, [cancelTarget, addToast, fetchRuns, meta.page, meta.pageSize, statusFilter, sortDesc])
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await del('/schedule-runs/' + deleteTarget.id)
+      addToast({
+        type: 'success',
+        title: 'Run deleted',
+        message: 'The schedule run and its assignments have been removed.',
+      })
+      setDeleteTarget(null)
+      fetchRuns(meta.page, meta.pageSize, statusFilter, sortDesc)
+    } catch (err) {
+      const e = err as ApiRequestError
+      addToast({ type: 'error', title: 'Failed to delete', message: e.message })
+    } finally {
+      setDeleting(false)
+    }
+  }, [deleteTarget, addToast, fetchRuns, meta.page, meta.pageSize, statusFilter, sortDesc])
 
   const filteredRuns = searchQuery
     ? runs.filter((r) => r.id.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -415,6 +436,18 @@ export function RunHistoryPage() {
         confirmLabel="Cancel Run"
         cancelLabel="Keep Running"
         loading={cancelling}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteConfirm}
+        variant="danger"
+        title="Delete this run?"
+        description="Deleting this run also removes all of its schedule assignments and frees any course offerings it referenced for deletion. This cannot be undone."
+        confirmLabel="Delete Run"
+        cancelLabel="Keep Run"
+        loading={deleting}
       />
     </>
   )
