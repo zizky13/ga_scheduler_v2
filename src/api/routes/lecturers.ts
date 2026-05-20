@@ -39,6 +39,7 @@ interface LecturerWirePayload {
   semesterId: number;
   name: string;
   isStructural: boolean;
+  maxSks: number;
   preferredTimeSlotIds: number[];
   competencies: string[];
   createdById: number | null;
@@ -52,6 +53,7 @@ function toWire(l: LecturerRecord): LecturerWirePayload {
     semesterId: l.semesterId,
     name: l.name,
     isStructural: l.isStructural,
+    maxSks: l.maxSks,
     preferredTimeSlotIds: [...l.preferredTimeSlotIds],
     competencies: [...l.competencies],
     createdById: l.createdById,
@@ -74,14 +76,18 @@ interface IdParams {
 
 // Field allow-lists for `user` callers (api_design §4.5 / §5.3.5). `admin`
 // bypasses entirely.
+// `maxSks` is user-editable per OQ-13 working assumption (parallel to
+// `competencies`). Flip both lists if the resolution comes back admin-only.
 const USER_CREATE_FIELDS = [
   'semesterId',
   'name',
+  'maxSks',
   'preferredTimeSlotIds',
   'competencies',
 ] as const;
 const USER_UPDATE_FIELDS = [
   'name',
+  'maxSks',
   'preferredTimeSlotIds',
   'competencies',
 ] as const;
@@ -133,14 +139,16 @@ async function postCreate(req: Request, res: Response, next: NextFunction): Prom
     const isStructural =
       req.user?.role === 'admin' ? body.isStructural ?? false : false;
     try {
-      const created = await repos.lecturers.create({
+      const createInput: Parameters<typeof repos.lecturers.create>[0] = {
         semesterId: body.semesterId,
         name: body.name,
         isStructural,
         preferredTimeSlotIds: body.preferredTimeSlotIds,
         competencies: body.competencies,
         createdById: req.user?.id ?? null,
-      });
+      };
+      if (body.maxSks !== undefined) createInput.maxSks = body.maxSks;
+      const created = await repos.lecturers.create(createInput);
       // api_design §8 line 1108: lecturer/course/course_offering audit rows
       // include `role` so we can attribute which role changed which field.
       await writeAudit(req, {
@@ -193,6 +201,7 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
     const patchInput: {
       name?: string;
       isStructural?: boolean;
+      maxSks?: number;
       preferredTimeSlotIds?: number[];
       competencies?: string[];
     } = {};
@@ -201,6 +210,7 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
       patchInput.preferredTimeSlotIds = body.preferredTimeSlotIds;
     }
     if (body.competencies !== undefined) patchInput.competencies = body.competencies;
+    if (body.maxSks !== undefined) patchInput.maxSks = body.maxSks;
     if (body.isStructural !== undefined && req.user?.role === 'admin') {
       patchInput.isStructural = body.isStructural;
     }
