@@ -116,7 +116,13 @@ export interface SessionNode {
   sessionId: number;    // offeringId * 100 + sessionIndex
   offeringId: number;
   sessionIndex: number;
-  roomId: number;
+  // note: roomId is null when the offering has no LockedRoom — i.e. the
+  // room is a free CSP variable whose domain is `possibleRoomIds`. AC-3
+  // must NOT group null-roomId sessions under a single "shared room" key:
+  // they don't share a fixed room, they share a domain. The Layer-3 GA is
+  // where room collisions are evaluated (via gene.sessions[].roomId, which
+  // is guaranteed non-null by the chromosome seeder).
+  roomId: number | null;
   lecturerIds: number[];
 }
 

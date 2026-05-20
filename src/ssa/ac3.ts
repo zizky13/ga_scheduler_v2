@@ -11,9 +11,14 @@ import type { BipartiteGraph, SessionNode, AC3Result } from '../types.js';
 export function runAC3(graph: BipartiteGraph): AC3Result {
   const { sessions, adjacency } = graph;
 
-  // Build room → sessions index
+  // Build room → sessions index. Skip sessions whose roomId is null:
+  // those have a free room variable (domain = possibleRoomIds, evaluated
+  // by Layer 3), not a fixed assignment that could conflict here. Grouping
+  // them under "null" would propagate spurious shared-room constraints
+  // (null === null would falsely mark every unlocked offering as colliding).
   const roomToSessions = new Map<number, SessionNode[]>();
   for (const session of sessions) {
+    if (session.roomId === null) continue;
     if (!roomToSessions.has(session.roomId)) {
       roomToSessions.set(session.roomId, []);
     }
@@ -75,8 +80,13 @@ export function runAC3(graph: BipartiteGraph): AC3Result {
     const sessionI = sessionMap.get(xi)!;
     const sessionJ = sessionMap.get(xj)!;
 
-    // Determine constraint
-    const shareRoom = sessionI.roomId === sessionJ.roomId;
+    // Determine constraint. Two sessions share a room only when both have
+    // a concrete (non-null) roomId that matches — null roomIds are free
+    // CSP variables, not shared resources (see roomToSessions guard above).
+    const shareRoom =
+      sessionI.roomId !== null &&
+      sessionJ.roomId !== null &&
+      sessionI.roomId === sessionJ.roomId;
     const sharedLecturers = sessionI.lecturerIds.filter(id =>
       sessionJ.lecturerIds.includes(id)
     );
@@ -115,9 +125,11 @@ export function runAC3(graph: BipartiteGraph): AC3Result {
         };
       }
 
-      // Domain revised — re-add related arcs
+      // Domain revised — re-add related arcs. Null-roomId sessions never
+      // landed in roomToSessions, so the get() returns undefined for them
+      // and contributes no spurious neighbours.
       const relatedSessions = [
-        ...(roomToSessions.get(sessionI.roomId) ?? []),
+        ...(sessionI.roomId !== null ? (roomToSessions.get(sessionI.roomId) ?? []) : []),
         ...sessionI.lecturerIds.flatMap(id => lecturerToSessions.get(id) ?? []),
       ].filter(s => s.sessionId !== xi);
 

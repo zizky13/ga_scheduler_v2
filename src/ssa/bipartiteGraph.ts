@@ -47,6 +47,10 @@ export function buildBipartiteGraph(
         sessionId,
         offeringId: candidate.offeringId,
         sessionIndex: i,
+        // note: candidate.roomId is null for FLEXIBLE offerings with no
+        // LockedRoom. SessionNode.roomId carries it through as `number | null`
+        // — AC-3 treats null as a free CSP variable (see ac3.ts), and
+        // Hopcroft-Karp matches only on the slot adjacency map.
         roomId: candidate.roomId,
         lecturerIds: candidate.lecturerIds,
       });

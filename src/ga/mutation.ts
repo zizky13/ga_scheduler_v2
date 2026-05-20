@@ -94,11 +94,16 @@ export function mutateChromosome(
     }
 
     // FLEXIBLE: both roomId and timeSlots are mutable.
-    const newRoomId = candidate.possibleRoomIds?.length
+    // note: the validator guarantees `possibleRoomIds` is non-empty for every
+    // FLEXIBLE candidate (offerings with zero qualifying rooms are rejected
+    // as NO_ROOMS_QUALIFY), so the truthy branch always fires here. The
+    // fallback exists only to satisfy the type checker — `candidate.roomId`
+    // may be null post-Phase-7, but it's unreachable for FLEXIBLE candidates.
+    const newRoomId: number = candidate.possibleRoomIds?.length
       ? candidate.possibleRoomIds[
           Math.floor(Math.random() * candidate.possibleRoomIds.length)
         ]!
-      : gene.sessions[0]?.roomId ?? candidate.roomId;
+      : (gene.sessions[0]?.roomId ?? candidate.roomId ?? 0);
 
     let newSessions: GeneSession[];
 
