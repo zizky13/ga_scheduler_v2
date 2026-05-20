@@ -21,9 +21,11 @@ export function tagEntities(
 ): PreGACandidate[] {
   return candidates.map(candidate => {
     const lockedRoomId = lockedRoomMap.get(candidate.offeringId);
-    if (lockedRoomId !== undefined) {
-      // Null-safe: lock unconditionally overwrites candidate.roomId, so a null
-      // seed from an offering with no chosen room still resolves to the locked id.
+    if (lockedRoomId !== undefined && lockedRoomId !== null) {
+      // Defensive: validator.ts (Phase 10 #1) already strips null-roomId entries
+      // from the map, so this branch should always see a real number. The `!== null`
+      // guard belts-and-suspenders the contract `isFixedRoom === true ⇒ roomId: number`
+      // in case a future caller widens the map's value type.
       return {
         ...candidate,
         roomId: lockedRoomId,
