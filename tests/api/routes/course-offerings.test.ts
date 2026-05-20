@@ -371,4 +371,36 @@ describe('DELETE /course-offerings/:id', () => {
       .set('Authorization', adminBearer());
     expect(res.status).toBe(204);
   });
+
+  it('409 OFFERING_REFERENCED_BY_RUN when pinned by a schedule run (Phase 9 Task 1)', async () => {
+    seedAdmin();
+    const ids = seedDomain();
+    const offering = fixture.insertCourseOffering({
+      semesterId: ids.semesterId,
+      courseId: ids.courseId,
+      roomId: ids.roomId,
+      effectiveStudentCount: 30,
+      lecturerIds: [ids.lecturerId],
+    });
+    const run = fixture.insertScheduleRun({
+      id: 'run-pinning-offering',
+      semesterId: ids.semesterId,
+      createdById: 1,
+    });
+    fixture.insertScheduleAssignment({
+      id: 1,
+      runId: run.id,
+      offeringId: offering.id,
+      roomId: ids.roomId,
+    });
+
+    const res = await request(app)
+      .delete(`/api/v1/course-offerings/${offering.id}`)
+      .set('Authorization', adminBearer());
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('OFFERING_REFERENCED_BY_RUN');
+    expect(Array.isArray(res.body.error.details?.runIds)).toBe(true);
+    expect(res.body.error.details.runIds).toEqual([run.id]);
+  });
 });
