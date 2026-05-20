@@ -156,6 +156,50 @@ describe('POST /lecturers', () => {
       expect.arrayContaining(['databases', 'algorithms']),
     );
   });
+
+  it('defaults maxSks to 6 for structural lecturers when omitted', async () => {
+    seedAdmin();
+    const sem = fixture.insertSemester({ code: 'S', label: 'L' });
+    const res = await request(app)
+      .post('/api/v1/lecturers')
+      .set('Authorization', adminBearer())
+      .send({ semesterId: sem.id, name: 'Dean', isStructural: true });
+    expect(res.status).toBe(201);
+    expect(res.body.maxSks).toBe(6);
+  });
+
+  it('defaults maxSks to 12 for non-structural lecturers when omitted', async () => {
+    seedUser();
+    const sem = fixture.insertSemester({ code: 'S', label: 'L' });
+    const res = await request(app)
+      .post('/api/v1/lecturers')
+      .set('Authorization', userBearer())
+      .send({ semesterId: sem.id, name: 'Dr. C' });
+    expect(res.status).toBe(201);
+    expect(res.body.maxSks).toBe(12);
+  });
+
+  it('honors explicit maxSks regardless of isStructural', async () => {
+    seedAdmin();
+    const sem = fixture.insertSemester({ code: 'S', label: 'L' });
+    const res = await request(app)
+      .post('/api/v1/lecturers')
+      .set('Authorization', adminBearer())
+      .send({ semesterId: sem.id, name: 'Dr. D', isStructural: true, maxSks: 9 });
+    expect(res.status).toBe(201);
+    expect(res.body.maxSks).toBe(9);
+  });
+
+  it('user can set maxSks (OQ-13 working assumption: user-editable)', async () => {
+    seedUser();
+    const sem = fixture.insertSemester({ code: 'S', label: 'L' });
+    const res = await request(app)
+      .post('/api/v1/lecturers')
+      .set('Authorization', userBearer())
+      .send({ semesterId: sem.id, name: 'Dr. E', maxSks: 9 });
+    expect(res.status).toBe(201);
+    expect(res.body.maxSks).toBe(9);
+  });
 });
 
 describe('PATCH /lecturers/:id', () => {
@@ -214,6 +258,36 @@ describe('PATCH /lecturers/:id', () => {
       .set('Authorization', adminBearer())
       .send({});
     expect(res.status).toBe(400);
+  });
+
+  it('user can PATCH maxSks (OQ-13 working assumption: user-editable)', async () => {
+    seedUser();
+    const sem = fixture.insertSemester({ code: 'S', label: 'L' });
+    const l = fixture.insertLecturer({ semesterId: sem.id, name: 'A', maxSks: 12 });
+    const res = await request(app)
+      .patch(`/api/v1/lecturers/${l.id}`)
+      .set('Authorization', userBearer())
+      .send({ maxSks: 15 });
+    expect(res.status).toBe(200);
+    expect(res.body.maxSks).toBe(15);
+  });
+
+  it('admin PATCH isStructural toggle preserves the typed maxSks', async () => {
+    seedAdmin();
+    const sem = fixture.insertSemester({ code: 'S', label: 'L' });
+    const l = fixture.insertLecturer({
+      semesterId: sem.id,
+      name: 'A',
+      isStructural: false,
+      maxSks: 9,
+    });
+    const res = await request(app)
+      .patch(`/api/v1/lecturers/${l.id}`)
+      .set('Authorization', adminBearer())
+      .send({ isStructural: true });
+    expect(res.status).toBe(200);
+    expect(res.body.isStructural).toBe(true);
+    expect(res.body.maxSks).toBe(9);
   });
 });
 
