@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Users, Plus, Pencil, Trash2, Download, X } from 'lucide-react'
+import { Users, Plus, Pencil, Trash2, Download, X, AlertTriangle } from 'lucide-react'
 import { PageHeader } from '../components/ContentArea'
 import { DataTable, type Column } from '../components/DataTable'
 import { TableToolbar } from '../components/TableToolbar'
@@ -437,7 +437,6 @@ export function LecturerManagementPage() {
     }
     return result
   }, [lecturers, offerings, courses])
-  void currentSksByLecturerId
 
   /* ── Client-side filtering ── */
 
@@ -688,6 +687,32 @@ export function LecturerManagementPage() {
       header: 'Offerings',
       width: '100px',
       render: (row) => <span className={styles.count}>{row.offeringCount}</span>,
+    },
+    {
+      key: 'load',
+      header: 'Load',
+      width: '110px',
+      render: (row) => {
+        const current = currentSksByLecturerId[row.id] ?? 0
+        const overloaded = current > row.maxSks
+        if (overloaded) {
+          return (
+            <span
+              className={styles.loadOver}
+              title="Exceeds max teaching load (soft constraint)"
+              aria-label="Exceeds max teaching load (soft constraint)"
+            >
+              <AlertTriangle size={12} className={styles.loadOverIcon} aria-hidden="true" />
+              {current} / {row.maxSks}
+            </span>
+          )
+        }
+        return (
+          <span className={styles.load}>
+            {current} / {row.maxSks}
+          </span>
+        )
+      },
     },
   ]
 

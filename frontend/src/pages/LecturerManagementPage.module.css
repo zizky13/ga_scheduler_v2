@@ -28,6 +28,28 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Load column (currentSks / maxSks) ── */
+.load {
+  font-variant-numeric: tabular-nums;
+}
+
+.loadOver {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
+  cursor: help;
+}
+
+.loadOverIcon {
+  flex-shrink: 0;
+}
+
 /* ── Filter panel inside toolbar dropdown ── */
 .filterPanel {
   display: flex;
