@@ -35,13 +35,15 @@ interface TimeSlotWire {
   endTime: string
 }
 
-interface OfferingLecturerWire {
-  lecturerId: number
-}
-
 interface OfferingWire {
   id: number
-  lecturers?: OfferingLecturerWire[]
+  courseId: number
+  lecturerIds: number[]
+}
+
+interface CourseWire {
+  id: number
+  sks: number
 }
 
 interface ListResponse<T> {
@@ -313,6 +315,8 @@ export function LecturerManagementPage() {
 
   const [lecturers, setLecturers] = useState<LecturerEnriched[]>([])
   const [timeslots, setTimeslots] = useState<TimeSlotWire[]>([])
+  const [offerings, setOfferings] = useState<OfferingWire[]>([])
+  const [courses, setCourses] = useState<CourseWire[]>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [total, setTotal] = useState(0)
@@ -349,13 +353,15 @@ export function LecturerManagementPage() {
         if (activeSemesterId === null) {
           setLecturers([])
           setTimeslots([])
+          setOfferings([])
+          setCourses([])
           setTotal(0)
           setLoading(false)
           return
         }
 
         const semesterScope = { semesterId: activeSemesterId }
-        const [lecRes, tsRes, offRes] = await Promise.all([
+        const [lecRes, tsRes, offRes, courseRes] = await Promise.all([
           get<ListResponse<Lecturer>>('/lecturers', {
             ...semesterScope,
             page: p,
@@ -372,15 +378,17 @@ export function LecturerManagementPage() {
             page: 1,
             pageSize: 5000,
           }),
+          get<ListResponse<CourseWire>>('/courses', { page: 1, pageSize: 5000 }),
         ])
 
         setTimeslots(tsRes.data)
+        setOfferings(offRes.data)
+        setCourses(courseRes.data)
 
         const offeringCountMap = new Map<number, number>()
         for (const off of offRes.data) {
-          for (const lec of off.lecturers ?? []) {
-            const lid = lec.lecturerId ?? (lec as unknown as { id: number }).id
-            if (lid != null) offeringCountMap.set(lid, (offeringCountMap.get(lid) ?? 0) + 1)
+          for (const lid of off.lecturerIds ?? []) {
+            offeringCountMap.set(lid, (offeringCountMap.get(lid) ?? 0) + 1)
           }
         }
 
@@ -413,6 +421,23 @@ export function LecturerManagementPage() {
     }
     return [...set].sort()
   }, [lecturers])
+
+  // Team-taught offerings contribute full course.sks to each assigned lecturer.
+  const currentSksByLecturerId = useMemo<Record<number, number>>(() => {
+    const sksByCourse = new Map<number, number>()
+    for (const c of courses) sksByCourse.set(c.id, c.sks)
+    const result: Record<number, number> = {}
+    for (const l of lecturers) result[l.id] = 0
+    for (const off of offerings) {
+      const sks = sksByCourse.get(off.courseId) ?? 0
+      if (sks === 0) continue
+      for (const lid of off.lecturerIds ?? []) {
+        result[lid] = (result[lid] ?? 0) + sks
+      }
+    }
+    return result
+  }, [lecturers, offerings, courses])
+  void currentSksByLecturerId
 
   /* ── Client-side filtering ── */
 
