@@ -5,6 +5,7 @@ import {
   Eye,
   Calendar,
   XCircle,
+  Trash2,
   Search,
   ArrowUpDown,
   ChevronLeft,
@@ -15,6 +16,7 @@ import { Button } from '../components/Button'
 import { StatusBadge } from '../components/Badge'
 import { ConfirmDialog } from '../components/Modal'
 import { useToastStore } from '../store/toastStore'
+import { useAuthStore } from '../store/authStore'
 import { get, post } from '../lib/api'
 import type { ApiRequestError } from '../lib/api'
 import styles from './RunHistoryPage.module.css'
@@ -100,6 +102,7 @@ function fitnessClass(value: number): string {
 export function RunHistoryPage() {
   const navigate = useNavigate()
   const addToast = useToastStore((s) => s.addToast)
+  const currentUser = useAuthStore((s) => s.user)
 
   const [runs, setRuns] = useState<ScheduleRunSummary[]>([])
   const [meta, setMeta] = useState<ListMeta>({ page: 1, pageSize: 25, total: 0 })
@@ -109,6 +112,7 @@ export function RunHistoryPage() {
   const [sortDesc, setSortDesc] = useState(true)
 
   const [cancelTarget, setCancelTarget] = useState<ScheduleRunSummary | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ScheduleRunSummary | null>(null)
   const [cancelling, setCancelling] = useState(false)
 
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -339,6 +343,18 @@ export function RunHistoryPage() {
                                 aria-label="Cancel run"
                               />
                             )}
+                            {run.status !== 'RUNNING' &&
+                              currentUser &&
+                              (currentUser.role === 'ADMIN' ||
+                                String(run.createdById) === currentUser.id) && (
+                                <Button
+                                  variant="icon"
+                                  size="sm"
+                                  icon={<Trash2 size={16} />}
+                                  onClick={() => setDeleteTarget(run)}
+                                  aria-label="Delete run"
+                                />
+                              )}
                           </div>
                         </td>
                       </tr>

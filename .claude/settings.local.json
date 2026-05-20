@@ -53,7 +53,8 @@
       "Bash(grep -nB1 -A 20 \"^export interface GAResult\\\\b\" src/types.ts src/ga/runGA.ts)",
       "Bash(ls src/pipeline)",
       "Bash(ls src/ga)",
-      "Bash(ls src/cli)"
+      "Bash(ls src/cli)",
+      "Bash(npx eslint *)"
     ]
   }
 }
