@@ -662,6 +662,11 @@ export function CourseOfferingManagementPage() {
 
         if (form.lockRoom && !existingLock) {
           try {
+            // invariant: form.roomId is non-null here — Phase 10 #10's
+            // validateForm() check (`if (form.lockRoom && form.roomId == null)`)
+            // already short-circuited handleSave on the null case, so this
+            // branch only fires with a real numeric roomId. Same invariant
+            // holds for the PATCH branch below.
             await post('/locked-rooms', {
               semesterId: activeSemesterId,
               offeringId: savedOfferingId,
