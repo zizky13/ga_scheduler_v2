@@ -61,7 +61,12 @@ export function runPreGA(
   if (allRooms) {
     const stillFeasible: CourseOffering[] = [];
     for (const offering of feasible) {
-      if (offering.isFixed) {
+      // Skip possibleRoomIds computation only when the offering has a definite
+      // locked room (legacy `isFixed && roomId !== null` path). Phase 10
+      // decouples "fixed time" from "locked room": an offering with
+      // `isFixed: true, roomId: null` is "fixed time, flexible room" — the
+      // chromosome seeder needs possibleRoomIds to pick a room from the pool.
+      if (offering.isFixed && offering.roomId !== null) {
         stillFeasible.push(offering);
         continue;
       }
