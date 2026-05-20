@@ -1309,7 +1309,18 @@ export function CourseOfferingManagementPage() {
               <Toggle
                 label="Lock Room"
                 checked={form.lockRoom}
-                onChange={(v) => setForm((prev) => ({ ...prev, lockRoom: v }))}
+                // Phase 10 #9: clear form.roomId when the toggle flips off so a
+                // stale room pick doesn't survive a toggle-on → pick → toggle-off
+                // → re-toggle-on sequence. The Select beneath shows blank again
+                // until the user re-picks — semantically consistent with
+                // "not locking anymore" and gates task #10's validation cleanly.
+                onChange={(v) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    lockRoom: v,
+                    roomId: v ? prev.roomId : null,
+                  }))
+                }
               />
 
               {form.lockRoom && (
