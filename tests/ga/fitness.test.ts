@@ -22,14 +22,18 @@ function flex(offeringId: number, sessions: { roomId: number; timeSlotIds: numbe
   return { kind: 'FLEXIBLE', offeringId, sessions };
 }
 
-function candidate(offeringId: number, lecturerIds: number[]): PreGACandidate {
+function candidate(
+  offeringId: number,
+  lecturerIds: number[],
+  sessionDuration = 1,
+): PreGACandidate {
   return {
     offeringId,
     courseId: offeringId * 10,
     roomId: 1,
     lecturerIds,
     parallelSessionCount: 1,
-    sessionDuration: 1,
+    sessionDuration,
     possibleTimeSlotIds: [],
     isFixedRoom: false,
   };
@@ -226,5 +230,69 @@ describe('calculatePreferencePenalty — nested sessions', () => {
       [101, new Set([5])],    // slot 5 preferred for 101
     ]);
     expect(calculatePreferencePenalty(chrom, cands, prefs)).toBe(1);
+  });
+});
+
+describe('calculateLoadPenalty — SKS over cap', () => {
+  it('returns 0 when every lecturer is under cap', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 3] }]),
+      flex(2, [{ roomId: 11, timeSlotIds: [4, 5, 6] }]),
+    ];
+    const cands = [candidate(1, [100], 3), candidate(2, [100], 3)];
+    // 100 assigned 6 SKS; cap 12 → no penalty.
+    const maxSks = new Map<number, number>([[100, 12]]);
+    expect(calculateLoadPenalty(chrom, cands, maxSks)).toBe(0);
+  });
+
+  it('returns N for a single lecturer over cap by N', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 3] }]),
+      flex(2, [{ roomId: 11, timeSlotIds: [4, 5, 6] }]),
+      flex(3, [{ roomId: 12, timeSlotIds: [7, 8, 9] }]),
+      flex(4, [{ roomId: 13, timeSlotIds: [10, 11, 12] }]),
+      flex(5, [{ roomId: 14, timeSlotIds: [13, 14, 15] }]),
+    ];
+    // 5 × 3-SKS offerings → 15 SKS assigned; cap 12 → over by 3.
+    const cands = [
+      candidate(1, [100], 3),
+      candidate(2, [100], 3),
+      candidate(3, [100], 3),
+      candidate(4, [100], 3),
+      candidate(5, [100], 3),
+    ];
+    const maxSks = new Map<number, number>([[100, 12]]);
+    expect(calculateLoadPenalty(chrom, cands, maxSks)).toBe(3);
+  });
+
+  it('sums contributions across multiple over-cap lecturers', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1] }]),
+      flex(2, [{ roomId: 11, timeSlotIds: [2] }]),
+    ];
+    // Lecturer 100: 4 SKS, cap 2 → over by 2.
+    // Lecturer 200: 3 SKS, cap 0 → over by 3.
+    const cands = [candidate(1, [100], 4), candidate(2, [200], 3)];
+    const maxSks = new Map<number, number>([[100, 2], [200, 0]]);
+    expect(calculateLoadPenalty(chrom, cands, maxSks)).toBe(5);
+  });
+
+  it('charges full SKS for a lecturer with maxSks: 0 (on leave)', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 3] }]),
+    ];
+    const cands = [candidate(1, [100], 3)];
+    const maxSks = new Map<number, number>([[100, 0]]);
+    expect(calculateLoadPenalty(chrom, cands, maxSks)).toBe(3);
+  });
+
+  it('credits full course SKS to each lecturer on a team-taught offering', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 3] }]),
+    ];
+    // 3-SKS offering, two lecturers, both maxSks 0 → each over by 3, total 6.
+    const cands = [candidate(1, [100, 200], 3)];
+    const maxSks = new Map<number, number>([[100, 0], [200, 0]]);
+    expect(calculateLoadPenalty(chrom, cands, maxSks)).toBe(6);
   });
 });
