@@ -12,6 +12,7 @@ import type {
   CourseOffering,
   GAConfig,
   Lecturer,
+  LockedRoom,
   PreGACandidate,
   PreGAValidationResult,
   Room,
@@ -31,6 +32,12 @@ export interface OrchestratorInput {
   lecturers: Lecturer[];
   config: GAConfig;
   hooks?: GAHooks;
+  // Phase 10 #6c: the LockedRoom DB rows for this run's semester. When
+  // provided, they become the single source of truth for room locks —
+  // runPreGA receives a map built from these rows and ignores the legacy
+  // `CourseOffering.{isFixed, roomId}` in-process proxy. CLI callers and
+  // tests omit this; the legacy proxy is preserved for backward compat.
+  lockedRooms?: LockedRoom[];
 }
 
 export interface OrchestratorContext {
@@ -49,8 +56,15 @@ export interface OrchestratorOutput {
 }
 
 export async function runPipeline(input: OrchestratorInput): Promise<OrchestratorOutput> {
-  const { offerings, timeSlots, rooms, lecturers, config, hooks } = input;
+  const { offerings, timeSlots, rooms, lecturers, config, hooks, lockedRooms } = input;
   const start = performance.now();
+
+  // Phase 10 #6c: build the lockedRoomMap from the caller-supplied LockedRoom
+  // rows when present. `undefined` means "no DB-sourced locks provided" and
+  // runPreGA falls back to the legacy in-process proxy.
+  const lockedRoomMap: ReadonlyMap<number, number> | undefined = lockedRooms
+    ? new Map(lockedRooms.map(lr => [lr.offeringId, lr.roomId]))
+    : undefined;
 
   const lecturerStructuralMap = new Map<number, boolean>(
     lecturers.map(l => [l.id, l.isStructural])
@@ -62,7 +76,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     lecturers.map(l => [l.id, l.maxSks])
   );
 
-  const { validation, candidates } = runPreGA(offerings, timeSlots, rooms);
+  const { validation, candidates } = runPreGA(offerings, timeSlots, rooms, lockedRoomMap);
 
   const competencyEligibilityMap = new Map<number, Set<number>>(
     validation.feasible.map(o => [

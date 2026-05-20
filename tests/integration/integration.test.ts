@@ -32,11 +32,13 @@ import type {
   GAConfig,
   Gene,
   Lecturer,
+  LockedRoom,
   PreGACandidate,
   Room,
   TimeSlot,
 } from '../../src/types.js';
 import { runPreGA } from '../../src/pre-ga/validator.js';
+import { runPipeline } from '../../src/orchestrator.js';
 import { runSSA } from '../../src/ssa/index.js';
 import { runGA } from '../../src/ga/runGA.js';
 import { evaluateFitness } from '../../src/ga/fitness.js';
@@ -606,6 +608,141 @@ describe('Layer 3 integration — Phase 10 fixed-time / flexible-room candidate'
     for (const session of targetGene.sessions) {
       expect(session.roomId).not.toBeNull();
       expect(pool.has(session.roomId)).toBe(true);
+    }
+  });
+});
+
+// ─── 6. Phase 10 #6a + #6c: production-parity null-room offerings ──
+describe('Pipeline integration — Phase 10 production parity (null room + LockedRoom)', () => {
+  it('#6a: schedules an offering with room=null, roomId=null end-to-end (worker path)', async () => {
+    const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+    // Mutate offering #5 to mirror production state: both room and roomId
+    // null, no fixedTimeSlots, no LockedRoom. This is what the repo emits
+    // for a UI-created offering with no room picked (see
+    // src/repo/mappers/courseOfferingMapper.ts:44-50).
+    const nullRoomOffering: CourseOffering = {
+      ...offerings[4]!,
+      roomId: null,
+      room: null,
+    };
+    const offeringsWithNullRoom = offerings.slice(0, 4).concat([nullRoomOffering]);
+
+    const config: GAConfig = {
+      populationSize: 30,
+      generations: 50,
+      mutationRate: 0.1,
+      elitismCount: 2,
+      tournamentSize: 3,
+      crossoverType: 'singlePoint',
+      noiseRate: 0.15,
+      hardPenaltyWeight: 100,
+      softPenaltyWeight: 1,
+    };
+
+    const { response, context } = await runPipeline({
+      offerings: offeringsWithNullRoom,
+      timeSlots,
+      rooms,
+      lecturers,
+      config,
+    });
+
+    // Pre-GA must accept the null-room offering. The reported bug today is
+    // INTEGRITY_NO_ROOM rejection at src/pre-ga/checks.ts:33-35.
+    expect(context.validation.infeasible).toEqual([]);
+    expect(context.candidates).toHaveLength(offeringsWithNullRoom.length);
+
+    const cand = context.candidates.find(c => c.offeringId === nullRoomOffering.id)!;
+    expect(cand.isFixedRoom).toBe(false);
+    expect(cand.roomId).toBeNull();
+    expect(cand.possibleRoomIds).toBeDefined();
+    expect(cand.possibleRoomIds!.length).toBeGreaterThan(0);
+    // Phase 10 #6a: parallelSessionCount falls back to 1 when room is null.
+    expect(cand.parallelSessionCount).toBe(1);
+
+    // The GA must produce a final assignment for this offering — non-null
+    // room drawn from the candidate's possibleRoomIds pool.
+    expect(response.status === 'SUCCESS' || response.status === 'STAGNATED').toBe(true);
+    const gaResult = response.gaResult!;
+    const gene = gaResult.bestChromosome.find(g => g.offeringId === nullRoomOffering.id)!;
+    expect(gene).toBeDefined();
+    expect(gene.sessions.length).toBeGreaterThan(0);
+    const pool = new Set(cand.possibleRoomIds!);
+    for (const session of gene.sessions) {
+      expect(session.roomId).not.toBeNull();
+      expect(pool.has(session.roomId)).toBe(true);
+    }
+  });
+
+  it('#6c: a LockedRoom row pins the offering to the locked room end-to-end', async () => {
+    const { rooms: easyRooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+    // Add a spare room that no other offering uses as its seed — needed to
+    // sidestep the pre-existing AC-3 quirk where two candidates with the
+    // same `session.roomId` (even if both FLEXIBLE) get a spurious shared-
+    // room constraint. See src/ssa/ac3.ts:79-86 and Phase 10 #4 audit note.
+    const spareRoom: Room = { id: 99, name: 'R-spare', capacity: 40, facilities: [] };
+    const rooms = [...easyRooms, spareRoom];
+
+    // Same null-room shape as #6a: production state with roomId=null, room=null.
+    // The caller supplies a LockedRoom entry pinning the offering to the spare
+    // room. Pre-#6c this row was discarded by the worker; post-#6c the
+    // orchestrator builds a lockedRoomMap from it and the validator's
+    // tagEntities stamps isFixedRoom=true on the candidate.
+    const nullRoomOffering: CourseOffering = {
+      ...offerings[4]!,
+      roomId: null,
+      room: null,
+    };
+    const offeringsWithLock = offerings.slice(0, 4).concat([nullRoomOffering]);
+    const targetLockedRoomId = spareRoom.id;
+
+    const lockedRooms: LockedRoom[] = [
+      {
+        id: 1,
+        semesterId: 1,
+        offeringId: nullRoomOffering.id,
+        roomId: targetLockedRoomId,
+        lockedById: 1,
+        lockedAt: new Date(),
+        reason: 'Integration test — Phase 10 #6c',
+      },
+    ];
+
+    const config: GAConfig = {
+      populationSize: 30,
+      generations: 50,
+      mutationRate: 0.1,
+      elitismCount: 2,
+      tournamentSize: 3,
+      crossoverType: 'singlePoint',
+      noiseRate: 0.15,
+      hardPenaltyWeight: 100,
+      softPenaltyWeight: 1,
+    };
+
+    const { response, context } = await runPipeline({
+      offerings: offeringsWithLock,
+      timeSlots,
+      rooms,
+      lecturers,
+      config,
+      lockedRooms,
+    });
+
+    expect(context.validation.infeasible).toEqual([]);
+
+    // The candidate must be tagged FIXED with the locked roomId.
+    const cand = context.candidates.find(c => c.offeringId === nullRoomOffering.id)!;
+    expect(cand.isFixedRoom).toBe(true);
+    expect(cand.roomId).toBe(targetLockedRoomId);
+
+    // Every session of this offering's gene must carry the locked roomId —
+    // it's a FIXED gene by construction, immutable across mutation/crossover.
+    const gaResult = response.gaResult!;
+    const gene = gaResult.bestChromosome.find(g => g.offeringId === nullRoomOffering.id)!;
+    expect(gene.kind).toBe('FIXED');
+    for (const session of gene.sessions) {
+      expect(session.roomId).toBe(targetLockedRoomId);
     }
   });
 });

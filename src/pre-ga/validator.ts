@@ -21,7 +21,13 @@ import { tagEntities } from './entityTagger.js';
 export function runPreGA(
   offerings: CourseOffering[],
   allTimeSlots: TimeSlot[],
-  allRooms?: Room[]
+  allRooms?: Room[],
+  // Phase 10 #6c: when caller passes a lockedRoomMap (built from the
+  // LockedRoom DB table by the worker / orchestrator), it replaces the
+  // legacy in-process proxy below. CLI callers and tests omit this arg and
+  // get the legacy behavior (filter `isFixed === true && roomId !== null`
+  // on CourseOffering rows).
+  lockedRoomMap?: ReadonlyMap<number, number>,
 ): { validation: PreGAValidationResult; candidates: PreGACandidate[] } {
 
   const feasible: CourseOffering[] = [];
@@ -100,9 +106,15 @@ export function runPreGA(
 
   // Build PreGACandidate[] for feasible offerings
   const rawCandidates: PreGACandidate[] = feasible.map(offering => {
-    const parallelSessionCount = Math.ceil(
-      offering.effectiveStudentCount / offering.room.capacity
-    );
+    // Phase 10 #6a: when `offering.room === null`, parallelSessionCount falls
+    // back to 1 — the validator's possibleRoomIds filter requires each
+    // qualifying room to hold the full offering alone (`r.capacity >=
+    // effectiveStudentCount`), so a single session is sufficient. Split-on-
+    // overflow for null-room offerings (where no single room fits) is a
+    // separate concern tracked as task #6b.
+    const parallelSessionCount = offering.room
+      ? Math.ceil(offering.effectiveStudentCount / offering.room.capacity)
+      : 1;
 
     // For fixed offerings, possibleTimeSlotIds = fixedTimeSlotIds only
     // For non-fixed, possibleTimeSlotIds = ALL available time slots
@@ -125,19 +137,21 @@ export function runPreGA(
     return candidate;
   });
 
-  // Legacy in-process proxy for the LockedRoom DB table (techspec §5.4 / FR-01).
-  // Phase 7 made roomId nullable and decoupled it from isFixed: `isFixed` now
-  // means "fixed time slots only", while room-locking lives in LockedRoom. An
-  // offering with `isFixed: true, roomId: null` is a "fixed time, flexible room"
-  // candidate — the GA seeds its room from `possibleRoomIds` via the chromosome
-  // seeder, so it must NOT appear in this map.
-  const lockedRoomMap = new Map<number, number>(
-    feasible
-      .filter((o): o is CourseOffering & { roomId: number } => o.isFixed && o.roomId !== null)
-      .map(o => [o.id, o.roomId])
-  );
+  // Resolve the lockedRoomMap. Phase 10 #6c: when the caller (worker /
+  // orchestrator) supplied one, use it verbatim — it was built from the
+  // LockedRoom DB table, which is the single source of truth post-Phase-10.
+  // When omitted (CLI / unit tests), fall back to the legacy in-process
+  // proxy that filters `feasible` for `isFixed === true && roomId !== null`.
+  // Either way, the resulting map only ever contains non-null roomIds — task
+  // #1 made that contract explicit.
+  const effectiveLockedRoomMap: ReadonlyMap<number, number> = lockedRoomMap ??
+    new Map<number, number>(
+      feasible
+        .filter((o): o is CourseOffering & { roomId: number } => o.isFixed && o.roomId !== null)
+        .map(o => [o.id, o.roomId])
+    );
 
-  const candidates = tagEntities(rawCandidates, lockedRoomMap);
+  const candidates = tagEntities(rawCandidates, effectiveLockedRoomMap);
 
   return {
     validation: { feasible, infeasible },

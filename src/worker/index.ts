@@ -127,6 +127,11 @@ export async function processGaPipelineJob(
       timeSlots: inputs.timeSlots,
       rooms: inputs.rooms,
       lecturers: inputs.lecturers,
+      // Phase 10 #6c: thread LockedRoom rows from the DB into the pipeline so
+      // UI-created room locks actually take effect. Pre-#6c, the pipeline only
+      // saw the legacy in-process proxy (`CourseOffering.{isFixed, roomId}`)
+      // and ignored LockedRoom rows entirely.
+      lockedRooms: inputs.lockedRooms,
       config,
       hooks: {
         async onGeneration(snapshot: GenerationSnapshot) {

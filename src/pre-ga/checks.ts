@@ -26,12 +26,13 @@ export function isLecturerEligibleForCourse(lecturer: Lecturer, course: Course):
 }
 
 // ─── Check 1: Data Integrity ────────────────────────────────────
+// Phase 10 #6a: `offering.room === null` is now a valid state (Phase 7 made
+// `roomId` nullable). It means "no room chosen yet — the GA will pick from
+// possibleRoomIds." Reject only when the course or lecturer relations are
+// missing or the student count is non-positive.
 export function checkIntegrity(offering: CourseOffering): CheckResult {
   if (!offering.course) {
     return { passed: false, code: 'INTEGRITY_NO_COURSE', message: `Offering ${offering.id}: missing course relation.` };
-  }
-  if (!offering.room) {
-    return { passed: false, code: 'INTEGRITY_NO_ROOM', message: `Offering ${offering.id}: missing room relation.` };
   }
   if (!offering.lecturers || offering.lecturers.length === 0) {
     return { passed: false, code: 'INTEGRITY_NO_LECTURERS', message: `Offering ${offering.id}: no lecturers assigned.` };
@@ -45,11 +46,11 @@ export function checkIntegrity(offering: CourseOffering): CheckResult {
 // ─── Check 2: Room Capacity ─────────────────────────────────────
 // Note: We do NOT reject oversized classes here — instead, requiredSessions
 // is calculated as ⌈students / capacity⌉ which handles parallel split.
+// Phase 10 #6a: when `offering.room === null`, capacity is enforced by the
+// validator's `possibleRoomIds` filter (`r.capacity >= effectiveStudentCount`)
+// — skip the per-room check here so null-room offerings can proceed.
 export function checkRoomCapacity(offering: CourseOffering): CheckResult {
-  // Room must exist (already checked in integrity, but defensive)
-  if (!offering.room) {
-    return { passed: false, code: 'ROOM_MISSING', message: `Offering ${offering.id}: no room assigned.` };
-  }
+  if (!offering.room) return { passed: true, code: 'OK', message: '' };
   // Room capacity must be > 0
   if (offering.room.capacity <= 0) {
     return { passed: false, code: 'ROOM_ZERO_CAPACITY', message: `Room ${offering.room.name} has zero or negative capacity.` };
@@ -59,7 +60,18 @@ export function checkRoomCapacity(offering: CourseOffering): CheckResult {
 
 // ─── Check 3: Temporal Sufficiency ──────────────────────────────
 // Are there enough time slots in the week for this offering's sessions?
+// Phase 10 #6a: when `offering.room === null` we can't compute requiredSessions
+// against a specific room. Defer to the validator's `possibleRoomIds` filter
+// + the SSA's Hopcroft-Karp matching, both of which catch real temporal
+// infeasibility downstream. Trivially pass here as long as the timetable has
+// at least one slot.
 export function checkTemporal(offering: CourseOffering, totalTimeSlots: number): CheckResult {
+  if (!offering.room) {
+    if (totalTimeSlots <= 0) {
+      return { passed: false, code: 'TEMPORAL_INSUFFICIENT', message: `Offering ${offering.id}: no time slots configured.` };
+    }
+    return { passed: true, code: 'OK', message: '' };
+  }
   const requiredSessions = Math.ceil(offering.effectiveStudentCount / offering.room.capacity);
   if (totalTimeSlots < requiredSessions) {
     return {
@@ -71,7 +83,10 @@ export function checkTemporal(offering: CourseOffering, totalTimeSlots: number):
 }
 
 // ─── Check 4: Facility Compatibility ────────────────────────────
+// Phase 10 #6a: when `offering.room === null`, facility-matching is enforced by
+// the validator's `possibleRoomIds` filter — skip here.
 export function checkFacility(offering: CourseOffering): CheckResult {
+  if (!offering.room) return { passed: true, code: 'OK', message: '' };
   const required = offering.course.requiredFacilities;
   const available = offering.room.facilities;
   for (const facility of required) {

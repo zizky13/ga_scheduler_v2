@@ -23,7 +23,7 @@ import type { PreGACandidate } from '../types.js';
 
 export function tagEntities(
   candidates: PreGACandidate[],
-  lockedRoomMap: Map<number, number> // offeringId → lockedRoomId
+  lockedRoomMap: ReadonlyMap<number, number> // offeringId → lockedRoomId
 ): PreGACandidate[] {
   return candidates.map(candidate => {
     const lockedRoomId = lockedRoomMap.get(candidate.offeringId);
