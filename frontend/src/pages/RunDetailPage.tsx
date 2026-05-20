@@ -21,7 +21,7 @@ import { ConfirmDialog } from '../components/Modal';
 import { FitnessChart } from '../components/Chart';
 import { useToastStore } from '../store/toastStore';
 import { useAuthStore } from '../store/authStore';
-import { get, post } from '../lib/api';
+import { get, post, del } from '../lib/api';
 import type { ApiRequestError } from '../lib/api';
 import { useScheduleRunStream } from '../lib/useScheduleRunStream';
 import type { SSEProgressPayload, SSEStatePayload, SSEErrorPayload, ConnectionStatus } from '../lib/useScheduleRunStream';
@@ -163,6 +163,7 @@ export function RunDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -340,6 +341,28 @@ export function RunDetailPage() {
       setCancelling(false);
     }
   }, [id, addToast, fetchRun]);
+
+  /* ── Delete handler ── */
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      await del(`/schedule-runs/${id}`);
+      addToast({
+        type: 'success',
+        title: 'Run deleted',
+        message: 'The schedule run and its assignments have been removed.',
+      });
+      setDeleteOpen(false);
+      navigate('/runs');
+    } catch (err) {
+      const e = err as ApiRequestError;
+      addToast({ type: 'error', title: 'Failed to delete', message: e.message });
+    } finally {
+      setDeleting(false);
+    }
+  }, [id, addToast, navigate]);
 
   /* ── Render ── */
 
@@ -542,6 +565,18 @@ export function RunDetailPage() {
         confirmLabel="Cancel Run"
         cancelLabel="Keep Running"
         loading={cancelling}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        variant="danger"
+        title="Delete this run?"
+        description="Deleting this run also removes all of its schedule assignments and frees any course offerings it referenced for deletion. This cannot be undone."
+        confirmLabel="Delete Run"
+        cancelLabel="Keep Run"
+        loading={deleting}
       />
     </div>
   );
