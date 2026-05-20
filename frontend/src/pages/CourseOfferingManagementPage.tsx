@@ -469,7 +469,6 @@ export function CourseOfferingManagementPage() {
     }
     return result
   }, [allLecturers, allOfferings, allCourses])
-  void loadInfoByLecturerId
 
   /* ── Client-side filtering ── */
 
@@ -812,14 +811,38 @@ export function CourseOfferingManagementPage() {
       header: 'Lecturers',
       width: '180px',
       render: (row) => {
-        const names = row.lecturerNames
-        if (names.length === 0) return <span className={styles.dashPlaceholder}>—</span>
-        if (names.length <= 2)
-          return <span className={styles.lecturerCell}>{names.join(', ')}</span>
+        if (row.lecturerIds.length === 0)
+          return <span className={styles.dashPlaceholder}>—</span>
+        const visibleCount = Math.min(2, row.lecturerIds.length)
+        const visible = row.lecturerIds.slice(0, visibleCount).map((lid, idx) => {
+          const name = row.lecturerNames[idx] ?? `#${lid}`
+          const load = loadInfoByLecturerId[lid]
+          return (
+            <span key={lid}>
+              {idx > 0 && ', '}
+              {name}
+              {load?.isOverloaded && (
+                <>
+                  {' '}
+                  <span
+                    className={styles.lecturerOverChip}
+                    title={`Over max SKS (${load.currentSks} / ${load.maxSks})`}
+                    aria-label={`Over max SKS (${load.currentSks} / ${load.maxSks})`}
+                  >
+                    <AlertTriangle size={12} aria-hidden="true" />
+                  </span>
+                </>
+              )}
+            </span>
+          )
+        })
+        const hiddenCount = row.lecturerIds.length - visibleCount
         return (
           <span className={styles.lecturerCell}>
-            {names.slice(0, 2).join(', ')}{' '}
-            <span className={styles.lecturerMore}>+{names.length - 2} more</span>
+            {visible}
+            {hiddenCount > 0 && (
+              <span className={styles.lecturerMore}> +{hiddenCount} more</span>
+            )}
           </span>
         )
       },

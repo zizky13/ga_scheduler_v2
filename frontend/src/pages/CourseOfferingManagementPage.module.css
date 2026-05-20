@@ -155,6 +155,13 @@
   margin-top: 1px;
 }
 
+.lecturerOverChip {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  color: var(--color-warning-700);
+}
+
 .missingTags {
   display: inline-flex;
   flex-wrap: wrap;
