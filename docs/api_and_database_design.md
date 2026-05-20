@@ -280,6 +280,7 @@ model Lecturer {
   semesterId      Int
   name            String
   isStructural    Boolean  @default(false)        // techspec §2.2 — soft constraint
+  maxSks          Int      @default(12)           // techspec §2.2 — soft constraint (max SKS cap)
   // [HC-COMPETENCY] (techspec §5.5): declared topics of expertise. Postgres
   // uses String[]; for the SQLite target, store as JSON-encoded String and
   // decode at the repository boundary — see [ARCH-OBS-05] in §3.5.
@@ -898,8 +899,8 @@ Standard CRUD. Bodies match the Prisma fields directly.
 | ------ | ---------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/lecturers`     | both  | –                                                                                                                                                                                                                       |
 | GET    | `/lecturers/:id` | both  | –                                                                                                                                                                                                                       |
-| POST   | `/lecturers`     | both  | `{ semesterId, name, isStructural?, preferredTimeSlotIds?: number[], competencies?: string[] }` — `user` cannot set `isStructural` (server forces `false`); `competencies` defaults to `[]` if omitted (techspec §5.5). |
-| PATCH  | `/lecturers/:id` | both  | Same fields; `user` cannot change `isStructural`. `competencies` is fully editable by both roles.                                                                                                                       |
+| POST   | `/lecturers`     | both  | `{ semesterId, name, isStructural?, maxSks?: number, preferredTimeSlotIds?: number[], competencies?: string[] }` — `user` cannot set `isStructural` (server forces `false`); `maxSks` is integer `>= 0` (`0` = on leave); defaults to `6` when `isStructural=true`, `12` otherwise; `competencies` defaults to `[]` if omitted (techspec §5.5). |
+| PATCH  | `/lecturers/:id` | both  | Same fields; `user` cannot change `isStructural`. `maxSks` is fully editable by both roles and is written verbatim — toggling `isStructural` does **not** auto-reset it. `competencies` is fully editable by both roles.                                                                                                                       |
 | DELETE | `/lecturers/:id` | admin | 409 if referenced by any `CourseOfferingLecturer`.                                                                                                                                                                      |
 
 The `allowFields` middleware drops `isStructural` from a `user` request body before Prisma sees it. This is asserted with a 400 + warning when the field is present and the caller is a user (so the client can correct the UI).
