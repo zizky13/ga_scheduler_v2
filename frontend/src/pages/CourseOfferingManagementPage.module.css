@@ -293,6 +293,16 @@
   margin-top: 2px;
 }
 
+/* Phase 10 #12: reassurance copy under the Lock Room toggle when off.
+   Mirrors the Form.module.css .helperText pattern (caption text, muted
+   secondary-400) so it reads as a field-level helper, not a callout. */
+.gaAssignedHint {
+  font-size: var(--text-caption);
+  color: var(--color-secondary-400);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
 /* ── Parallel split info banner ── */
 .parallelBanner {
   display: flex;

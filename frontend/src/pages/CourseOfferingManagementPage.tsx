@@ -1335,6 +1335,15 @@ export function CourseOfferingManagementPage() {
                 }
               />
 
+              {/* Phase 10 #12: reassure the user that "no room field" is the
+                  intended state when Lock Room is off — mirrors the table's
+                  "GA-assigned" / "—" placeholder from Phase 7 #13. */}
+              {!form.lockRoom && (
+                <p className={styles.gaAssignedHint}>
+                  Room will be assigned automatically by the scheduler.
+                </p>
+              )}
+
               {form.lockRoom && (
                 <>
                   <Select
