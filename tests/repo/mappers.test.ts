@@ -322,6 +322,26 @@ describe("mapCourseOfferingRow", () => {
     ).toThrow(/Lecturer 9999 referenced by offering 503 not found/);
   });
 
+  it("passes through null room/roomId when the offering has no assigned room (Phase 7)", () => {
+    const off = mapCourseOfferingRow(
+      {
+        id: 506,
+        courseId: course.id,
+        roomId: null,
+        effectiveStudentCount: 25,
+        isFixed: false,
+        parentOfferingId: null,
+        lecturers: [],
+        fixedSlots: [],
+      },
+      lecturerById,
+      roomById,
+      courseById,
+    );
+    expect(off.roomId).toBeNull();
+    expect(off.room).toBeNull();
+  });
+
   it("throws when a referenced room id is missing from the map", () => {
     expect(() =>
       mapCourseOfferingRow(

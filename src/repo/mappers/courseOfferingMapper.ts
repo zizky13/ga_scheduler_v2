@@ -14,7 +14,7 @@ import type { Course, CourseOffering, Lecturer, Room } from '../../types';
 export interface CourseOfferingRowFull {
   id: number;
   courseId: number;
-  roomId: number;
+  roomId: number | null;
   effectiveStudentCount: number;
   isFixed: boolean;
   parentOfferingId: number | null;
@@ -41,11 +41,19 @@ export function mapCourseOfferingRow(
     );
   }
 
-  const room = roomById.get(row.roomId);
-  if (room === undefined) {
-    throw new Error(
-      `Room ${row.roomId} referenced by offering ${row.id} not found in roomById map`,
-    );
+  // Phase 7: roomId is optional. A null roomId means the offering was created
+  // without a room assignment — pre-GA flags it as MISSING_ROOM rather than
+  // crashing the loader here. Only throw when a non-null roomId references a
+  // room that's missing from the map (data corruption).
+  let room: Room | null = null;
+  if (row.roomId !== null) {
+    const found = roomById.get(row.roomId);
+    if (found === undefined) {
+      throw new Error(
+        `Room ${row.roomId} referenced by offering ${row.id} not found in roomById map`,
+      );
+    }
+    room = found;
   }
 
   const lecturers: Lecturer[] = row.lecturers.map((l) => {

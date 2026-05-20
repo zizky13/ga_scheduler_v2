@@ -54,7 +54,8 @@
       "Bash(ls src/pipeline)",
       "Bash(ls src/ga)",
       "Bash(ls src/cli)",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(grep -nA2 \"model CourseOffering \" \"/Users/zikarnurizky/Desktop/01_Project/Tugas Akhir/ga_scheduler_v2/prisma/schema.prisma\")"
     ]
   }
 }
