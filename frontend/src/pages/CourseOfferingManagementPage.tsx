@@ -696,7 +696,15 @@ export function CourseOfferingManagementPage() {
       fetchData(page, pageSize)
     } catch (err) {
       const e = err as ApiRequestError
-      addToast({ type: 'error', title: 'Failed to delete', message: e.message })
+      if (e.code === 'OFFERING_REFERENCED_BY_RUN') {
+        addToast({
+          type: 'error',
+          title: 'Cannot delete offering',
+          message: `${e.message} Open Schedule Runs (/runs) to delete them first.`,
+        })
+      } else {
+        addToast({ type: 'error', title: 'Failed to delete', message: e.message })
+      }
     } finally {
       setDeleting(false)
     }
