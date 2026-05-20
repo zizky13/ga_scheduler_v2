@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Copy,
   XCircle,
+  Trash2,
   CalendarDays,
   CheckCircle,
   AlertCircle,
@@ -19,6 +20,7 @@ import { Button } from '../components/Button';
 import { ConfirmDialog } from '../components/Modal';
 import { FitnessChart } from '../components/Chart';
 import { useToastStore } from '../store/toastStore';
+import { useAuthStore } from '../store/authStore';
 import { get, post } from '../lib/api';
 import type { ApiRequestError } from '../lib/api';
 import { useScheduleRunStream } from '../lib/useScheduleRunStream';
@@ -148,6 +150,7 @@ export function RunDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const addToast = useToastStore((s) => s.addToast);
+  const currentUser = useAuthStore((s) => s.user);
 
   const [run, setRun] = useState<ScheduleRunDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -159,6 +162,7 @@ export function RunDetailPage() {
 
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -377,6 +381,10 @@ export function RunDetailPage() {
   const isActive = run.status === 'RUNNING' || run.status === 'QUEUED';
   const isQueued = run.status === 'QUEUED';
   const showViewSchedule = run.status === 'COMPLETED' || run.status === 'STAGNATED';
+  const canDelete =
+    run.status !== 'RUNNING' &&
+    !!currentUser &&
+    (currentUser.role === 'ADMIN' || String(run.createdById) === currentUser.id);
 
   return (
     <div className={styles.page}>
@@ -486,7 +494,7 @@ export function RunDetailPage() {
 
           <StatusBanner run={run} />
 
-          {(isActive || showViewSchedule) && (
+          {(isActive || showViewSchedule || canDelete) && (
             <div className={styles.actionBar}>
               <div className={styles.actionBarLeft}>
                 {isActive && (
@@ -496,6 +504,15 @@ export function RunDetailPage() {
                     onClick={() => setCancelOpen(true)}
                   >
                     Cancel Run
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button
+                    variant="danger"
+                    icon={<Trash2 size={16} />}
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    Delete Run
                   </Button>
                 )}
               </div>
