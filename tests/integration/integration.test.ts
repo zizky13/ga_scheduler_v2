@@ -137,6 +137,7 @@ function buildStagnationCandidates(): {
   candidates: PreGACandidate[];
   lecturerStructuralMap: Map<number, boolean>;
   lecturerPreferenceMap: Map<number, Set<number>>;
+  lecturerMaxSksMap: Map<number, number>;
 } {
   const candidates: PreGACandidate[] = [
     {
@@ -179,7 +180,10 @@ function buildStagnationCandidates(): {
   const lecturerPreferenceMap = new Map<number, Set<number>>([
     [1, new Set()], [2, new Set()], [3, new Set()],
   ]);
-  return { candidates, lecturerStructuralMap, lecturerPreferenceMap };
+  const lecturerMaxSksMap = new Map<number, number>([
+    [1, 12], [2, 12], [3, 12],
+  ]);
+  return { candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap };
 }
 
 // ─── 1. Easy-dataset convergence ────────────────────────────────
@@ -200,6 +204,9 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
     const lecturerPreferenceMap = new Map<number, Set<number>>(
       lecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
     );
+    const lecturerMaxSksMap = new Map<number, number>(
+      lecturers.map(l => [l.id, l.maxSks])
+    );
 
     const config: GAConfig = {
       populationSize: 30,
@@ -213,7 +220,7 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
       softPenaltyWeight: 1,
     };
 
-    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, config);
 
     expect(result.hardViolations).toBe(0);
     expect(result.generationsRun).toBeLessThanOrEqual(config.generations);
@@ -240,7 +247,7 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
 // ─── 2. Stagnation exit ─────────────────────────────────────────
 describe('Layer 3 integration — stagnation exit', () => {
   it('runGA early-exits with stagnatedEarly=true when fitness cannot improve', async () => {
-    const { candidates, lecturerStructuralMap, lecturerPreferenceMap } = buildStagnationCandidates();
+    const { candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap } = buildStagnationCandidates();
 
     // Generations budget large enough that the stagnation window (100) is
     // exhausted well before the budget runs out.
@@ -256,7 +263,7 @@ describe('Layer 3 integration — stagnation exit', () => {
       softPenaltyWeight: 1,
     };
 
-    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, config);
 
     expect(result.stagnatedEarly).toBe(true);
     expect(result.hardViolations).toBeGreaterThan(0);
@@ -283,6 +290,9 @@ describe('Layer 3 integration — Fixed Room invariant across generations', () =
     );
     const lecturerPreferenceMap = new Map<number, Set<number>>(
       seedLecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
+    );
+    const lecturerMaxSksMap = new Map<number, number>(
+      seedLecturers.map(l => [l.id, l.maxSks])
     );
 
     const config: GAConfig = {
@@ -326,7 +336,7 @@ describe('Layer 3 integration — Fixed Room invariant across generations', () =
 
     for (let gen = 0; gen < config.generations; gen++) {
       const evaluated = population.map(ch =>
-        evaluateFitness(ch, candidates, lecturerStructuralMap, lecturerPreferenceMap, fitnessConfig)
+        evaluateFitness(ch, candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, fitnessConfig)
       );
       evaluated.sort((a, b) => b.fitness - a.fitness);
 
@@ -372,6 +382,9 @@ describe('Layer 3 integration — Fixed Room invariant across generations', () =
     const lecturerPreferenceMap = new Map<number, Set<number>>(
       seedLecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
     );
+    const lecturerMaxSksMap = new Map<number, number>(
+      seedLecturers.map(l => [l.id, l.maxSks])
+    );
 
     const config: GAConfig = {
       populationSize: 30,
@@ -385,7 +398,7 @@ describe('Layer 3 integration — Fixed Room invariant across generations', () =
       softPenaltyWeight: 1,
     };
 
-    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, config);
 
       for (const gene of result.bestChromosome) {
         const expectedRoom = fixedRoomById.get(gene.offeringId);
@@ -424,6 +437,9 @@ describe('Layer 3 integration — elitism monotonicity', () => {
     const lecturerPreferenceMap = new Map<number, Set<number>>(
       seedLecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
     );
+    const lecturerMaxSksMap = new Map<number, number>(
+      seedLecturers.map(l => [l.id, l.maxSks])
+    );
 
     const config: GAConfig = {
       populationSize: 30,
@@ -437,7 +453,7 @@ describe('Layer 3 integration — elitism monotonicity', () => {
       softPenaltyWeight: 1,
     };
 
-    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, config);
 
     expect(result.history.length).toBeGreaterThan(1);
     // Elitism (elitismCount >= 1) guarantees the previous generation's best
@@ -464,6 +480,9 @@ describe('Layer 3 integration — elitism monotonicity', () => {
     const lecturerPreferenceMap = new Map<number, Set<number>>(
       lecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
     );
+    const lecturerMaxSksMap = new Map<number, number>(
+      lecturers.map(l => [l.id, l.maxSks])
+    );
 
     const config: GAConfig = {
       populationSize: 20,
@@ -477,7 +496,7 @@ describe('Layer 3 integration — elitism monotonicity', () => {
       softPenaltyWeight: 1,
     };
 
-    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, config);
+    const result = await runGA(candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, config);
 
     // The easy dataset can converge in a single generation (perfect solution
     // discovered in the initial random population), in which case there is

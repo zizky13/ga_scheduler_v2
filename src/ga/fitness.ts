@@ -139,6 +139,38 @@ export function calculateStructuralPenalty(
   return penalty;
 }
 
+/**
+ * Lecturer load penalty — Σ max(0, assignedSks − maxSks) per lecturer.
+ * Team-taught offering: each assigned lecturer is credited the full
+ * `candidate.sessionDuration` (= course.sks) — matches the frontend's
+ * `currentSksByLecturerId` derivation (Phase 8 task #10).
+ */
+export function calculateLoadPenalty(
+  chromosome: Chromosome,
+  candidates: PreGACandidate[],
+  lecturerMaxSksMap: Map<number, number>
+): number {
+  const candidateMap = new Map(candidates.map(c => [c.offeringId, c]));
+  const assignedSks = new Map<number, number>();
+
+  for (const gene of chromosome) {
+    const candidate = candidateMap.get(gene.offeringId);
+    if (!candidate) continue;
+    const sks = candidate.sessionDuration;
+    for (const lecturerId of candidate.lecturerIds) {
+      assignedSks.set(lecturerId, (assignedSks.get(lecturerId) ?? 0) + sks);
+    }
+  }
+
+  let penalty = 0;
+  for (const [lecturerId, total] of assignedSks) {
+    const cap = lecturerMaxSksMap.get(lecturerId);
+    if (cap === undefined) continue;
+    if (total > cap) penalty += total - cap;
+  }
+  return penalty;
+}
+
 /** Lecturer preference penalty — each non-preferred slot incurs +1. */
 export function calculatePreferencePenalty(
   chromosome: Chromosome,
@@ -175,6 +207,7 @@ export function evaluateFitness(
   candidates: PreGACandidate[],
   lecturerStructuralMap: Map<number, boolean>,
   lecturerPreferenceMap: Map<number, Set<number>>,
+  lecturerMaxSksMap: Map<number, number>,
   config: FitnessConfig = { hardPenaltyWeight: 100, softPenaltyWeight: 1 },
   competencyEligibilityMap?: CompetencyEligibilityMap
 ): EvaluatedChromosome {
@@ -183,7 +216,8 @@ export function evaluateFitness(
   const hardViolations = collisionViolations + competencyMismatch;
   const structuralPenalty = calculateStructuralPenalty(chromosome, candidates, lecturerStructuralMap);
   const preferencePenalty = calculatePreferencePenalty(chromosome, candidates, lecturerPreferenceMap);
-  const softPenalty = structuralPenalty + preferencePenalty;
+  const loadPenalty = calculateLoadPenalty(chromosome, candidates, lecturerMaxSksMap);
+  const softPenalty = structuralPenalty + preferencePenalty + loadPenalty;
 
   const fitness = 1 / (
     1 +
@@ -191,5 +225,5 @@ export function evaluateFitness(
     (softPenalty * config.softPenaltyWeight)
   );
 
-  return { chromosome, fitness, hardViolations, softPenalty, structuralPenalty, preferencePenalty, loadPenalty: 0, competencyMismatch };
+  return { chromosome, fitness, hardViolations, softPenalty, structuralPenalty, preferencePenalty, loadPenalty, competencyMismatch };
 }

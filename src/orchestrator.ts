@@ -39,6 +39,7 @@ export interface OrchestratorContext {
   ssaResult?: SSAResult;
   lecturerStructuralMap: Map<number, boolean>;
   lecturerPreferenceMap: Map<number, Set<number>>;
+  lecturerMaxSksMap: Map<number, number>;
   competencyEligibilityMap: Map<number, Set<number>>;
 }
 
@@ -56,6 +57,9 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
   );
   const lecturerPreferenceMap = new Map<number, Set<number>>(
     lecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
+  );
+  const lecturerMaxSksMap = new Map<number, number>(
+    lecturers.map(l => [l.id, l.maxSks])
   );
 
   const { validation, candidates } = runPreGA(offerings, timeSlots, rooms);
@@ -94,6 +98,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         candidates,
         lecturerStructuralMap,
         lecturerPreferenceMap,
+        lecturerMaxSksMap,
         competencyEligibilityMap,
       },
     };
@@ -115,6 +120,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
         ssaResult,
         lecturerStructuralMap,
         lecturerPreferenceMap,
+        lecturerMaxSksMap,
         competencyEligibilityMap,
       },
     };
@@ -124,6 +130,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     candidates,
     lecturerStructuralMap,
     lecturerPreferenceMap,
+    lecturerMaxSksMap,
     config,
     competencyEligibilityMap,
     timeSlots,
@@ -144,6 +151,7 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       ssaResult,
       lecturerStructuralMap,
       lecturerPreferenceMap,
+      lecturerMaxSksMap,
       competencyEligibilityMap,
     },
   };

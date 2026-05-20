@@ -89,6 +89,7 @@ export async function runGA(
   candidates: PreGACandidate[],
   lecturerStructuralMap: Map<number, boolean>,
   lecturerPreferenceMap: Map<number, Set<number>>,
+  lecturerMaxSksMap: Map<number, number>,
   config: GAConfig,
   competencyEligibilityMap?: CompetencyEligibilityMap,
   allTimeSlots?: TimeSlot[],
@@ -138,7 +139,7 @@ export async function runGA(
       softPenaltyWeight: config.softPenaltyWeight,
     };
     const evaluated: EvaluatedChromosome[] = population.map(ch =>
-      evaluateFitness(ch, candidates, lecturerStructuralMap, lecturerPreferenceMap, fitnessConfig, competencyEligibilityMap)
+      evaluateFitness(ch, candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, fitnessConfig, competencyEligibilityMap)
     );
 
     // Sort by fitness descending
@@ -168,7 +169,7 @@ export async function runGA(
         `Best: ${best.fitness.toFixed(4)} | ` +
         `Avg: ${avgFitness.toFixed(4)} | ` +
         `Hard: ${best.hardViolations} | ` +
-        `Soft: ${best.softPenalty} (struct=${best.structuralPenalty} pref=${best.preferencePenalty})`
+        `Soft: ${best.softPenalty} (struct=${best.structuralPenalty} pref=${best.preferencePenalty} load=${best.loadPenalty})`
       );
     }
 

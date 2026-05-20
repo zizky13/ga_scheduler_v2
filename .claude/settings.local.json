@@ -46,7 +46,10 @@
       "Bash(sed -n '95,130p' tests/integration/integration.test.ts)",
       "Bash(sed -n '195,215p' tests/repo/mappers.test.ts)",
       "Bash(sed -n '45,70p' tests/pre-ga/checks.test.ts)",
-      "Bash(sed -n '80,120p' tests/orchestrator/preGASummary.test.ts)"
+      "Bash(sed -n '80,120p' tests/orchestrator/preGASummary.test.ts)",
+      "Bash(sed -n '289,295p' tests/integration/integration.test.ts)",
+      "Bash(sed -n '377,383p' tests/integration/integration.test.ts)",
+      "Bash(sed -n '429,435p' tests/integration/integration.test.ts)"
     ]
   }
 }
