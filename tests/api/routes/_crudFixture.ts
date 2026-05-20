@@ -1010,6 +1010,13 @@ export function buildCrudFixture(): CrudFixture {
         if (a.runId === id) scheduleAssignmentStore.delete(aid);
       }
     },
+    async countAssignmentsByOfferingId(offeringId) {
+      const seen = new Set<string>();
+      for (const a of scheduleAssignmentStore.values()) {
+        if (a.offeringId === offeringId) seen.add(a.runId);
+      }
+      return { runIds: Array.from(seen) };
+    },
   };
 
   // ── AuditLogs ───────────────────────────────────────────────────────────

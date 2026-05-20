@@ -31,7 +31,7 @@ import {
   type UpdateCourseOfferingBody,
   type UpdateStudentCountBody,
 } from '../schemas/course-offerings';
-import { NotFoundError, ValidationError } from '../errors';
+import { ConflictError, NotFoundError, ValidationError } from '../errors';
 import { getCrudRepositories } from '../lib/crudContext';
 import { writeAudit } from '../lib/audit';
 import { isPrismaForeignKeyError, isPrismaNotFound } from '../lib/prismaErrors';
@@ -312,29 +312,54 @@ async function patchStudentCount(
   }
 }
 
+function offeringReferencedByRunError(runIds: string[]): ConflictError {
+  return new ConflictError(
+    'OFFERING_REFERENCED_BY_RUN',
+    `This offering appears in ${runIds.length} schedule run(s). Delete those run(s) first.`,
+    { runIds },
+  );
+}
+
 async function remove(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { id } = req.params as unknown as IdParams;
     const repos = getCrudRepositories();
     const existing = await repos.courseOfferings.findById(id);
+    if (!existing) {
+      next(new NotFoundError('Course offering not found'));
+      return;
+    }
+
+    // Proactive FK gate: surface an actionable 409 listing the pinning runs
+    // before Prisma raises a generic P2003 (Phase 9 Task 1).
+    const { runIds } = await repos.scheduleRuns.countAssignmentsByOfferingId(id);
+    if (runIds.length > 0) {
+      next(offeringReferencedByRunError(runIds));
+      return;
+    }
+
     try {
       await repos.courseOfferings.delete(id);
-      if (existing) {
-        await writeAudit(req, {
-          action: 'course_offering.delete',
-          entityType: 'CourseOffering',
-          entityId: String(id),
-          metadata: {
-            before: existing,
-            after: null,
-            role: req.user?.role ?? null,
-          },
-        });
-      }
+      await writeAudit(req, {
+        action: 'course_offering.delete',
+        entityType: 'CourseOffering',
+        entityId: String(id),
+        metadata: {
+          before: existing,
+          after: null,
+          role: req.user?.role ?? null,
+        },
+      });
       res.status(204).end();
     } catch (err) {
       if (isPrismaNotFound(err)) {
         next(new NotFoundError('Course offering not found'));
+        return;
+      }
+      if (isPrismaForeignKeyError(err)) {
+        // Race: a run was created between the proactive check and the delete.
+        const recheck = await repos.scheduleRuns.countAssignmentsByOfferingId(id);
+        next(offeringReferencedByRunError(recheck.runIds));
         return;
       }
       throw err;

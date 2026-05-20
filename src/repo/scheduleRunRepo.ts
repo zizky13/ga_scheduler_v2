@@ -211,6 +211,9 @@ export interface ScheduleRunRepository {
   findAssignments(runId: string): Promise<ScheduleRunAssignmentDetail[]>;
   delete(id: string): Promise<void>;
 
+  // DELETE /course-offerings/:id pre-flight (Phase 9 Task 1)
+  countAssignmentsByOfferingId(offeringId: number): Promise<{ runIds: string[] }>;
+
   // PUT /schedule-runs/:id/assignments/:assignmentId (Phase 3 Task 9)
   findAssignmentById(id: number): Promise<AssignmentWithRun | null>;
   overrideAssignment(id: number, input: OverrideAssignmentInput): Promise<AssignmentWithRun>;
@@ -359,6 +362,14 @@ export function createScheduleRunRepository(
     },
     async delete(id) {
       await prisma.scheduleRun.delete({ where: { id } });
+    },
+    async countAssignmentsByOfferingId(offeringId) {
+      const rows = await prisma.scheduleAssignment.findMany({
+        where: { offeringId },
+        select: { runId: true },
+        distinct: ['runId'],
+      });
+      return { runIds: rows.map((r) => r.runId) };
     },
     async findAssignmentById(id) {
       const row = await prisma.scheduleAssignment.findUnique({
