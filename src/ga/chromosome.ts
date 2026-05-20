@@ -147,9 +147,17 @@ export function createGeneFromCandidate(
 ): Gene {
   const { parallelSessionCount, sessionDuration } = candidate;
 
-  // When the offering has no chosen seed room (CourseOffering.roomId is null),
-  // pick a random initial seed from possibleRoomIds. FIXED candidates always
-  // carry a non-null roomId via LockedRoom or isFixed → roomId mapping.
+  // Seed-room selection. Two upstream invariants are load-bearing here:
+  //  1. FIXED candidates (isFixedRoom: true) always carry a non-null roomId.
+  //     entityTagger flips isFixedRoom on only after copying a non-null
+  //     lockedRoomId onto the candidate, and the validator drops null-roomId
+  //     entries from lockedRoomMap. So FIXED genes deterministically hit the
+  //     early-return branch with the locked room as seed.
+  //  2. The null-roomId branch is therefore reachable only for FLEXIBLE
+  //     candidates — including the "fixed time, flexible room" shape
+  //     (offering.isFixed=true with no LockedRoom row), which the validator
+  //     emits as isFixedRoom=false with possibleRoomIds populated. The seeder
+  //     picks uniformly from that pool; mutation explores from there.
   let seedRoomId: number;
   if (candidate.roomId != null) {
     seedRoomId = candidate.roomId;
