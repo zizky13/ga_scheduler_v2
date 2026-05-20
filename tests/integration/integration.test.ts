@@ -508,3 +508,104 @@ describe('Layer 3 integration — elitism monotonicity', () => {
     }
   });
 });
+
+// ─── 5. Phase 10: Fixed-time / flexible-room candidate end-to-end ───
+describe('Layer 3 integration — Phase 10 fixed-time / flexible-room candidate', () => {
+  it('runPreGA → runSSA → runGA completes when one offering has isFixed=true with roomId=null', async () => {
+    // Build the easy dataset, then mutate offering #5 into the "fixed time,
+    // flexible room" shape: time pinned via fixedTimeSlotIds, room left to
+    // the GA. This is the Phase 10 user-story scenario — the bug it guards
+    // against was: validator.ts pushed the offering's null roomId into
+    // lockedRoomMap, entityTagger stamped isFixedRoom=true with roomId=null,
+    // and the chromosome seeder crashed on the missing FIXED-gene roomId.
+    const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+
+    const target = offerings[4]!;
+    // Use the first three Monday slots of the easy-dataset fixture
+    // (id 1, 2, 3 — Monday 08:00–10:00, 10:00–12:00, 13:00–15:00) as the
+    // fixed-time window. SKS=3 so the contiguous block needs 3 slots; the
+    // first two are back-to-back, the third has a 13:00 gap. The chromosome
+    // seeder's contiguous-block finder will fall back to a shuffled slice
+    // when no fully-contiguous block exists, so the run still completes.
+    const fixedTimeOffering: CourseOffering = {
+      ...target,
+      roomId: null, // ← Phase 10: no chosen / locked room
+      fixedTimeSlotIds: [1, 2], // pin to a Monday morning back-to-back pair
+      isFixed: true,
+    };
+    // Trim sks=2 so fixedTimeSlotIds covers the session duration exactly,
+    // avoiding the seeder's shuffled-slice fallback path (which would
+    // weaken the assertion that roomId comes from possibleRoomIds, not a
+    // legacy default).
+    fixedTimeOffering.course = { ...target.course, sks: 2 };
+    const offeringsWithFixedTime = offerings.slice(0, 4).concat([fixedTimeOffering]);
+
+    // Pre-GA must see allRooms to populate possibleRoomIds on the candidate.
+    const { validation, candidates } = runPreGA(offeringsWithFixedTime, timeSlots, rooms);
+    expect(validation.infeasible).toEqual([]);
+    expect(candidates).toHaveLength(offeringsWithFixedTime.length);
+
+    const targetCandidate = candidates.find(c => c.offeringId === fixedTimeOffering.id)!;
+    // Phase 10 #1 + #2 invariant: fixed-time/flexible-room ⇒ FLEXIBLE candidate.
+    expect(targetCandidate.isFixedRoom).toBe(false);
+    expect(targetCandidate.roomId).toBeNull();
+    // Phase 10 #5 invariant: possibleRoomIds populated even when isFixed=true.
+    expect(targetCandidate.possibleRoomIds).toBeDefined();
+    expect(targetCandidate.possibleRoomIds!.length).toBeGreaterThan(0);
+
+    const ssaResult = runSSA(candidates, timeSlots);
+    expect(ssaResult.status).toBe('FEASIBLE');
+
+    const lecturerStructuralMap = new Map<number, boolean>(
+      lecturers.map(l => [l.id, l.isStructural])
+    );
+    const lecturerPreferenceMap = new Map<number, Set<number>>(
+      lecturers.map(l => [l.id, new Set(l.preferredTimeSlotIds)])
+    );
+    const lecturerMaxSksMap = new Map<number, number>(
+      lecturers.map(l => [l.id, l.maxSks])
+    );
+
+    const config: GAConfig = {
+      populationSize: 30,
+      generations: 50,
+      mutationRate: 0.1,
+      elitismCount: 2,
+      tournamentSize: 3,
+      crossoverType: 'singlePoint',
+      noiseRate: 0.15,
+      hardPenaltyWeight: 100,
+      softPenaltyWeight: 1,
+    };
+
+    const result = await runGA(
+      candidates,
+      lecturerStructuralMap,
+      lecturerPreferenceMap,
+      lecturerMaxSksMap,
+      config,
+    );
+
+    // The pipeline must not crash. The user's reported scenario ("GA cannot
+    // run whenever user creates new offering for this version") is fixed
+    // when the run reaches any terminal state — SUCCESS preferred, but
+    // STAGNATED is also non-crashing.
+    expect(result.bestChromosome).toHaveLength(candidates.length);
+    expect(result.generationsRun).toBeGreaterThanOrEqual(1);
+
+    // The target gene must have a roomId from the candidate's possibleRoomIds
+    // pool, NOT null. This is the regression guard for Phase 10 #6: the
+    // chromosome seeder's random-pick path (chromosome.ts:154-164) actually
+    // wired through and picked a real room.
+    const targetGene = result.bestChromosome.find(
+      g => g.offeringId === fixedTimeOffering.id,
+    )!;
+    expect(targetGene).toBeDefined();
+    expect(targetGene.sessions.length).toBeGreaterThan(0);
+    const pool = new Set(targetCandidate.possibleRoomIds!);
+    for (const session of targetGene.sessions) {
+      expect(session.roomId).not.toBeNull();
+      expect(pool.has(session.roomId)).toBe(true);
+    }
+  });
+});

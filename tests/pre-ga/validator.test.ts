@@ -43,7 +43,7 @@ function buildLecturer(): Lecturer {
     name: 'Dr. Test',
     competencies: [],
     isStructural: false,
-    preferredSlots: [],
+    preferredTimeSlotIds: [],
     maxSks: 12,
   };
 }
