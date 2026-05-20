@@ -534,11 +534,27 @@ export function CourseOfferingManagementPage() {
     [allCourses],
   )
 
-  const roomOptions: SelectOption[] = useMemo(
-    () =>
-      allRooms.map((r) => ({ value: String(r.id), label: `${r.name} (capacity: ${r.capacity})` })),
-    [allRooms],
-  )
+  // Phase 10 #8: room options for the Room Lock section. Per design-spec §12.9
+  // "Room Lock Interaction Detail", the dropdown filters to rooms whose
+  // facilities cover the selected course's requiredFacilities and whose
+  // capacity ≥ effectiveStudentCount. The currently-selected room (e.g., from
+  // a pre-existing LockedRoom row whose filter inputs have since changed) is
+  // always included so the edit modal accurately reflects the saved lock.
+  const compatibleRoomOptions: SelectOption[] = useMemo(() => {
+    const required = selectedCourse?.requiredFacilities ?? []
+    const minCapacity = form.effectiveStudentCount
+    const compatible = allRooms.filter(
+      (r) => r.capacity >= minCapacity && required.every((f) => r.facilities.includes(f)),
+    )
+    if (form.roomId !== null && !compatible.some((r) => r.id === form.roomId)) {
+      const current = allRooms.find((r) => r.id === form.roomId)
+      if (current) compatible.push(current)
+    }
+    return compatible.map((r) => ({
+      value: String(r.id),
+      label: `${r.name} (capacity: ${r.capacity})`,
+    }))
+  }, [allRooms, selectedCourse, form.effectiveStudentCount, form.roomId])
 
   const lecturerOptions = useMemo(
     () =>
@@ -1297,12 +1313,31 @@ export function CourseOfferingManagementPage() {
               />
 
               {form.lockRoom && (
-                <TextInput
-                  label="Reason"
-                  placeholder="Why are you locking this room?"
-                  value={form.lockReason}
-                  onChange={(e) => setForm((prev) => ({ ...prev, lockReason: e.target.value }))}
-                />
+                <>
+                  <Select
+                    label="Room"
+                    placeholder="Select a room to lock"
+                    options={compatibleRoomOptions}
+                    value={form.roomId !== null ? String(form.roomId) : ''}
+                    onChange={(v) => {
+                      setForm((prev) => ({ ...prev, roomId: v ? Number(v) : null }))
+                      setFormErrors((prev) => ({ ...prev, roomId: undefined }))
+                    }}
+                    error={formErrors.roomId}
+                    helperText={
+                      selectedCourse
+                        ? `Showing rooms compatible with ${selectedCourse.code} (capacity ≥ ${form.effectiveStudentCount}${selectedCourse.requiredFacilities.length > 0 ? `, facilities: ${selectedCourse.requiredFacilities.join(', ')}` : ''}).`
+                        : 'Select a course first to see compatible rooms.'
+                    }
+                    required
+                  />
+                  <TextInput
+                    label="Reason"
+                    placeholder="Why are you locking this room?"
+                    value={form.lockReason}
+                    onChange={(e) => setForm((prev) => ({ ...prev, lockReason: e.target.value }))}
+                  />
+                </>
               )}
             </FormSection>
           </>
