@@ -1,3 +1,7 @@
+// Ensures `.openapi(...)` is available on zod schemas regardless of which
+// import path reaches this module (e.g. direct schema tests vs `paths.ts`).
+import '../openapi/zod-init';
+
 import { z } from 'zod';
 import {
   competencyArraySchema,
@@ -6,6 +10,9 @@ import {
   numericIdSchema,
   paginationQuerySchema,
 } from './_shared';
+
+const MAX_SKS_DESCRIPTION =
+  'Maximum teaching load in SKS for this semester (soft constraint).';
 
 export const lecturerIdParamsSchema = idParamSchema;
 
@@ -21,7 +28,12 @@ export const createLecturerBodySchema = z
     semesterId: numericIdSchema,
     name: z.string().trim().min(1).max(128),
     isStructural: z.boolean().optional(),
-    maxSks: z.number().int().min(0).optional(),
+    maxSks: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .openapi({ description: MAX_SKS_DESCRIPTION }),
     preferredTimeSlotIds: idArraySchema.default([]),
     competencies: competencyArraySchema.default([]),
   })
@@ -33,7 +45,12 @@ export const updateLecturerBodySchema = z
   .object({
     name: z.string().trim().min(1).max(128).optional(),
     isStructural: z.boolean().optional(),
-    maxSks: z.number().int().min(0).optional(),
+    maxSks: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .openapi({ description: MAX_SKS_DESCRIPTION }),
     preferredTimeSlotIds: idArraySchema.optional(),
     competencies: competencyArraySchema.optional(),
   })
