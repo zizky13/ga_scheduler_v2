@@ -45,6 +45,26 @@ describe('createLecturerBodySchema', () => {
     const result = createLecturerBodySchema.safeParse({ semesterId: 0, name: 'X' });
     expect(result.success).toBe(false);
   });
+
+  it('treats maxSks as optional', () => {
+    const out = createLecturerBodySchema.parse({ semesterId: 1, name: 'Dr. Ani' });
+    expect(out.maxSks).toBeUndefined();
+  });
+
+  it('accepts maxSks: 0 (on-leave semantics, OQ-12)', () => {
+    const out = createLecturerBodySchema.parse({ semesterId: 1, name: 'Dr. Ani', maxSks: 0 });
+    expect(out.maxSks).toBe(0);
+  });
+
+  it('rejects negative maxSks', () => {
+    const result = createLecturerBodySchema.safeParse({ semesterId: 1, name: 'X', maxSks: -1 });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects non-integer maxSks', () => {
+    const result = createLecturerBodySchema.safeParse({ semesterId: 1, name: 'X', maxSks: 12.5 });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe('updateLecturerBodySchema', () => {
@@ -56,5 +76,20 @@ describe('updateLecturerBodySchema', () => {
   it('accepts a competency-only update', () => {
     const out = updateLecturerBodySchema.parse({ competencies: ['ai-ml'] });
     expect(out.competencies).toEqual(['ai-ml']);
+  });
+
+  it('accepts a maxSks-only update with 0', () => {
+    const out = updateLecturerBodySchema.parse({ maxSks: 0 });
+    expect(out.maxSks).toBe(0);
+  });
+
+  it('rejects negative maxSks on update', () => {
+    const result = updateLecturerBodySchema.safeParse({ maxSks: -1 });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects non-integer maxSks on update', () => {
+    const result = updateLecturerBodySchema.safeParse({ maxSks: 9.5 });
+    expect(result.success).toBe(false);
   });
 });
