@@ -8,9 +8,15 @@
  * the RoomID is frozen for the entire evolutionary process and is structurally
  * enforced by the FixedRoomGene discriminated union type.
  *
- * In this backend-only implementation, lockedRoomMap is built from
- * CourseOffering.isFixed. In the full stack version, it is populated
- * from the LockedRoom DB table via FR-01 (Lock Room UI).
+ * `lockedRoomMap` is a legacy in-process proxy for the LockedRoom DB table
+ * (techspec §5.4 / FR-01). Production runs build it from the LockedRoom table
+ * directly (see `src/repo/scheduleRepo.ts:fetchSchedulingInputs`); the
+ * Pre-GA validator builds an equivalent map from `CourseOffering` rows where
+ * `isFixed === true && roomId !== null` — both forms carry the same meaning:
+ * "offerings whose room was pinned out-of-band, before the GA runs." Phase 10
+ * decoupled this from `CourseOffering.isFixed` alone: an offering with
+ * `isFixed: true, roomId: null` is "fixed time, flexible room" and never
+ * lands in the map.
  */
 
 import type { PreGACandidate } from '../types.js';
