@@ -564,7 +564,12 @@ export function CourseOfferingManagementPage() {
     setEditTarget(off)
     setForm({
       courseId: off.courseId,
-      roomId: off.roomId,
+      // Phase 10 #7: form.roomId is sourced from the LockedRoom row, not from
+      // offering.roomId. Phase 7 decoupled the two: an offering's stored
+      // roomId no longer drives the lock; the LockedRoom table is the single
+      // source of truth. If no lock exists, the form's roomId stays null and
+      // the Room Lock section's room selector (task #8) starts empty.
+      roomId: lock?.roomId ?? null,
       effectiveStudentCount: off.effectiveStudentCount,
       parentOfferingId: off.parentOfferingId,
       lecturerIds: [...off.lecturerIds],
