@@ -157,6 +157,13 @@ function validateForm(form: FormState): FormErrors {
   if (!form.courseId) errors.courseId = 'Course is required'
   if (form.effectiveStudentCount < 0) errors.effectiveStudentCount = 'Must be 0 or greater'
   if (form.lecturerIds.length === 0) errors.lecturerIds = 'At least one lecturer is required'
+  // Phase 10 #10: when Lock Room is toggled on, a room must be picked. Task #9
+  // guarantees roomId is null whenever lockRoom is off, so this predicate
+  // cleanly catches the "user toggled lock on but didn't pick a room" case
+  // without false positives on un-toggled offerings.
+  if (form.lockRoom && form.roomId == null) {
+    errors.roomId = 'Pick a room to lock or turn off Room Lock'
+  }
   return errors
 }
 
