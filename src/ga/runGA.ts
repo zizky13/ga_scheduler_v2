@@ -33,6 +33,7 @@ export interface GenerationSnapshot {
   competencyMismatch: number;
   structuralPenalty: number;
   preferencePenalty: number;
+  loadPenalty: number;
 }
 
 /**
@@ -181,6 +182,7 @@ export async function runGA(
         competencyMismatch: best.competencyMismatch,
         structuralPenalty: best.structuralPenalty,
         preferencePenalty: best.preferencePenalty,
+        loadPenalty: best.loadPenalty,
       });
     }
 

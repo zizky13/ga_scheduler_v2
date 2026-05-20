@@ -204,6 +204,7 @@ export interface EvaluatedChromosome {
   softPenalty: number;
   structuralPenalty: number;
   preferencePenalty: number;
+  loadPenalty: number;
   competencyMismatch: number;
 }
 
