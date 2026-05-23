@@ -51,6 +51,19 @@ export function buildBipartiteGraph(
         // LockedRoom. SessionNode.roomId carries it through as `number | null`
         // — AC-3 treats null as a free CSP variable (see ac3.ts), and
         // Hopcroft-Karp matches only on the slot adjacency map.
+        //
+        // note (Phase 11 task #9 — null-room overflow audit): when
+        // `candidate.roomId === null && parallelSessionCount > 1`, every
+        // sibling session emitted here carries `roomId: null`. AC-3's
+        // shared-room guard (`sessionI.roomId !== null && ...`) skips them
+        // from room-grouping, so siblings don't get a spurious self-conflict
+        // — exactly the topology the per-session room seeder relies on. HK
+        // still matches each session to a DISTINCT block-start slot, which
+        // is STRICTER than OQ-18's runtime tolerance (same-slot/different-
+        // room siblings are legal in the GA). The SSA is sound — declaring
+        // FEASIBLE here means the GA can do at least this well — but the
+        // gap means SSA may flag a configuration INFEASIBLE that OQ-18's
+        // room-sharing could rescue. Acceptable for an admissibility check.
         roomId: candidate.roomId,
         lecturerIds: candidate.lecturerIds,
       });
