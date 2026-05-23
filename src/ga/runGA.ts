@@ -34,6 +34,7 @@ export interface GenerationSnapshot {
   structuralPenalty: number;
   preferencePenalty: number;
   loadPenalty: number;
+  capacityShortfallPenalty: number;
 }
 
 /**
@@ -173,7 +174,7 @@ export async function runGA(
         `Best: ${best.fitness.toFixed(4)} | ` +
         `Avg: ${avgFitness.toFixed(4)} | ` +
         `Hard: ${best.hardViolations} | ` +
-        `Soft: ${best.softPenalty} (struct=${best.structuralPenalty} pref=${best.preferencePenalty} load=${best.loadPenalty})`
+        `Soft: ${best.softPenalty} (struct=${best.structuralPenalty} pref=${best.preferencePenalty} load=${best.loadPenalty} cap=${best.capacityShortfallPenalty})`
       );
     }
 
@@ -188,6 +189,7 @@ export async function runGA(
         structuralPenalty: best.structuralPenalty,
         preferencePenalty: best.preferencePenalty,
         loadPenalty: best.loadPenalty,
+        capacityShortfallPenalty: best.capacityShortfallPenalty,
       });
     }
 

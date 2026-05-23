@@ -270,5 +270,5 @@ export function evaluateFitness(
     (softPenalty * config.softPenaltyWeight)
   );
 
-  return { chromosome, fitness, hardViolations, softPenalty, structuralPenalty, preferencePenalty, loadPenalty, competencyMismatch };
+  return { chromosome, fitness, hardViolations, softPenalty, structuralPenalty, preferencePenalty, loadPenalty, capacityShortfallPenalty, competencyMismatch };
 }

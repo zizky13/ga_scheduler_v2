@@ -218,6 +218,7 @@ export interface EvaluatedChromosome {
   structuralPenalty: number;
   preferencePenalty: number;
   loadPenalty: number;
+  capacityShortfallPenalty: number;
   competencyMismatch: number;
 }
 
