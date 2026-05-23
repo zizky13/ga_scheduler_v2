@@ -57,18 +57,21 @@ const infeasibleCandidates: PreGACandidate[] = [
   {
     offeringId: 101, courseId: 1, roomId: 1,
     lecturerIds: [1],
+    effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
   },
   {
     offeringId: 102, courseId: 2, roomId: 1,
     lecturerIds: [2],
+    effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
   },
   {
     offeringId: 103, courseId: 3, roomId: 1,
     lecturerIds: [3],
+    effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
   },
@@ -92,12 +95,14 @@ const ac3ForcedCandidates: PreGACandidate[] = [
   {
     offeringId: 201, courseId: 1, roomId: 1,
     lecturerIds: [1],
+    effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1], isFixedRoom: false,
   },
   {
     offeringId: 202, courseId: 2, roomId: 1,
     lecturerIds: [2],
+    effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1], isFixedRoom: false,
   },
@@ -120,6 +125,7 @@ const exclusionInfeasible: PreGACandidate[] = [
   {
     offeringId: 301, courseId: 1, roomId: 1,
     lecturerIds: [1],
+    effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1], isFixedRoom: true,
   },
@@ -127,6 +133,7 @@ const exclusionInfeasible: PreGACandidate[] = [
   {
     offeringId: 302, courseId: 2, roomId: 1,
     lecturerIds: [2],
+    effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [2], isFixedRoom: true,
   },
@@ -134,6 +141,7 @@ const exclusionInfeasible: PreGACandidate[] = [
   {
     offeringId: 303, courseId: 3, roomId: 1,
     lecturerIds: [3],
+    effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
   },

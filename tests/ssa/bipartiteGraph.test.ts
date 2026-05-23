@@ -41,6 +41,7 @@ function candidate(args: {
     courseId: args.offeringId * 10,
     roomId: args.roomId ?? 1,
     lecturerIds: args.lecturerIds ?? [100],
+    effectiveStudentCount: 30,
     parallelSessionCount: args.parallelSessionCount ?? 1,
     sessionDuration: args.sessionDuration,
     possibleTimeSlotIds: args.possibleTimeSlotIds,

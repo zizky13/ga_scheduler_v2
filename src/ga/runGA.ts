@@ -6,7 +6,7 @@
  * Includes stagnation exit (Section 8.2).
  */
 
-import type { Chromosome, Gene, PreGACandidate, EvaluatedChromosome, GAConfig, GAResult, TimeSlot } from '../types.js';
+import type { Chromosome, Gene, PreGACandidate, EvaluatedChromosome, GAConfig, GAResult, Room, TimeSlot } from '../types.js';
 import { generateInitialPopulation } from './population.js';
 import { evaluateFitness, type CompetencyEligibilityMap } from './fitness.js';
 import { tournamentSelection } from './selection.js';
@@ -93,7 +93,11 @@ export async function runGA(
   config: GAConfig,
   competencyEligibilityMap?: CompetencyEligibilityMap,
   allTimeSlots?: TimeSlot[],
-  hooks?: GAHooks
+  hooks?: GAHooks,
+  // Phase 11 task #6 — capacity-shortfall soft penalty needs room capacities
+  // to compute `Σ session.room.capacity` per gene. Optional for backward-compat
+  // with callers that don't pass it (penalty silently degrades to 0).
+  roomById?: ReadonlyMap<number, Room>,
 ): Promise<GAResult> {
   const crossover = getCrossoverFn(config.crossoverType);
 
@@ -139,7 +143,7 @@ export async function runGA(
       softPenaltyWeight: config.softPenaltyWeight,
     };
     const evaluated: EvaluatedChromosome[] = population.map(ch =>
-      evaluateFitness(ch, candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, fitnessConfig, competencyEligibilityMap)
+      evaluateFitness(ch, candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, fitnessConfig, competencyEligibilityMap, roomById)
     );
 
     // Sort by fitness descending

@@ -26,6 +26,7 @@ function buildCandidate(args: {
     courseId: args.offeringId * 10,
     roomId: args.roomId,
     lecturerIds: args.lecturerIds ?? [args.offeringId],
+    effectiveStudentCount: 30,
     parallelSessionCount: args.parallelSessionCount ?? (args.possibleTimeSlotIds.length || 1),
     sessionDuration: 1,
     possibleTimeSlotIds: args.possibleTimeSlotIds,

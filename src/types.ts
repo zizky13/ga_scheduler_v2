@@ -92,6 +92,13 @@ export interface PreGACandidate {
   roomId: number | null;
   lecturerIds: number[];
   /**
+   * Cohort size carried through from `CourseOffering.effectiveStudentCount`.
+   * Phase 11 task #6 uses this in the capacity-shortfall soft penalty:
+   * for null-room offerings, the GA penalises chromosomes where the sum of
+   * per-session room capacities falls short of this count.
+   */
+  effectiveStudentCount: number;
+  /**
    * Number of parallel groups this offering is split into due to capacity.
    * Formula: ⌈effectiveStudentCount / roomCapacity⌉
    * (backlog task 14/15 — replaces the old `requiredSessions` field).

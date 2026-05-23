@@ -200,6 +200,7 @@ export function runPreGA(
       courseId: offering.courseId,
       roomId: offering.roomId ?? null,
       lecturerIds: offering.lecturers.map(l => l.id),
+      effectiveStudentCount: offering.effectiveStudentCount,
       parallelSessionCount,
       sessionDuration: offering.course.sks,
       possibleTimeSlotIds,

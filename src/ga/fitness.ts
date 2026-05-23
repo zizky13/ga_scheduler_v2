@@ -18,7 +18,7 @@
  * and intra-gene parallel-session clashes (Task 20).
  */
 
-import type { Chromosome, EvaluatedChromosome, PreGACandidate } from '../types.js';
+import type { Chromosome, EvaluatedChromosome, PreGACandidate, Room } from '../types.js';
 
 export interface FitnessConfig {
   hardPenaltyWeight: number;   // W_H — default 100
@@ -171,6 +171,49 @@ export function calculateLoadPenalty(
   return penalty;
 }
 
+/**
+ * Capacity-shortfall penalty (Phase 11 task #6).
+ *
+ * For null-room offerings (where the GA picks per-session rooms from
+ * `possibleRoomIds`), the seeder / mutation may land on a combination whose
+ * total seat capacity is below the cohort size. This soft penalty pulls the
+ * population toward chromosomes whose combined per-session room capacity
+ * meets or exceeds `candidate.effectiveStudentCount`. Pre-assigned-room
+ * offerings (`candidate.roomId !== null`) are excluded: their split is
+ * across timeslots within the chosen room (OQ-16), so the capacity gate is
+ * already met by validator construction.
+ *
+ * Shares `softPenaltyWeight` per OQ-11's precedent — no new GAConfig knob.
+ *
+ * When `roomById` is omitted (legacy callers / unit tests), returns 0.
+ */
+export function calculateCapacityShortfallPenalty(
+  chromosome: Chromosome,
+  candidates: PreGACandidate[],
+  roomById?: ReadonlyMap<number, Room>,
+): number {
+  if (!roomById) return 0;
+  const candidateMap = new Map(candidates.map(c => [c.offeringId, c]));
+  let penalty = 0;
+
+  for (const gene of chromosome) {
+    const candidate = candidateMap.get(gene.offeringId);
+    if (!candidate) continue;
+    if (candidate.roomId !== null) continue; // OQ-16: pre-assigned rooms exempt
+
+    let combinedCapacity = 0;
+    for (const session of gene.sessions) {
+      const room = roomById.get(session.roomId);
+      if (room) combinedCapacity += room.capacity;
+    }
+
+    const shortfall = candidate.effectiveStudentCount - combinedCapacity;
+    if (shortfall > 0) penalty += shortfall;
+  }
+
+  return penalty;
+}
+
 /** Lecturer preference penalty — each non-preferred slot incurs +1. */
 export function calculatePreferencePenalty(
   chromosome: Chromosome,
@@ -209,7 +252,8 @@ export function evaluateFitness(
   lecturerPreferenceMap: Map<number, Set<number>>,
   lecturerMaxSksMap: Map<number, number>,
   config: FitnessConfig = { hardPenaltyWeight: 100, softPenaltyWeight: 1 },
-  competencyEligibilityMap?: CompetencyEligibilityMap
+  competencyEligibilityMap?: CompetencyEligibilityMap,
+  roomById?: ReadonlyMap<number, Room>,
 ): EvaluatedChromosome {
   const collisionViolations = evaluateHardFitness(chromosome, candidates);
   const competencyMismatch = evaluateCompetencyMismatch(chromosome, candidates, competencyEligibilityMap);
@@ -217,7 +261,8 @@ export function evaluateFitness(
   const structuralPenalty = calculateStructuralPenalty(chromosome, candidates, lecturerStructuralMap);
   const preferencePenalty = calculatePreferencePenalty(chromosome, candidates, lecturerPreferenceMap);
   const loadPenalty = calculateLoadPenalty(chromosome, candidates, lecturerMaxSksMap);
-  const softPenalty = structuralPenalty + preferencePenalty + loadPenalty;
+  const capacityShortfallPenalty = calculateCapacityShortfallPenalty(chromosome, candidates, roomById);
+  const softPenalty = structuralPenalty + preferencePenalty + loadPenalty + capacityShortfallPenalty;
 
   const fitness = 1 / (
     1 +

@@ -32,6 +32,7 @@ function candidate(
     courseId: offeringId * 10,
     roomId: 1,
     lecturerIds,
+    effectiveStudentCount: 30,
     parallelSessionCount: 1,
     sessionDuration,
     possibleTimeSlotIds: [],

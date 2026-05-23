@@ -140,6 +140,10 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     };
   }
 
+  // Phase 11 task #6 — supply roomById so the GA fitness function can
+  // compute the capacity-shortfall soft penalty for null-room offerings.
+  const roomById: ReadonlyMap<number, Room> = new Map(rooms.map(r => [r.id, r]));
+
   const gaResult = await runGA(
     candidates,
     lecturerStructuralMap,
@@ -148,7 +152,8 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
     config,
     competencyEligibilityMap,
     timeSlots,
-    hooks
+    hooks,
+    roomById,
   );
 
   return {

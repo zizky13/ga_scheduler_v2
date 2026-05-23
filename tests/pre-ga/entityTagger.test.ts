@@ -17,6 +17,7 @@ function buildCandidate(overrides: Partial<PreGACandidate> = {}): PreGACandidate
     courseId: 10,
     roomId: 5,
     lecturerIds: [100],
+    effectiveStudentCount: 30,
     parallelSessionCount: 1,
     sessionDuration: 1,
     possibleTimeSlotIds: [1, 2, 3],
