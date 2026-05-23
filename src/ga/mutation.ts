@@ -29,15 +29,18 @@ function pickBlocks(blocks: number[][], count: number): number[][] {
 
 /**
  * Fallback: build sessions with a plain shuffle-and-slice (pre-Task-18 logic).
+ * `pickRoom` is invoked once per session — callers pick either a shared
+ * seed roomId (single-session / pre-assigned shapes) or an independent
+ * per-session draw (Phase 11 null-room overflow).
  */
 function buildSessionsFallback(
   candidate: PreGACandidate,
-  roomId: number,
+  pickRoom: () => number,
   count: number
 ): GeneSession[] {
   const shuffledSlots = fisherYatesShuffle(candidate.possibleTimeSlotIds);
   return Array.from({ length: count }, (_, i) => ({
-    roomId,
+    roomId: pickRoom(),
     timeSlotIds: shuffledSlots.slice(
       i * candidate.sessionDuration,
       (i + 1) * candidate.sessionDuration
@@ -96,25 +99,44 @@ export function mutateChromosome(
     // FLEXIBLE: both roomId and timeSlots are mutable.
     // note: the validator guarantees `possibleRoomIds` is non-empty for every
     // FLEXIBLE candidate (offerings with zero qualifying rooms are rejected
-    // as NO_ROOMS_QUALIFY), so the truthy branch always fires here. The
-    // fallback exists only to satisfy the type checker — `candidate.roomId`
-    // may be null post-Phase-7, but it's unreachable for FLEXIBLE candidates.
-    const newRoomId: number = candidate.possibleRoomIds?.length
+    // as NO_ROOMS_QUALIFY / NO_FACILITY_MATCH), so the truthy branch always
+    // fires for seed selection. The fallback exists only to satisfy the type
+    // checker — `candidate.roomId` may be null post-Phase-7, but it's
+    // unreachable for FLEXIBLE candidates with a populated pool.
+    //
+    // Phase 11 task #5 — candidate-shape branching for per-session room
+    // mutation:
+    // note (OQ-15/16/17): when `candidate.roomId === null && parallelSession
+    // Count > 1` the offering is split ACROSS rooms (null-room overflow), so
+    // each session re-picks its roomId independently from possibleRoomIds.
+    // Single-session FLEXIBLE genes (parallelSessionCount === 1) keep the
+    // shared-room mutation per OQ-17; pre-assigned-room FLEXIBLE genes
+    // (candidate.roomId !== null, multi-timeslot split) keep it per OQ-16.
+    // FIXED genes were already returned above — their roomId is mask-immutable.
+    const isMultiRoomSplit = candidate.roomId == null && parallelSessionCount > 1;
+
+    const seedRoomId: number = candidate.possibleRoomIds?.length
       ? candidate.possibleRoomIds[
           Math.floor(Math.random() * candidate.possibleRoomIds.length)
         ]!
       : (gene.sessions[0]?.roomId ?? candidate.roomId ?? 0);
+
+    const pickRoomForSession = (): number => {
+      if (!isMultiRoomSplit) return seedRoomId;
+      const pool = candidate.possibleRoomIds!;
+      return pool[Math.floor(Math.random() * pool.length)]!;
+    };
 
     let newSessions: GeneSession[];
 
     if (blocks && blocks.length > 0) {
       const picked = pickBlocks(blocks, parallelSessionCount);
       newSessions = picked.map(block => ({
-        roomId: newRoomId,
+        roomId: pickRoomForSession(),
         timeSlotIds: block,
       }));
     } else {
-      newSessions = buildSessionsFallback(candidate, newRoomId, parallelSessionCount);
+      newSessions = buildSessionsFallback(candidate, pickRoomForSession, parallelSessionCount);
     }
 
     return {
