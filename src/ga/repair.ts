@@ -15,7 +15,7 @@
  *   (used by older tests / call sites that have no slot metadata).
  */
 
-import type { Chromosome, Gene, GeneSession, PreGACandidate } from '../types.js';
+import type { Chromosome, Gene, GeneSession, PreGACandidate, Room } from '../types.js';
 import {
   fisherYatesShuffle,
   findContiguousSlots,
@@ -186,10 +186,100 @@ function repairSessionGreedy(
   return { roomId, timeSlotIds: newSlots };
 }
 
+/**
+ * Capacity-shortfall repair (Phase 11 task #7).
+ *
+ * Runs only on FLEXIBLE genes whose candidate has `roomId === null` and more
+ * than one parallel session — the null-room overflow shape introduced by the
+ * Phase 11 per-session seeder. For other shapes (FIXED, pre-assigned, single-
+ * session null-room) capacity is already satisfied by validator construction,
+ * so this pass is a no-op.
+ *
+ * When `Σ session.room.capacity < effectiveStudentCount`, we greedily swap the
+ * weakest session's roomId toward a higher-capacity entry from
+ * `possibleRoomIds`, skipping any swap that would introduce a room-time
+ * collision with another gene (per the conflict index) or with a sibling
+ * session of this gene. Each iteration upgrades at most one session; we bound
+ * the outer loop at `parallelSessionCount` upgrades since further upgrades
+ * tend to chase diminishing returns — capacity-shortfall remains a soft
+ * penalty (task #6), so the GA's selection pressure can still drive the rest.
+ */
+function repairCapacityShortfall(
+  gene: Gene,
+  candidate: PreGACandidate,
+  index: ConflictIndex,
+  roomById: ReadonlyMap<number, Room>,
+): void {
+  if (gene.kind !== 'FLEXIBLE') return;
+  if (candidate.roomId !== null) return;
+  if (gene.sessions.length <= 1) return;
+  const pool = candidate.possibleRoomIds;
+  if (!pool?.length) return;
+
+  const capacityOf = (roomId: number): number => roomById.get(roomId)?.capacity ?? 0;
+  const required = candidate.effectiveStudentCount;
+  const totalCapacity = (): number =>
+    gene.sessions.reduce((sum, s) => sum + capacityOf(s.roomId), 0);
+
+  if (totalCapacity() >= required) return;
+
+  for (let iter = 0; iter < gene.sessions.length; iter++) {
+    if (totalCapacity() >= required) return;
+
+    // Try to upgrade the weakest session first; if it can't move, fall through
+    // to the next-weakest. Bounded by the session order length per iteration.
+    const order = gene.sessions
+      .map((_, i) => i)
+      .sort((a, b) => capacityOf(gene.sessions[a]!.roomId) - capacityOf(gene.sessions[b]!.roomId));
+
+    let progressed = false;
+    for (const idx of order) {
+      const session = gene.sessions[idx]!;
+      const currentCap = capacityOf(session.roomId);
+
+      const alternatives = pool
+        .filter(rid => rid !== session.roomId && capacityOf(rid) > currentCap)
+        .sort((a, b) => capacityOf(b) - capacityOf(a));
+      if (alternatives.length === 0) continue;
+
+      // Sibling sessions of THIS gene reserve their own (room, slot) pairs —
+      // never let the swap collide with them. The conflict index already
+      // excludes this gene, so its sibling rooms aren't in there.
+      const siblingRoomSlots = new Set<string>();
+      for (let i = 0; i < gene.sessions.length; i++) {
+        if (i === idx) continue;
+        const sib = gene.sessions[i]!;
+        for (const sid of sib.timeSlotIds) {
+          siblingRoomSlots.add(`room:${sib.roomId}:slot:${sid}`);
+        }
+      }
+
+      for (const altRoom of alternatives) {
+        let conflict = false;
+        for (const sid of session.timeSlotIds) {
+          const key = `room:${altRoom}:slot:${sid}`;
+          if (index.roomTimeUsed.has(key) || siblingRoomSlots.has(key)) {
+            conflict = true;
+            break;
+          }
+        }
+        if (!conflict) {
+          session.roomId = altRoom;
+          progressed = true;
+          break;
+        }
+      }
+      if (progressed) break;
+    }
+    if (!progressed) return;
+  }
+}
+
 export function repairChromosome(
   chromosome: Chromosome,
   candidates: PreGACandidate[],
-  lookup?: SlotLookup
+  lookup?: SlotLookup,
+  roomById?: ReadonlyMap<number, Room>,
 ): Chromosome {
   const candidateMap = new Map(candidates.map(c => [c.offeringId, c]));
 
@@ -246,6 +336,12 @@ export function repairChromosome(
       gene.sessions = gene.sessions.map(session =>
         repairSessionGreedy(session, candidate.sessionDuration, candidate, index)
       );
+    }
+
+    // Phase 11 task #7 — after collision repair, nudge null-room overflow
+    // genes toward higher-capacity rooms when combined capacity is short.
+    if (roomById) {
+      repairCapacityShortfall(gene, candidate, index, roomById);
     }
   }
 
