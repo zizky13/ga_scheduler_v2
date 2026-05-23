@@ -150,3 +150,67 @@ describe('runPreGA — Phase 10 fixed-time / flexible-room candidates', () => {
     expect(candidates[0]!.possibleRoomIds).toEqual(expect.arrayContaining([1, 2]));
   });
 });
+
+describe('runPreGA — Phase 11 null-room overflow parallel split', () => {
+  it('null-room offering with capacity overflow yields parallelSessionCount and a facility-only possibleRoomIds pool', () => {
+    // Phase 11 tasks #1 + #2: 90 students, 3 rooms each cap 40. No single room
+    // fits, so the loose facility-only filter applies and the validator
+    // computes parallelSessionCount from the largest qualifying room
+    // (⌈90 / 40⌉ = 3). possibleRoomIds must include all three rooms — the
+    // capacity gate is dropped for null-room offerings.
+    const rooms = [buildRoom(1, 40), buildRoom(2, 40), buildRoom(3, 40)];
+    const timeSlots = buildTimeSlots(5);
+    const offering: CourseOffering = {
+      id: 10,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: null,
+      room: null, // genuinely null — forces the validator's null-room path
+      lecturers: [buildLecturer()],
+      effectiveStudentCount: 90,
+      isFixed: false,
+    };
+
+    const { validation, candidates } = runPreGA([offering], timeSlots, rooms);
+
+    expect(validation.infeasible).toEqual([]);
+    expect(candidates).toHaveLength(1);
+    const candidate = candidates[0]!;
+    expect(candidate.parallelSessionCount).toBe(3);
+    expect(candidate.possibleRoomIds).toEqual(expect.arrayContaining([1, 2, 3]));
+    expect(candidate.possibleRoomIds).toHaveLength(3);
+  });
+
+  it('rejects null-room offerings whose required parallel count exceeds MAX_PARALLEL_SESSIONS × maxQualifyingCapacity', () => {
+    // Phase 11 task #2: 5 rooms each cap 20 → maxQualifyingCapacity = 20.
+    // 110 students → required = ⌈110/20⌉ = 6. The data-driven cap is
+    // min(MAX_PARALLEL_SESSIONS_HARD_CAP=5, |possibleRoomIds|=5) = 5.
+    // 6 > 5 → rejection code NO_CAPACITY_COMBINATION.
+    const rooms = [
+      buildRoom(1, 20),
+      buildRoom(2, 20),
+      buildRoom(3, 20),
+      buildRoom(4, 20),
+      buildRoom(5, 20),
+    ];
+    const timeSlots = buildTimeSlots(10);
+    const offering: CourseOffering = {
+      id: 11,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: null,
+      room: null,
+      lecturers: [buildLecturer()],
+      effectiveStudentCount: 110,
+      isFixed: false,
+    };
+
+    const { validation, candidates } = runPreGA([offering], timeSlots, rooms);
+
+    expect(candidates).toEqual([]);
+    expect(validation.feasible).toEqual([]);
+    expect(validation.infeasible).toHaveLength(1);
+    expect(validation.infeasible[0]!.failedCheck.code).toBe('NO_CAPACITY_COMBINATION');
+    expect(validation.infeasible[0]!.offering.id).toBe(11);
+  });
+});
