@@ -10,6 +10,15 @@ import { checkIntegrity, checkRoomCapacity, checkTemporal, checkFacility, checkL
 import { tagEntities } from './entityTagger.js';
 
 /**
+ * Phase 11 / OQ-15 — hard cap on parallel sessions for null-room overflow
+ * offerings. The effective per-offering cap is `Math.min(MAX_PARALLEL_SESSIONS_HARD_CAP,
+ * possibleRoomIds.length)` (data-driven resolution of OQ-15). Pre-assigned-room
+ * offerings split across timeslots (not rooms) and are not subject to this cap
+ * per OQ-16.
+ */
+export const MAX_PARALLEL_SESSIONS_HARD_CAP = 5;
+
+/**
  * Run the complete Pre-GA validation pipeline.
  * Pure function — takes data in, returns results, no side effects.
  *
@@ -73,6 +82,12 @@ export function runPreGA(
   //     alternate must hold the offering on its own. Rejection code remains
   //     NO_ROOMS_QUALIFY.
   const possibleRoomIdsByOffering = new Map<number, number[]>();
+  // Phase 11 task #2: parallelSessionCount for null-room overflow offerings is
+  // computed here (alongside possibleRoomIds) because it depends on the
+  // post-filter qualifying-room set. Pre-assigned-room offerings keep the
+  // legacy `⌈students/room.capacity⌉` formula below at candidate-build time.
+  const nullRoomParallelByOffering = new Map<number, number>();
+  const roomById = new Map<number, Room>((allRooms ?? []).map(r => [r.id, r]));
   if (allRooms) {
     const stillFeasible: CourseOffering[] = [];
     for (const offering of feasible) {
@@ -116,6 +131,42 @@ export function runPreGA(
         });
         continue;
       }
+
+      // Phase 11 task #2 — null-room parallelSessionCount and overflow cap.
+      // For null-room offerings, split is across ROOMS (not timeslots per OQ-16),
+      // so the required session count is driven by the largest qualifying room.
+      // OQ-15 resolved to a data-driven cap: min(hard cap 5, |possibleRoomIds|).
+      // Exceeding the cap → NO_CAPACITY_COMBINATION (the loose facility-only
+      // pool doesn't have enough room headroom to absorb the cohort).
+      if (isNullRoom) {
+        const maxQualifyingCapacity = Math.max(
+          ...qualifying.map(id => roomById.get(id)!.capacity),
+        );
+        const requiredSessions = offering.effectiveStudentCount > maxQualifyingCapacity
+          ? Math.ceil(offering.effectiveStudentCount / maxQualifyingCapacity)
+          : 1;
+        const cap = Math.min(MAX_PARALLEL_SESSIONS_HARD_CAP, qualifying.length);
+        if (requiredSessions > cap) {
+          infeasible.push({
+            offering,
+            failedCheck: {
+              passed: false,
+              code: 'NO_CAPACITY_COMBINATION',
+              message:
+                `Offering ${offering.id} (${offering.course.name}) needs ` +
+                `${requiredSessions} parallel sessions to seat ` +
+                `${offering.effectiveStudentCount} students ` +
+                `(largest qualifying room holds ${maxQualifyingCapacity}), ` +
+                `but the cap is ${cap} ` +
+                `(min of MAX_PARALLEL_SESSIONS=${MAX_PARALLEL_SESSIONS_HARD_CAP} ` +
+                `and |possibleRoomIds|=${qualifying.length}).`,
+            },
+          });
+          continue;
+        }
+        nullRoomParallelByOffering.set(offering.id, requiredSessions);
+      }
+
       possibleRoomIdsByOffering.set(offering.id, qualifying);
       stillFeasible.push(offering);
     }
@@ -125,15 +176,18 @@ export function runPreGA(
 
   // Build PreGACandidate[] for feasible offerings
   const rawCandidates: PreGACandidate[] = feasible.map(offering => {
-    // Phase 10 #6a: when `offering.room === null`, parallelSessionCount falls
-    // back to 1 — the validator's possibleRoomIds filter requires each
-    // qualifying room to hold the full offering alone (`r.capacity >=
-    // effectiveStudentCount`), so a single session is sufficient. Split-on-
-    // overflow for null-room offerings (where no single room fits) is a
-    // separate concern tracked as task #6b.
+    // Phase 11 task #2: parallelSessionCount derivation has two regimes.
+    //   - Pre-assigned room (offering.room !== null): legacy formula
+    //     `⌈students / room.capacity⌉` — the offering's split is across
+    //     timeslots within the chosen room (OQ-16).
+    //   - Null room (offering.room === null): split is across ROOMS. The
+    //     count is precomputed above as `nullRoomParallelByOffering` using
+    //     the largest qualifying room's capacity; falls back to 1 when
+    //     `allRooms` was omitted (CLI / unit-test path that skips room
+    //     filtering altogether — matches the Phase 10 #6a default).
     const parallelSessionCount = offering.room
       ? Math.ceil(offering.effectiveStudentCount / offering.room.capacity)
-      : 1;
+      : (nullRoomParallelByOffering.get(offering.id) ?? 1);
 
     // For fixed offerings, possibleTimeSlotIds = fixedTimeSlotIds only
     // For non-fixed, possibleTimeSlotIds = ALL available time slots
