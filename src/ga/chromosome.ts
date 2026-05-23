@@ -158,6 +158,22 @@ export function createGeneFromCandidate(
   //     (offering.isFixed=true with no LockedRoom row), which the validator
   //     emits as isFixedRoom=false with possibleRoomIds populated. The seeder
   //     picks uniformly from that pool; mutation explores from there.
+  //
+  // note (Phase 11 task #4 — OQ-15/16/17): per-session room seeding fires only
+  // for null-room OVERFLOW offerings (`candidate.roomId === null && parallel
+  // SessionCount > 1`). In that mode, each parallel session draws its own
+  // roomId from possibleRoomIds — the offering is split ACROSS rooms (one
+  // cohort group per room) so different sessions of the same offering must be
+  // allowed to live in different rooms. All other shapes keep the legacy
+  // "every session shares one seed roomId" behavior:
+  //   - OQ-15 caps parallelSessionCount upstream at min(5, |possibleRoomIds|),
+  //     so per-session draws never run out of room candidates.
+  //   - OQ-16 — pre-assigned-room offerings (candidate.roomId !== null) split
+  //     across timeslots within the chosen room, NOT across rooms.
+  //   - OQ-17 — null-room non-overflow (parallelSessionCount === 1) keeps a
+  //     single shared room; no fanout for the simple case.
+  const isMultiRoomSplit = candidate.roomId == null && parallelSessionCount > 1;
+
   let seedRoomId: number;
   if (candidate.roomId != null) {
     seedRoomId = candidate.roomId;
@@ -170,7 +186,17 @@ export function createGeneFromCandidate(
     }
     seedRoomId = pool[Math.floor(Math.random() * pool.length)]!;
   }
-  const roomId = seedRoomId;
+
+  // pickRoomForSession returns the shared seedRoomId for the legacy "all
+  // sessions share roomId" shapes (pre-assigned room or single-session
+  // null-room) and an independent uniform draw from possibleRoomIds for
+  // multi-room split. possibleRoomIds is guaranteed non-empty when
+  // isMultiRoomSplit is true (the throw above runs first when roomId is null).
+  const pickRoomForSession = (): number => {
+    if (!isMultiRoomSplit) return seedRoomId;
+    const pool = candidate.possibleRoomIds!;
+    return pool[Math.floor(Math.random() * pool.length)]!;
+  };
 
   let sessions: { roomId: number; timeSlotIds: number[] }[];
 
@@ -179,12 +205,12 @@ export function createGeneFromCandidate(
 
     if (blocks.length > 0) {
       const picked = pickDistinctBlocks(blocks, parallelSessionCount);
-      sessions = picked.map(block => ({ roomId, timeSlotIds: block }));
+      sessions = picked.map(block => ({ roomId: pickRoomForSession(), timeSlotIds: block }));
     } else {
       // Fallback: no contiguous blocks available (edge case)
       const shuffled = fisherYatesShuffle(candidate.possibleTimeSlotIds);
       sessions = Array.from({ length: parallelSessionCount }, (_, i) => ({
-        roomId,
+        roomId: pickRoomForSession(),
         timeSlotIds: shuffled.slice(i * sessionDuration, (i + 1) * sessionDuration),
       }));
     }
@@ -192,7 +218,7 @@ export function createGeneFromCandidate(
     // Legacy path (no lookup) — plain shuffle, kept for backward-compat
     const shuffled = fisherYatesShuffle(candidate.possibleTimeSlotIds);
     sessions = Array.from({ length: parallelSessionCount }, (_, i) => ({
-      roomId,
+      roomId: pickRoomForSession(),
       timeSlotIds: shuffled.slice(i * sessionDuration, (i + 1) * sessionDuration),
     }));
   }
