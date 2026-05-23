@@ -60,9 +60,18 @@ export function runPreGA(
   }
 
   // Compute possibleRoomIds[] for Flexible offerings ([ARCH-OBS-04]).
-  // A room qualifies iff capacity >= effectiveStudentCount AND all required
-  // facilities are present. Flexible offerings with no qualifying rooms are
-  // rejected as infeasible (NO_ROOMS_QUALIFY).
+  // The filter branches on `offering.roomId`:
+  //   - roomId === null (null-room offering): facility-only filter. Phase 11
+  //     task #1 — the overflow path (task #2) may split the offering across
+  //     multiple rooms whose combined capacity holds the cohort, so per-room
+  //     capacity is no longer a qualifying gate. Rejection code is
+  //     NO_FACILITY_MATCH (course needs facilities no room provides).
+  //   - roomId !== null (pre-assigned-room offering): strict filter
+  //     (capacity >= effectiveStudentCount AND all facilities). possibleRoomIds
+  //     here represents alternates equivalent to the chosen room — its split
+  //     is computed against the chosen room's capacity (task #2), so every
+  //     alternate must hold the offering on its own. Rejection code remains
+  //     NO_ROOMS_QUALIFY.
   const possibleRoomIdsByOffering = new Map<number, number[]>();
   if (allRooms) {
     const stillFeasible: CourseOffering[] = [];
@@ -77,23 +86,33 @@ export function runPreGA(
         continue;
       }
       const required = offering.course.requiredFacilities;
+      const isNullRoom = offering.roomId === null;
       const qualifying = allRooms
         .filter(r =>
-          r.capacity >= offering.effectiveStudentCount &&
+          (isNullRoom || r.capacity >= offering.effectiveStudentCount) &&
           required.every(f => r.facilities.includes(f))
         )
         .map(r => r.id);
       if (qualifying.length === 0) {
         infeasible.push({
           offering,
-          failedCheck: {
-            passed: false,
-            code: 'NO_ROOMS_QUALIFY',
-            message:
-              `Offering ${offering.id} (${offering.course.name}) is Flexible but ` +
-              `no room satisfies capacity >= ${offering.effectiveStudentCount} ` +
-              `with facilities [${required.join(', ')}].`,
-          },
+          failedCheck: isNullRoom
+            ? {
+                passed: false,
+                code: 'NO_FACILITY_MATCH',
+                message:
+                  `Offering ${offering.id} (${offering.course.name}) has no ` +
+                  `pre-assigned room and no available room provides the ` +
+                  `required facilities [${required.join(', ')}].`,
+              }
+            : {
+                passed: false,
+                code: 'NO_ROOMS_QUALIFY',
+                message:
+                  `Offering ${offering.id} (${offering.course.name}) is Flexible but ` +
+                  `no room satisfies capacity >= ${offering.effectiveStudentCount} ` +
+                  `with facilities [${required.join(', ')}].`,
+              },
         });
         continue;
       }
