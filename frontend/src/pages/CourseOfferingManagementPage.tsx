@@ -563,6 +563,28 @@ export function CourseOfferingManagementPage() {
     }))
   }, [allRooms, selectedCourse, form.effectiveStudentCount, form.roomId])
 
+  // Phase 11 task #15 — UX hint when null-room overflow will trigger a parallel
+  // split. Mirrors the validator's null-room branch in src/pre-ga/validator.ts:
+  // qualifying rooms are filtered by facility match alone (capacity is not a
+  // gate for null-room offerings), then the cohort is split into
+  // ⌈students / largestQualifyingCapacity⌉ sessions. Only shown when Lock Room
+  // is off and the cohort actually exceeds the largest qualifying room — at
+  // smaller counts the GA keeps parallelSessionCount=1 (OQ-17).
+  const parallelSplitHint = useMemo<string | undefined>(() => {
+    if (form.lockRoom) return undefined
+    if (form.effectiveStudentCount <= 0) return undefined
+    if (!selectedCourse) return undefined
+    const required = selectedCourse.requiredFacilities
+    const qualifying = allRooms.filter((r) =>
+      required.every((f) => r.facilities.includes(f)),
+    )
+    if (qualifying.length === 0) return undefined
+    const maxCapacity = Math.max(...qualifying.map((r) => r.capacity))
+    if (form.effectiveStudentCount <= maxCapacity) return undefined
+    const n = Math.ceil(form.effectiveStudentCount / maxCapacity)
+    return `This offering will be split into ${n} parallel sessions across multiple rooms.`
+  }, [form.lockRoom, form.effectiveStudentCount, selectedCourse, allRooms])
+
   const lecturerOptions = useMemo(
     () =>
       allLecturers.map((l) => ({
@@ -1201,6 +1223,7 @@ export function CourseOfferingManagementPage() {
               setFormErrors((prev) => ({ ...prev, effectiveStudentCount: undefined }))
             }}
             error={formErrors.effectiveStudentCount}
+            helperText={parallelSplitHint}
             min={0}
             max={10000}
             required

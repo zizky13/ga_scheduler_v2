@@ -746,3 +746,91 @@ describe('Pipeline integration — Phase 10 production parity (null room + Locke
     }
   });
 });
+
+describe('Pipeline integration — Phase 11 null-room offering with capacity overflow', () => {
+  it('splits a 90-student null-room offering into 3 parallel sessions across multiple rooms', async () => {
+    const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+    // Mutate offering #5 to the null-room overflow shape: no LockedRoom and a
+    // cohort larger than any single room's capacity. Every room in the easy
+    // dataset has capacity 40, so 90 students require ⌈90/40⌉ = 3 parallel
+    // sessions across different rooms (validator §141-167, OQ-15/16/17).
+    const overflowOffering: CourseOffering = {
+      ...offerings[4]!,
+      roomId: null,
+      room: null,
+      effectiveStudentCount: 90,
+    };
+    const offeringsWithOverflow = offerings.slice(0, 4).concat([overflowOffering]);
+
+    const config: GAConfig = {
+      populationSize: 30,
+      generations: 50,
+      mutationRate: 0.1,
+      elitismCount: 2,
+      tournamentSize: 3,
+      crossoverType: 'singlePoint',
+      noiseRate: 0.15,
+      hardPenaltyWeight: 100,
+      softPenaltyWeight: 1,
+    };
+
+    const { response, context } = await runPipeline({
+      offerings: offeringsWithOverflow,
+      timeSlots,
+      rooms,
+      lecturers,
+      config,
+    });
+
+    // Pre-GA must accept the overflow offering; no infeasibility.
+    expect(context.validation.infeasible).toEqual([]);
+    expect(context.candidates).toHaveLength(offeringsWithOverflow.length);
+
+    const cand = context.candidates.find(c => c.offeringId === overflowOffering.id)!;
+    expect(cand.isFixedRoom).toBe(false);
+    expect(cand.roomId).toBeNull();
+    // ⌈90/40⌉ = 3 — driven by the largest qualifying room's capacity.
+    expect(cand.parallelSessionCount).toBe(3);
+    expect(cand.possibleRoomIds!.length).toBeGreaterThan(0);
+
+    // A terminal non-failure status. STAGNATED is accepted since the cohort-
+    // capacity match is a soft signal — the GA might not perfectly zero
+    // residual collisions inside the generation budget, but it should never
+    // declare the run NO_FEASIBLE_CANDIDATES / INFEASIBLE.
+    expect(['SUCCESS', 'STAGNATED']).toContain(response.status);
+
+    const gaResult = response.gaResult!;
+    const gene = gaResult.bestChromosome.find(g => g.offeringId === overflowOffering.id)!;
+    expect(gene).toBeDefined();
+    expect(gene.kind).toBe('FLEXIBLE');
+    expect(gene.sessions).toHaveLength(3);
+
+    // Every session's roomId is drawn from possibleRoomIds (non-null).
+    const pool = new Set(cand.possibleRoomIds!);
+    for (const session of gene.sessions) {
+      expect(session.roomId).not.toBeNull();
+      expect(pool.has(session.roomId)).toBe(true);
+    }
+
+    // OQ-18 invariant: sibling sessions MAY share a timeslot in different
+    // rooms, but MUST NOT share both a room AND a slot (that's a room
+    // collision — a hard violation). Enforced per-(room, slot) pair.
+    const seen = new Set<string>();
+    for (const session of gene.sessions) {
+      for (const slotId of session.timeSlotIds) {
+        const key = `${session.roomId}:${slotId}`;
+        expect(seen.has(key)).toBe(false);
+        seen.add(key);
+      }
+    }
+
+    // Σ session.room.capacity >= effectiveStudentCount — the combined
+    // per-session room capacity must accommodate the cohort.
+    const roomById = new Map(rooms.map(r => [r.id, r]));
+    const combinedCapacity = gene.sessions.reduce(
+      (sum, s) => sum + (roomById.get(s.roomId)?.capacity ?? 0),
+      0,
+    );
+    expect(combinedCapacity).toBeGreaterThanOrEqual(overflowOffering.effectiveStudentCount);
+  });
+});
