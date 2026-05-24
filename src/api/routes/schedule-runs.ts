@@ -633,6 +633,7 @@ async function getStream(
             structuralPenalty: event.snapshot.structuralPenalty,
             preferencePenalty: event.snapshot.preferencePenalty,
             loadPenalty: event.snapshot.loadPenalty,
+            capacityShortfallPenalty: event.snapshot.capacityShortfallPenalty,
           });
           break;
         case "state":
