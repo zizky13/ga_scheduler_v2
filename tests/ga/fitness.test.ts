@@ -15,8 +15,9 @@ import {
   calculateStructuralPenalty,
   calculatePreferencePenalty,
   calculateLoadPenalty,
+  calculateCapacityShortfallPenalty,
 } from '../../src/ga/fitness.js';
-import type { Chromosome, FlexibleGene, PreGACandidate } from '../../src/types.js';
+import type { Chromosome, FlexibleGene, PreGACandidate, Room } from '../../src/types.js';
 
 function flex(offeringId: number, sessions: { roomId: number; timeSlotIds: number[] }[]): FlexibleGene {
   return { kind: 'FLEXIBLE', offeringId, sessions };
@@ -295,5 +296,95 @@ describe('calculateLoadPenalty — SKS over cap', () => {
     const cands = [candidate(1, [100, 200], 3)];
     const maxSks = new Map<number, number>([[100, 0], [200, 0]]);
     expect(calculateLoadPenalty(chrom, cands, maxSks)).toBe(6);
+  });
+});
+
+describe('calculateCapacityShortfallPenalty — null-room overflow (Phase 11 task #20)', () => {
+  function room(id: number, capacity: number): Room {
+    return { id, name: `R-${id}`, capacity, facilities: [] };
+  }
+
+  function nullRoomCandidate(
+    offeringId: number,
+    effectiveStudentCount: number,
+    possibleRoomIds: number[],
+  ): PreGACandidate {
+    return {
+      offeringId,
+      courseId: offeringId * 10,
+      roomId: null,
+      lecturerIds: [100],
+      effectiveStudentCount,
+      parallelSessionCount: possibleRoomIds.length,
+      sessionDuration: 1,
+      possibleTimeSlotIds: [],
+      possibleRoomIds,
+      isFixedRoom: false,
+    };
+  }
+
+  it('returns shortfall when cohort exceeds Σ session.room.capacity', () => {
+    // 3 sessions, all cap 30 → combined = 90; cohort = 100 → shortfall = 10.
+    const chrom: Chromosome = [
+      flex(1, [
+        { roomId: 10, timeSlotIds: [1] },
+        { roomId: 11, timeSlotIds: [2] },
+        { roomId: 12, timeSlotIds: [3] },
+      ]),
+    ];
+    const cands = [nullRoomCandidate(1, 100, [10, 11, 12])];
+    const rooms = new Map<number, Room>([
+      [10, room(10, 30)],
+      [11, room(11, 30)],
+      [12, room(12, 30)],
+    ]);
+    expect(calculateCapacityShortfallPenalty(chrom, cands, rooms)).toBe(10);
+  });
+
+  it('returns 0 when Σ session.room.capacity meets the cohort exactly', () => {
+    // 3 sessions, all cap 30 → combined = 90; cohort = 90 → no shortfall.
+    const chrom: Chromosome = [
+      flex(1, [
+        { roomId: 10, timeSlotIds: [1] },
+        { roomId: 11, timeSlotIds: [2] },
+        { roomId: 12, timeSlotIds: [3] },
+      ]),
+    ];
+    const cands = [nullRoomCandidate(1, 90, [10, 11, 12])];
+    const rooms = new Map<number, Room>([
+      [10, room(10, 30)],
+      [11, room(11, 30)],
+      [12, room(12, 30)],
+    ]);
+    expect(calculateCapacityShortfallPenalty(chrom, cands, rooms)).toBe(0);
+  });
+
+  it('returns 0 for pre-assigned-room offerings regardless of cohort (OQ-16)', () => {
+    // candidate.roomId !== null → exempt from shortfall calc per OQ-16
+    // (pre-assigned-room offerings split across timeslots, not rooms; their
+    // capacity is already guaranteed by the validator's strict filter).
+    const chrom: Chromosome = [
+      flex(1, [
+        { roomId: 10, timeSlotIds: [1] },
+        { roomId: 10, timeSlotIds: [2] },
+      ]),
+    ];
+    // Pre-assigned room candidate: roomId is set, parallelSessionCount=2 via
+    // ⌈students/room.capacity⌉. effectiveStudentCount=200 (intentionally huge)
+    // → would be a shortfall under the null-room formula, but the OQ-16
+    // exemption keeps the penalty at 0.
+    const preAssignedCand: PreGACandidate = {
+      offeringId: 1,
+      courseId: 10,
+      roomId: 10,
+      lecturerIds: [100],
+      effectiveStudentCount: 200,
+      parallelSessionCount: 2,
+      sessionDuration: 1,
+      possibleTimeSlotIds: [],
+      isFixedRoom: true,
+    };
+    const rooms = new Map<number, Room>([[10, room(10, 30)]]);
+    expect(calculateCapacityShortfallPenalty(chrom, [preAssignedCand], rooms)).toBe(0);
   });
 });
