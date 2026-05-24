@@ -347,6 +347,11 @@ model ScheduleRun {
   // Per-run aggregate of `EvaluatedChromosome.loadPenalty` (Phase 8) — sum of
   // SKS over each lecturer's `maxSks` cap. Surfaced via run-detail + telemetry.
   loadPenalty        Int     @default(0)
+  // Per-run aggregate of `EvaluatedChromosome.capacityShortfallPenalty`
+  // (Phase 11 task #6) — Σ over null-room offerings of
+  // max(0, effectiveStudentCount − Σ session.room.capacity). Surfaced via
+  // run-detail + telemetry alongside loadPenalty.
+  capacityShortfallPenalty Int @default(0)
   stagnatedEarly     Boolean @default(false)
 
   // Raw history retained for techspec §8.2 compatibility; also normalized below.
@@ -435,6 +440,10 @@ model FitnessHistory {
   // because the column is added to an already-populated table; siblings
   // (`competencyMismatch`) were created with the table so didn't need one.
   loadPenalty        Int      @default(0)
+  // Per-generation `capacityShortfallPenalty` (Phase 11 task #6) — Σ over null-
+  // room offerings of max(0, effectiveStudentCount − Σ session.room.capacity).
+  // Added @default(0) for the same backfill reason as loadPenalty above.
+  capacityShortfallPenalty Int @default(0)
   recordedAt         DateTime @default(now())
 
   run ScheduleRun @relation(fields: [runId], references: [id], onDelete: Cascade)
