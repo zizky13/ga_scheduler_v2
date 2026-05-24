@@ -59,6 +59,7 @@ interface ScheduleRunDetail {
   softPenalty: number;
   competencyMismatch: number;
   loadPenalty: number;
+  capacityShortfallPenalty: number;
   generationsRun: number;
   currentGeneration: number;
   stagnatedEarly: boolean;
@@ -214,6 +215,7 @@ export function RunDetailPage() {
         softPenalty: data.softPenalty,
         competencyMismatch: data.competencyMismatch,
         loadPenalty: data.loadPenalty,
+        capacityShortfallPenalty: data.capacityShortfallPenalty,
       };
     });
     setChartData((prev) => [
@@ -484,6 +486,15 @@ export function RunDetailPage() {
               <p className={styles.statLabel}>Load Penalty (SKS over cap)</p>
               <p className={`${styles.statValue} ${run.loadPenalty === 0 ? styles.statGreen : styles.statRed}`}>
                 {run.loadPenalty}
+              </p>
+            </div>
+            <div
+              className={styles.statCard}
+              title="Sum of students over each null-room offering's combined session capacity (soft constraint)."
+            >
+              <p className={styles.statLabel}>Capacity Shortfall (students over cap)</p>
+              <p className={`${styles.statValue} ${run.capacityShortfallPenalty === 0 ? styles.statGreen : styles.statRed}`}>
+                {run.capacityShortfallPenalty}
               </p>
             </div>
           </div>

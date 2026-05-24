@@ -13,6 +13,7 @@ export interface SSEProgressPayload {
   structuralPenalty: number;
   preferencePenalty: number;
   loadPenalty: number;
+  capacityShortfallPenalty: number;
 }
 
 export interface SSEStatePayload {
