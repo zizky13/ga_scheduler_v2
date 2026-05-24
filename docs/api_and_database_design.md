@@ -15,6 +15,7 @@
 | From → To | Summary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1.0 → 2.0 | Aligned the doc to techspec v2.0 / PRD v6.0. Specifically: added `[HC-COMPETENCY]` data fields (`Lecturer.competencies`, `Course.requiredCompetencies`) to §3 with the dual-target SQLite/Postgres encoding rule from `[ARCH-OBS-05]`; added the `COMPETENCY_MISMATCH` 422 `DomainError` code (§5.2, §6) as a Pre-GA per-offering rejection; added the `competencyMismatch` audit counter on `ScheduleRun` and `FitnessHistory` (§3.2, §5.3.8, §8); added a new runtime subsection (§7.x) describing `CompetencyEligibilityMap` construction via `isLecturerEligibleForCourse`; updated the §4.5 / §4.6 permission matrix to cover the two new fields; updated CRUD bodies in §5.3.5 / §5.3.6; added Zod validation rules for the two arrays in §6; opened OQ-9 in §9. |
+| 2.0 → 2.1 | Phase 11 — null-room parallel split. Added §7.2 documenting the orthogonal `parallelSessionCount` derivation regimes (pre-assigned-room → across timeslots vs null-room overflow → across rooms) and the new `capacityShortfallPenalty` soft constraint. New Pre-GA rejection codes `NO_FACILITY_MATCH` and `NO_CAPACITY_COMBINATION` apply to the null-room path (§5.2 codes list — non-breaking additions to `preGASummary.infeasible[].code`). New `capacityShortfallPenalty Int @default(0)` column on `ScheduleRun` and `FitnessHistory` (§3.2, §5.3.8). |
 
 ---
 
@@ -1092,6 +1093,29 @@ type CompetencyEligibilityMap = Map<offeringId: number, Set<eligibleLecturerId: 
 **Persistence.** The map is **not persisted**. It is rebuilt per run from the current `Lecturer.competencies` and `Course.requiredCompetencies` rows, so a competency edit by the Kaprodi between two runs takes effect on the next run without any cache-invalidation step.
 
 **Defense-in-depth, not the primary gate.** Pre-GA's `checkCompetencies` is the **primary** gate (techspec §4.3): an offering whose lecturers fail the competency match is rejected with `COMPETENCY_MISMATCH` before SSA or GA see it. The GA's `evaluateCompetencyMismatch` is **defense in depth** — it ensures any chromosome whose gene happens to assign a non-eligible lecturer (e.g., through a future mutation that swaps lecturers) contributes to `hardViolations` and therefore loses dominance. In the current architecture the GA does not reassign lecturers, so this is a guard rail rather than a frequently-triggered code path; it exists so that any future GA operator that touches the lecturer dimension cannot silently violate `[HC-COMPETENCY]`.
+
+### 7.2 Pre-GA `parallelSessionCount` derivation and `capacityShortfallPenalty` (Phase 11)
+
+Pre-GA computes `parallelSessionCount` from one of two **orthogonal** regimes selected by `CourseOffering.roomId`. Each regime is the only correct path for its inputs; mixing them would corrupt downstream invariants the GA core relies on.
+
+| Regime | Trigger | `parallelSessionCount` formula | Split axis | Validator path |
+|---|---|---|---|---|
+| Pre-assigned-room overflow | `roomId !== null && students > room.capacity` | `⌈effectiveStudentCount / room.capacity⌉` | **Across timeslots**, one shared `roomId` | `src/pre-ga/validator.ts:188-190` (legacy formula); `possibleRoomIds` skip at lines 99-102 routes FIXED offerings directly here |
+| Null-room overflow (Phase 11) | `roomId === null && students > maxQualifyingCapacity` | `⌈effectiveStudentCount / maxQualifyingCapacity⌉`, capped at `min(MAX_PARALLEL_SESSIONS_HARD_CAP=5, qualifying.length)` (OQ-15) | **Across rooms**, one cohort group per `(session, roomId)` pair | `src/pre-ga/validator.ts:141-167`; computed alongside `possibleRoomIds`. Cap exceeded → `NO_CAPACITY_COMBINATION` |
+| Single-session fallback | Neither overflow condition fires | `1` | n/a | both branches default to 1 |
+
+`maxQualifyingCapacity = max(possibleRoomIds.map(r => r.capacity))`. The null-room qualifying filter is **facility-only** (capacity is not a gate per Phase 11 task #1 — the cohort can be split, so per-room capacity is no longer load-bearing); the pre-assigned-room qualifying filter remains strict (every alternate must hold the offering on its own, since the pre-assigned regime keeps one roomId across all sessions).
+
+**Why the orthogonality matters.** The chromosome seeder (`src/ga/chromosome.ts:createGeneFromCandidate`) branches on `candidate.roomId == null && parallelSessionCount > 1` to decide whether to draw an independent room per session (multi-room split, OQ-15) or share one seed roomId across all sessions (pre-assigned or single-session, OQ-16/17). Mutation, repair, and the SSA bipartite graph all rely on this branch being correct; conflating the two regimes would either lock multi-room overflow back to a single (too-small) room or scatter pre-assigned-room sessions across rooms in violation of OQ-16.
+
+**`capacityShortfallPenalty` (soft constraint, Phase 11 task #6).** For null-room overflow offerings, the GA's per-session room picks can produce combinations whose summed capacity falls below the cohort. The fitness function adds a soft penalty term:
+
+```
+capacityShortfallPenalty = Σ over genes of max(0, candidate.effectiveStudentCount − Σ session.room.capacity)
+                           — when candidate.roomId === null only (OQ-16: pre-assigned offerings exempt)
+```
+
+Wired through the same path as `loadPenalty` (Phase 8): persisted on `ScheduleRun` and `FitnessHistory` (per-generation), surfaced on the SSE `progress` event payload, and rendered on the Run Detail page. Shares `softPenaltyWeight` per OQ-11 — no new GAConfig knob.
 
 ---
 
