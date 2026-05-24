@@ -48,6 +48,7 @@ interface ScheduleRunRecord {
   softPenalty?: number;
   competencyMismatch?: number;
   loadPenalty?: number;
+  capacityShortfallPenalty?: number;
   currentGeneration?: number;
   generationsRun?: number;
   stagnatedEarly?: boolean;

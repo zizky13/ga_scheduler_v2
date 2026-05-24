@@ -65,6 +65,7 @@ export interface ScheduleRunSummaryRecord {
   softPenalty: number;
   competencyMismatch: number;
   loadPenalty: number;
+  capacityShortfallPenalty: number;
   generationsRun: number;
   currentGeneration: number;
   stagnatedEarly: boolean;
@@ -86,6 +87,7 @@ const SCHEDULE_RUN_SUMMARY_SELECT = {
   softPenalty: true,
   competencyMismatch: true,
   loadPenalty: true,
+  capacityShortfallPenalty: true,
   generationsRun: true,
   currentGeneration: true,
   stagnatedEarly: true,
