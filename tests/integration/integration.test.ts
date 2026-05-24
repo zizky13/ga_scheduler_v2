@@ -666,7 +666,12 @@ describe('Pipeline integration — Phase 10 production parity (null room + Locke
     const gaResult = response.gaResult!;
     const gene = gaResult.bestChromosome.find(g => g.offeringId === nullRoomOffering.id)!;
     expect(gene).toBeDefined();
-    expect(gene.sessions.length).toBeGreaterThan(0);
+    // Phase 11 task #17 — OQ-17 guard. The cohort (30) fits in every cap-40
+    // room in the easy dataset, so this is a non-overflow null-room offering
+    // and MUST stay single-session. Multi-session search is reserved for the
+    // overflow path (Phase 11 task #16) and would expand the search space
+    // gratuitously for the common case.
+    expect(gene.sessions).toHaveLength(1);
     const pool = new Set(cand.possibleRoomIds!);
     for (const session of gene.sessions) {
       expect(session.roomId).not.toBeNull();
@@ -832,5 +837,77 @@ describe('Pipeline integration — Phase 11 null-room offering with capacity ove
       0,
     );
     expect(combinedCapacity).toBeGreaterThanOrEqual(overflowOffering.effectiveStudentCount);
+  });
+
+  it('keeps single-room multi-timeslot split for pre-assigned-room overflow (OQ-16 regression)', async () => {
+    // Phase 11 task #18 — guards OQ-16. A FIXED offering with a pre-assigned
+    // room whose capacity is smaller than the cohort must split ACROSS
+    // TIMESLOTS within the locked room — NOT across rooms (that path is
+    // reserved for null-room offerings per task #16). The validator's strict
+    // possibleRoomIds skip at src/pre-ga/validator.ts:99-102 routes
+    // `isFixed && roomId !== null` directly to the legacy
+    // `⌈students / room.capacity⌉` formula at line 188-189.
+    const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+    // Offering #1 is pinned to room 1 (capacity 40). Push the cohort to 80 →
+    // ⌈80/40⌉ = 2 sessions. Open the fixed slot domain to two Mon/Tue 3-slot
+    // blocks so the seeder can place the two sessions in distinct timeslots
+    // without colliding with each other in the locked room.
+    const overflowFixed: CourseOffering = {
+      ...offerings[0]!,
+      isFixed: true,
+      fixedTimeSlotIds: [1, 2, 3, 4, 5, 6],
+      effectiveStudentCount: 80,
+    };
+    const offeringsWithFixedOverflow = [overflowFixed, ...offerings.slice(1)];
+
+    const config: GAConfig = {
+      populationSize: 30,
+      generations: 50,
+      mutationRate: 0.1,
+      elitismCount: 2,
+      tournamentSize: 3,
+      crossoverType: 'singlePoint',
+      noiseRate: 0.15,
+      hardPenaltyWeight: 100,
+      softPenaltyWeight: 1,
+    };
+
+    const { response, context } = await runPipeline({
+      offerings: offeringsWithFixedOverflow,
+      timeSlots,
+      rooms,
+      lecturers,
+      config,
+    });
+
+    expect(context.validation.infeasible).toEqual([]);
+
+    const cand = context.candidates.find(c => c.offeringId === overflowFixed.id)!;
+    expect(cand.isFixedRoom).toBe(true);
+    expect(cand.roomId).toBe(overflowFixed.roomId);
+    // Legacy formula — ⌈80/40⌉ = 2 sessions, same locked room, different slots.
+    expect(cand.parallelSessionCount).toBe(2);
+
+    expect(['SUCCESS', 'STAGNATED']).toContain(response.status);
+
+    const gaResult = response.gaResult!;
+    const gene = gaResult.bestChromosome.find(g => g.offeringId === overflowFixed.id)!;
+    expect(gene).toBeDefined();
+    expect(gene.kind).toBe('FIXED');
+    expect(gene.sessions).toHaveLength(2);
+
+    // OQ-16 invariant: every session of a FIXED gene carries the locked room.
+    // This is what distinguishes the pre-assigned overflow path from the new
+    // null-room multi-room split.
+    for (const session of gene.sessions) {
+      expect(session.roomId).toBe(overflowFixed.roomId);
+    }
+
+    // The two sessions must occupy different timeslot blocks — that's the
+    // whole point of the multi-timeslot split (otherwise they'd collide in
+    // the locked room).
+    const firstSlots = gene.sessions[0]!.timeSlotIds.slice().sort();
+    const secondSlots = gene.sessions[1]!.timeSlotIds.slice().sort();
+    expect(firstSlots).not.toEqual(secondSlots);
   });
 });
