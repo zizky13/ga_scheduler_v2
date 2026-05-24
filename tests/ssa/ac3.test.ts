@@ -16,7 +16,7 @@ interface SessionSpec {
   sessionId: number;
   offeringId: number;
   sessionIndex?: number;
-  roomId: number;
+  roomId: number | null;
   lecturerIds: number[];
   domain: number[];
 }
@@ -135,6 +135,40 @@ describe('runAC3 (techspec §10.1)', () => {
     const graph: BipartiteGraph = { sessions: [], slots: [], adjacency: new Map() };
     const result = runAC3(graph);
     expect(result.consistent).toBe(true);
+  });
+
+  it('propagates shared-lecturer constraint between sibling sessions (Phase 11 OQ-19)', () => {
+    // Two sibling sessions of the SAME null-room offering — different
+    // sessionIndex, both roomId=null (per-session room decided post-SSA),
+    // sharing the same lecturer. Sibling A has [1,2] and B is forced to [1]:
+    // the shared-lecturer arc must prune slot 1 from A. The null roomIds must
+    // NOT introduce a spurious shared-room constraint.
+    const graph = buildGraph([
+      { sessionId: 100, offeringId: 1, sessionIndex: 0, roomId: null, lecturerIds: [500], domain: [1, 2] },
+      { sessionId: 101, offeringId: 1, sessionIndex: 1, roomId: null, lecturerIds: [500], domain: [1] },
+    ]);
+
+    const result = runAC3(graph);
+
+    expect(result.consistent).toBe(true);
+    expect(Array.from(graph.adjacency.get(100)!).sort()).toEqual([2]);
+    expect(Array.from(graph.adjacency.get(101)!).sort()).toEqual([1]);
+  });
+
+  it('does NOT add shared-room constraint between null-room siblings (Phase 11 task #10)', () => {
+    // Two sibling sessions of the same null-room offering with DIFFERENT
+    // lecturers and both forced to slot 1. With no shared room or shared
+    // lecturer, AC-3 must not propagate any constraint — both keep [1].
+    const graph = buildGraph([
+      { sessionId: 200, offeringId: 2, sessionIndex: 0, roomId: null, lecturerIds: [600], domain: [1] },
+      { sessionId: 201, offeringId: 2, sessionIndex: 1, roomId: null, lecturerIds: [700], domain: [1] },
+    ]);
+
+    const result = runAC3(graph);
+
+    expect(result.consistent).toBe(true);
+    expect(Array.from(graph.adjacency.get(200)!)).toEqual([1]);
+    expect(Array.from(graph.adjacency.get(201)!)).toEqual([1]);
   });
 
   it('chains propagation: A=[1,2,3], B=[1,2], C=[1] in same room → A=[3], B=[2], C=[1]', () => {

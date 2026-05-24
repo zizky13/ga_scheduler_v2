@@ -16,6 +16,16 @@ export function runAC3(graph: BipartiteGraph): AC3Result {
   // by Layer 3), not a fixed assignment that could conflict here. Grouping
   // them under "null" would propagate spurious shared-room constraints
   // (null === null would falsely mark every unlocked offering as colliding).
+  //
+  // note (Phase 11 task #10 — sibling-session audit, OQ-19): for a null-room
+  // overflow offering, every emitted sibling SessionNode carries `roomId: null`,
+  // so the guard below correctly skips them — they don't get a spurious
+  // shared-room self-conflict. The shared-LECTURER constraint, however, MUST
+  // still fire between siblings (the same lecturer can't be in two parallel
+  // sessions at the same slot). That's handled by the lecturer index below,
+  // which makes no roomId distinction. Verified via the
+  // "propagates shared-lecturer constraint between sibling sessions" case in
+  // tests/ssa/ac3.test.ts.
   const roomToSessions = new Map<number, SessionNode[]>();
   for (const session of sessions) {
     if (session.roomId === null) continue;
