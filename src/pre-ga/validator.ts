@@ -264,9 +264,19 @@ export function runPreGA(
     // TODO Phase 15 #3: when siblings disagree on `roomId` (one has a
     // pre-assigned room, another is null-room), the cohort silently
     // adopts the primary's roomId. Mixed-lock siblings need explicit
-    // conflict detection. Same caveat applies to `lecturerIds` — task #2
-    // introduces `lecturerPool` (union of siblings); for task #1 we keep
-    // the primary's lecturerIds for backward compatibility.
+    // conflict detection.
+    //
+    // `lecturerIds` retains its primary-only semantics for backward
+    // compatibility — SSA's bipartiteGraph.ts continues to read it until
+    // task #11 pivots it to `lecturerPool`. Single-sibling cohorts:
+    // `lecturerPool` equals the sorted primary lecturer ids. Multi-sibling
+    // cohorts: `lecturerPool` is the union (dedup + ascending sort) for
+    // determinism — task #5's seeder uses this to distribute lecturers
+    // across the cohort's `parallelSessionCount` sessions (OQ-24).
+    // Phase 15 #2
+    const lecturerPool = Array.from(
+      new Set(siblings.flatMap(s => s.lecturers.map(l => l.id))),
+    ).sort((a, b) => a - b);
     const candidate: PreGACandidate = {
       offeringId: primary.id,
       courseId: primary.courseId,
@@ -278,6 +288,7 @@ export function runPreGA(
       possibleTimeSlotIds,
       isFixedRoom: false, // will be stamped by tagEntities below
       siblingOfferingIds,
+      lecturerPool,
     };
     const possibleRoomIds = possibleRoomIdsByOffering.get(primary.id);
     if (possibleRoomIds) candidate.possibleRoomIds = possibleRoomIds;

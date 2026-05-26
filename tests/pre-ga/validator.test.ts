@@ -263,10 +263,58 @@ describe('runPreGA — Phase 15 #1 cohort aggregation (OQ-22 / OQ-23)', () => {
     expect(candidate.siblingOfferingIds).toEqual([5, 7]);
     // OQ-23 default: max(40, 60) = 60.
     expect(candidate.effectiveStudentCount).toBe(60);
-    // Task #1 keeps primary's lecturerIds (task #2 owns the union/pool).
+    // `lecturerIds` keeps primary-only semantics for SSA back-compat.
     expect(candidate.lecturerIds).toEqual([200]);
+    // Phase 15 #2: `lecturerPool` is the union of every sibling's lecturer
+    // ids, deduplicated and sorted ascending. Disjoint sets here → [200, 201].
+    expect(candidate.lecturerPool).toEqual([200, 201]);
     // parallelSessionCount = ⌈60 / 80⌉ = 1 (primary.room.capacity).
     expect(candidate.parallelSessionCount).toBe(1);
+  });
+
+  it('Phase 15 #2: lecturerPool deduplicates lecturers shared across siblings and sorts ascending', () => {
+    // Two siblings whose lecturer sets overlap on one shared id; the cohort's
+    // `lecturerPool` must collapse the duplicate and emit a sorted union.
+    // Picks shuffled ids so the ascending sort is observably load-bearing.
+    const rooms = [buildRoom(1, 80)];
+    const timeSlots = buildTimeSlots(5);
+    const lecturerA: Lecturer = { ...buildLecturer(), id: 305 };
+    const lecturerB: Lecturer = { ...buildLecturer(), id: 110 };
+    const lecturerC: Lecturer = { ...buildLecturer(), id: 220 };
+    const offeringPrimary: CourseOffering = {
+      id: 12,
+      courseId: 99,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerA, lecturerB], // [305, 110]
+      effectiveStudentCount: 30,
+      isFixed: false,
+    };
+    const offeringSibling: CourseOffering = {
+      id: 18,
+      courseId: 99,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerB, lecturerC], // [110, 220] — 110 overlaps
+      effectiveStudentCount: 30,
+      isFixed: false,
+    };
+
+    const { candidates } = runPreGA(
+      [offeringPrimary, offeringSibling],
+      timeSlots,
+      rooms,
+    );
+
+    expect(candidates).toHaveLength(1);
+    const candidate = candidates[0]!;
+    expect(candidate.siblingOfferingIds).toEqual([12, 18]);
+    // Primary-only lecturerIds — preserves insertion order from primary.
+    expect(candidate.lecturerIds).toEqual([305, 110]);
+    // Union {305, 110, 220} → dedup'd, ascending → [110, 220, 305].
+    expect(candidate.lecturerPool).toEqual([110, 220, 305]);
   });
 
   it('single-offering cohort emits a candidate structurally identical to today, with siblingOfferingIds = [offeringId]', () => {

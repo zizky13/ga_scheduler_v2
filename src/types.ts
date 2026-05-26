@@ -161,6 +161,19 @@ export interface PreGACandidate {
    * lecturer pool, per-session distribution, and SSA bipartite-graph adjacency.
    */
   siblingOfferingIds: number[];
+  /**
+   * Phase 15 #2 (OQ-24 / OQ-25 per-session lecturer distribution): union of
+   * every sibling offering's `lecturerIds`, deduplicated and sorted ascending
+   * for determinism. Single-sibling cohorts: `lecturerPool === lecturerIds`
+   * (same set, same order). Multi-sibling cohorts: `lecturerPool` is a
+   * superset of `lecturerIds` (the cohort's full lecturer set across all
+   * sibling offerings; `lecturerIds` continues to hold only the primary's
+   * lecturers — Phase 15 task #11 will eventually pivot SSA off the legacy
+   * `lecturerIds` and onto the pool). Task #5's chromosome seeder distributes
+   * this pool across the cohort's `parallelSessionCount` sessions per OQ-24's
+   * round-robin default.
+   */
+  lecturerPool: number[];
 }
 
 // ─── Layer 2: SSA Types ──────────────────────────────────────────
