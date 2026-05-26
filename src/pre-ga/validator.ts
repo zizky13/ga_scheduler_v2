@@ -19,6 +19,26 @@ import { tagEntities } from './entityTagger.js';
 export const MAX_PARALLEL_SESSIONS_HARD_CAP = 5;
 
 /**
+ * Phase 15 #3 / OQ-23 — cohort-shape validation policy dispatcher.
+ *
+ * Resolution of OQ-23 controls how the cohort-aggregation pass handles
+ * sibling offerings that disagree on `effectiveStudentCount`:
+ *   - `'max'` (default, OQ-23=(b)): silently resolve via `Math.max(siblings)`.
+ *     The cohort builder above already does this — the rejection branch
+ *     gated by this flag is dead code under the default.
+ *   - `'reject'` (OQ-23=(d)): treat any disagreement as infeasible and emit
+ *     `EFFECTIVE_STUDENT_COUNT_MISMATCH` against the primary sibling so the
+ *     admin can reconcile the inputs before re-running.
+ *
+ * The branch is fully wired so flipping this constant (or replacing it with
+ * a runtime config knob) activates the rejection without further changes.
+ * The companion `COHORT_LECTURER_POOL_EMPTY` check below is unconditionally
+ * active — it is defense-in-depth against a `checkLecturer` regression and
+ * should be unreachable post-Phase-14.
+ */
+const STUDENT_COUNT_DISAGREEMENT_POLICY: 'max' | 'reject' = 'max';
+
+/**
  * Run the complete Pre-GA validation pipeline.
  * Pure function — takes data in, returns results, no side effects.
  *
@@ -277,6 +297,58 @@ export function runPreGA(
     const lecturerPool = Array.from(
       new Set(siblings.flatMap(s => s.lecturers.map(l => l.id))),
     ).sort((a, b) => a - b);
+
+    // ─── Phase 15 #3 — Cohort-shape validation ─────────────────────
+    // Two defensive rejection paths. Both surface on the cohort's
+    // primary sibling so the orchestrator's `preGASummary.infeasible[]`
+    // names the cohort exactly once (no per-sibling inflation).
+    //
+    // `COHORT_LECTURER_POOL_EMPTY` — active. Should be unreachable
+    // post-Phase-14 because every sibling already passed `checkLecturer`
+    // (rejects empty lecturers as `LECTURER_NONE` before the cohort
+    // pass runs). Kept as defense-in-depth so a future `checkLecturer`
+    // regression turns a downstream `lecturerPool[0]` crash into a
+    // clear Pre-GA rejection.
+    //
+    // `EFFECTIVE_STUDENT_COUNT_MISMATCH` — gated by the module-top
+    // `STUDENT_COUNT_DISAGREEMENT_POLICY` constant (OQ-23 dispatcher).
+    // Under the default `'max'`, the cohort silently resolves to
+    // `Math.max(siblings)` and this branch is dead. Flipping the policy
+    // to `'reject'` activates the rejection without further wiring.
+    if (lecturerPool.length === 0) {
+      infeasible.push({
+        offering: primary,
+        failedCheck: {
+          passed: false,
+          code: 'COHORT_LECTURER_POOL_EMPTY',
+          message:
+            `Cohort (courseId=${primary.courseId}, siblings=[${siblingOfferingIds.join(', ')}]) ` +
+            `produced an empty lecturer pool after dedup. This should be unreachable ` +
+            `post-Phase-14 (every feasible offering passes checkLecturer); ` +
+            `treating as infeasible defensively.`,
+        },
+      });
+      continue;
+    }
+
+    if (STUDENT_COUNT_DISAGREEMENT_POLICY === 'reject') {
+      const counts = siblings.map(s => s.effectiveStudentCount);
+      if (counts.some(c => c !== counts[0])) {
+        infeasible.push({
+          offering: primary,
+          failedCheck: {
+            passed: false,
+            code: 'EFFECTIVE_STUDENT_COUNT_MISMATCH',
+            message:
+              `Cohort (courseId=${primary.courseId}, siblings=[${siblingOfferingIds.join(', ')}]) ` +
+              `has disagreeing effectiveStudentCount values: [${counts.join(', ')}]. ` +
+              `OQ-23 resolved to 'reject' — admin must reconcile sibling inputs.`,
+          },
+        });
+        continue;
+      }
+    }
+
     const candidate: PreGACandidate = {
       offeringId: primary.id,
       courseId: primary.courseId,
