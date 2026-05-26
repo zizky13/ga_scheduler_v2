@@ -481,6 +481,170 @@ describe('PATCH /course-offerings/:id (full)', () => {
   });
 });
 
+// Phase 14 #12 — cross-semester reference rejection on PATCH. Mirrors task #11
+// but exercises the PATCH write-path: a valid offering exists in semester A,
+// then is PATCHed with a single foreign-field referencing semester B. The
+// `assertSameSemester` guard validates against the existing offering's
+// `semesterId` (not any body-supplied semesterId) and emits the same envelope
+// as POST.
+describe('PATCH /course-offerings/:id — Phase 14 #12 cross-semester rejection', () => {
+  interface CrossSemesterPatchSeed {
+    semA: { id: number };
+    semB: { id: number };
+    courseA: { id: number };
+    roomA: { id: number };
+    lecturerA: { id: number };
+    slotA: { id: number };
+    courseB: { id: number };
+    roomB: { id: number };
+    lecturerB: { id: number };
+    slotB: { id: number };
+    parentOfferingB: { id: number };
+    offeringA: { id: number };
+  }
+
+  function seedCrossSemesterPatch(): CrossSemesterPatchSeed {
+    const semA = fixture.insertSemester({ code: 'SEM-A', label: 'A' });
+    const semB = fixture.insertSemester({ code: 'SEM-B', label: 'B' });
+    const courseA = fixture.insertCourse({
+      semesterId: semA.id,
+      code: 'CA',
+      name: 'A-course',
+      sks: 3,
+    });
+    const roomA = fixture.insertRoom({ semesterId: semA.id, name: 'RA', capacity: 30 });
+    const lecturerA = fixture.insertLecturer({ semesterId: semA.id, name: 'Dr. A' });
+    const slotA = fixture.insertTimeSlot({
+      semesterId: semA.id,
+      day: 'MONDAY',
+      startTime: '08:00',
+      endTime: '10:00',
+    });
+    const courseB = fixture.insertCourse({
+      semesterId: semB.id,
+      code: 'CB',
+      name: 'B-course',
+      sks: 3,
+    });
+    const roomB = fixture.insertRoom({ semesterId: semB.id, name: 'RB', capacity: 30 });
+    const lecturerB = fixture.insertLecturer({ semesterId: semB.id, name: 'Dr. B' });
+    const slotB = fixture.insertTimeSlot({
+      semesterId: semB.id,
+      day: 'TUESDAY',
+      startTime: '08:00',
+      endTime: '10:00',
+    });
+    const parentOfferingB = fixture.insertCourseOffering({
+      semesterId: semB.id,
+      courseId: courseB.id,
+      roomId: roomB.id,
+      effectiveStudentCount: 30,
+      lecturerIds: [lecturerB.id],
+    });
+    const offeringA = fixture.insertCourseOffering({
+      semesterId: semA.id,
+      courseId: courseA.id,
+      roomId: roomA.id,
+      effectiveStudentCount: 30,
+      lecturerIds: [lecturerA.id],
+    });
+    return {
+      semA,
+      semB,
+      courseA,
+      roomA,
+      lecturerA,
+      slotA,
+      courseB,
+      roomB,
+      lecturerB,
+      slotB,
+      parentOfferingB,
+      offeringA,
+    };
+  }
+
+  it('400 CROSS_SEMESTER_REFERENCE when PATCH lecturerIds belong to a different semester', async () => {
+    seedAdmin();
+    const s = seedCrossSemesterPatch();
+    const res = await request(app)
+      .patch(`/api/v1/course-offerings/${s.offeringA.id}`)
+      .set('Authorization', adminBearer())
+      .send({ lecturerIds: [s.lecturerB.id] });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CROSS_SEMESTER_REFERENCE');
+    expect(res.body.error.details.metadata.field).toBe('lecturerIds');
+    expect(res.body.error.details.metadata.expectedSemesterId).toBe(s.semA.id);
+    expect(res.body.error.details.metadata.fields[0].field).toBe('lecturerIds');
+    expect(res.body.error.details.metadata.fields[0].mismatches[0].id).toBe(s.lecturerB.id);
+    expect(res.body.error.details.metadata.fields[0].mismatches[0].actualSemesterId).toBe(s.semB.id);
+  });
+
+  it('400 CROSS_SEMESTER_REFERENCE when PATCH roomId belongs to a different semester', async () => {
+    seedAdmin();
+    const s = seedCrossSemesterPatch();
+    const res = await request(app)
+      .patch(`/api/v1/course-offerings/${s.offeringA.id}`)
+      .set('Authorization', adminBearer())
+      .send({ roomId: s.roomB.id });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CROSS_SEMESTER_REFERENCE');
+    expect(res.body.error.details.metadata.field).toBe('roomId');
+    expect(res.body.error.details.metadata.expectedSemesterId).toBe(s.semA.id);
+    expect(res.body.error.details.metadata.fields[0].field).toBe('roomId');
+    expect(res.body.error.details.metadata.fields[0].mismatches[0].id).toBe(s.roomB.id);
+    expect(res.body.error.details.metadata.fields[0].mismatches[0].actualSemesterId).toBe(s.semB.id);
+  });
+
+  it('400 CROSS_SEMESTER_REFERENCE when PATCH fixedTimeSlotIds belong to a different semester', async () => {
+    seedAdmin();
+    const s = seedCrossSemesterPatch();
+    const res = await request(app)
+      .patch(`/api/v1/course-offerings/${s.offeringA.id}`)
+      .set('Authorization', adminBearer())
+      .send({ isFixed: true, fixedTimeSlotIds: [s.slotB.id] });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CROSS_SEMESTER_REFERENCE');
+    expect(res.body.error.details.metadata.field).toBe('fixedTimeSlotIds');
+    expect(res.body.error.details.metadata.expectedSemesterId).toBe(s.semA.id);
+    expect(res.body.error.details.metadata.fields[0].field).toBe('fixedTimeSlotIds');
+    expect(res.body.error.details.metadata.fields[0].mismatches[0].id).toBe(s.slotB.id);
+    expect(res.body.error.details.metadata.fields[0].mismatches[0].actualSemesterId).toBe(s.semB.id);
+  });
+
+  it('400 CROSS_SEMESTER_REFERENCE when PATCH parentOfferingId belongs to a different semester', async () => {
+    seedAdmin();
+    const s = seedCrossSemesterPatch();
+    const res = await request(app)
+      .patch(`/api/v1/course-offerings/${s.offeringA.id}`)
+      .set('Authorization', adminBearer())
+      .send({ parentOfferingId: s.parentOfferingB.id });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CROSS_SEMESTER_REFERENCE');
+    expect(res.body.error.details.metadata.field).toBe('parentOfferingId');
+    expect(res.body.error.details.metadata.expectedSemesterId).toBe(s.semA.id);
+    expect(res.body.error.details.metadata.fields[0].field).toBe('parentOfferingId');
+    expect(res.body.error.details.metadata.fields[0].mismatches[0].id).toBe(s.parentOfferingB.id);
+    expect(res.body.error.details.metadata.fields[0].mismatches[0].actualSemesterId).toBe(s.semB.id);
+  });
+
+  it('400 CROSS_SEMESTER_REFERENCE when PATCH courseId belongs to a different semester', async () => {
+    seedAdmin();
+    const s = seedCrossSemesterPatch();
+    const res = await request(app)
+      .patch(`/api/v1/course-offerings/${s.offeringA.id}`)
+      .set('Authorization', adminBearer())
+      .send({ courseId: s.courseB.id });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CROSS_SEMESTER_REFERENCE');
+    expect(res.body.error.details.metadata.field).toBe('courseId');
+    expect(res.body.error.details.metadata.expectedSemesterId).toBe(s.semA.id);
+    expect(res.body.error.details.metadata.fields[0].field).toBe('courseId');
+    expect(res.body.error.details.metadata.fields[0].mismatches[0].id).toBe(s.courseB.id);
+    expect(res.body.error.details.metadata.fields[0].mismatches[0].actualSemesterId).toBe(s.semB.id);
+  });
+});
+
 describe('PATCH /course-offerings/:id/student-count', () => {
   it('200 for user (narrow endpoint allows both roles)', async () => {
     seedUser();
