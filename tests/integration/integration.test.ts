@@ -911,3 +911,187 @@ describe('Pipeline integration — Phase 11 null-room offering with capacity ove
     expect(firstSlots).not.toEqual(secondSlots);
   });
 });
+
+// Phase 14 #14
+describe('Pipeline integration — Phase 14 cross-semester defect end-to-end', () => {
+  // Apply a post-mapper defect to an offering: the orphan id has already been
+  // stripped from `lecturers[]` by `courseOfferingMapper.ts` and recorded in
+  // `mappingDefects`. `checkIntegrity` reads that envelope at the top of the
+  // function (`src/pre-ga/checks.ts:42-83`) BEFORE the empty-lecturers branch,
+  // so this faithfully reproduces the orchestrator-level state without
+  // touching production code.
+  function withMappingDefect(
+    offering: CourseOffering,
+    defects: NonNullable<CourseOffering['mappingDefects']>,
+  ): CourseOffering {
+    const dropLecturers = (defects.missingLecturerIds?.length ?? 0) > 0;
+    const dropRoom = defects.missingRoomId !== undefined && defects.missingRoomId !== null;
+    return {
+      ...offering,
+      mappingDefects: defects,
+      lecturers: dropLecturers ? [] : offering.lecturers,
+      roomId: dropRoom ? null : offering.roomId,
+      room: dropRoom ? null : offering.room,
+    };
+  }
+
+  const baseConfig: GAConfig = {
+    populationSize: 30,
+    generations: 50,
+    mutationRate: 0.1,
+    elitismCount: 2,
+    tournamentSize: 3,
+    crossoverType: 'singlePoint',
+    noiseRate: 0.15,
+    hardPenaltyWeight: 100,
+    softPenaltyWeight: 1,
+  };
+
+  it('rejects the single defective offering and reaches SUCCESS on the four survivors', async () => {
+    const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+    const defectiveId = offerings[2]!.id;
+    const offeringsWithDefect = offerings.map((o, idx) =>
+      idx === 2
+        ? withMappingDefect(o, { missingLecturerIds: [9999] })
+        : o,
+    );
+
+    const { response, context } = await runPipeline({
+      offerings: offeringsWithDefect,
+      timeSlots,
+      rooms,
+      lecturers,
+      config: baseConfig,
+    });
+
+    // Exactly one structured rejection — the defective offering.
+    expect(context.validation.infeasible).toHaveLength(1);
+    const rejection = context.validation.infeasible[0]!;
+    expect(rejection.offering.id).toBe(defectiveId);
+    expect(rejection.failedCheck.code).toBe('CROSS_SEMESTER_DEFECT');
+
+    // Metadata envelope (src/pre-ga/checks.ts:76-82). `expectedSemesterId` may
+    // be undefined since the mapper has no semester context — assert presence
+    // of `field`, `mismatches`, and `fields` only.
+    const metadata = rejection.failedCheck.metadata as {
+      field: 'lecturerIds' | 'roomId';
+      expectedSemesterId?: number;
+      mismatches: Array<{ id: number; actualSemesterId?: number }>;
+      fields: Array<{
+        field: 'lecturerIds' | 'roomId';
+        mismatches: Array<{ id: number }>;
+      }>;
+    };
+    expect(metadata).toBeDefined();
+    expect(metadata.field).toBe('lecturerIds');
+    expect(metadata.mismatches).toEqual([{ id: 9999 }]);
+    expect(metadata.fields).toHaveLength(1);
+    expect(metadata.fields[0]!.field).toBe('lecturerIds');
+
+    // The other four offerings survived Pre-GA and each became a candidate.
+    expect(context.validation.feasible).toHaveLength(4);
+    expect(context.candidates).toHaveLength(4);
+    expect(context.candidates.find(c => c.offeringId === defectiveId)).toBeUndefined();
+
+    // The GA reached a terminal non-failure state on the survivors. Mirroring
+    // the Phase 10/11 tests, accept SUCCESS or STAGNATED — the orchestrator
+    // returns 'SUCCESS' even when `gaResult.stagnatedEarly === true`.
+    expect(response.status === 'SUCCESS' || response.status === 'STAGNATED').toBe(true);
+    expect(response.gaResult).toBeDefined();
+    expect(response.gaResult!.bestChromosome).toHaveLength(4);
+
+    // The rejection propagates onto the wire envelope, metadata intact.
+    expect(response.preGASummary.feasible).toBe(4);
+    expect(response.preGASummary.infeasible).toHaveLength(1);
+    const wireEntry = response.preGASummary.infeasible[0]!;
+    expect(wireEntry.offeringId).toBe(defectiveId);
+    expect(wireEntry.code).toBe('CROSS_SEMESTER_DEFECT');
+    expect(wireEntry.metadata).toBeDefined();
+    expect((wireEntry.metadata as { field: string }).field).toBe('lecturerIds');
+  });
+
+  it('rejects multiple per-offering defects without cascading to survivors', async () => {
+    const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+    const lecturerDefectId = offerings[1]!.id;
+    const roomDefectId = offerings[3]!.id;
+    const offeringsWithDefects = offerings.map((o, idx) => {
+      if (idx === 1) return withMappingDefect(o, { missingLecturerIds: [9001] });
+      if (idx === 3) return withMappingDefect(o, { missingRoomId: 9002 });
+      return o;
+    });
+
+    const { response, context } = await runPipeline({
+      offerings: offeringsWithDefects,
+      timeSlots,
+      rooms,
+      lecturers,
+      config: baseConfig,
+    });
+
+    expect(context.validation.infeasible).toHaveLength(2);
+    const byOffering = new Map(
+      context.validation.infeasible.map(entry => [entry.offering.id, entry.failedCheck]),
+    );
+    expect(byOffering.get(lecturerDefectId)?.code).toBe('CROSS_SEMESTER_DEFECT');
+    expect(byOffering.get(roomDefectId)?.code).toBe('CROSS_SEMESTER_DEFECT');
+
+    const lecturerMetadata = byOffering.get(lecturerDefectId)!.metadata as { field: string };
+    const roomMetadata = byOffering.get(roomDefectId)!.metadata as { field: string };
+    expect(lecturerMetadata.field).toBe('lecturerIds');
+    expect(roomMetadata.field).toBe('roomId');
+
+    // Three survivors reach GA completion.
+    expect(context.validation.feasible).toHaveLength(3);
+    expect(context.candidates).toHaveLength(3);
+    expect(response.status === 'SUCCESS' || response.status === 'STAGNATED').toBe(true);
+    expect(response.gaResult).toBeDefined();
+    expect(response.gaResult!.bestChromosome).toHaveLength(3);
+
+    expect(response.preGASummary.feasible).toBe(3);
+    expect(response.preGASummary.infeasible).toHaveLength(2);
+    for (const entry of response.preGASummary.infeasible) {
+      expect(entry.code).toBe('CROSS_SEMESTER_DEFECT');
+      expect(entry.metadata).toBeDefined();
+    }
+  });
+
+  it('returns NO_FEASIBLE_CANDIDATES when every offering carries a defect', async () => {
+    const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+    // Five offerings, five distinct orphan ids. Alternate field types so the
+    // assertion covers both branches of the defect envelope.
+    const offeringsAllDefective = offerings.map((o, idx) =>
+      idx % 2 === 0
+        ? withMappingDefect(o, { missingLecturerIds: [10000 + idx] })
+        : withMappingDefect(o, { missingRoomId: 20000 + idx }),
+    );
+
+    const { response, context } = await runPipeline({
+      offerings: offeringsAllDefective,
+      timeSlots,
+      rooms,
+      lecturers,
+      config: baseConfig,
+    });
+
+    expect(context.validation.infeasible).toHaveLength(5);
+    expect(context.validation.feasible).toHaveLength(0);
+    expect(context.candidates).toHaveLength(0);
+    for (const entry of context.validation.infeasible) {
+      expect(entry.failedCheck.code).toBe('CROSS_SEMESTER_DEFECT');
+      expect(entry.failedCheck.metadata).toBeDefined();
+    }
+
+    // Empty candidate list short-circuits the orchestrator to the
+    // NO_FEASIBLE_CANDIDATES branch (src/orchestrator.ts:106-122) — no
+    // ssaResult, no gaResult.
+    expect(response.status).toBe('NO_FEASIBLE_CANDIDATES');
+    expect(response.gaResult).toBeUndefined();
+    expect(response.ssaResult).toBeUndefined();
+    expect(response.preGASummary.feasible).toBe(0);
+    expect(response.preGASummary.infeasible).toHaveLength(5);
+    for (const entry of response.preGASummary.infeasible) {
+      expect(entry.code).toBe('CROSS_SEMESTER_DEFECT');
+      expect(entry.metadata).toBeDefined();
+    }
+  });
+});
