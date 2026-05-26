@@ -342,6 +342,119 @@ describe('runPreGA — Phase 15 #1 cohort aggregation (OQ-22 / OQ-23)', () => {
     expect(candidates[0]!.parallelSessionCount).toBe(1);
     expect(candidates[0]!.effectiveStudentCount).toBe(20);
   });
+
+  // Phase 15 task #4 case (c) — "single-offering cohort of one" — is covered
+  // by the test above ("single-offering cohort emits a candidate structurally
+  // identical to today..."). The two `it` blocks below cover cases (a) and (b).
+
+  it('Phase 15 #4(a): two same-course offerings at 97 students each yield one cohort candidate with parallelSessionCount = 4 (NOT 8)', () => {
+    // User's reported bug case (Phase 15 motivating example): 97 students +
+    // room cap 30 → 4 sessions distributed across siblings, not 4 per sibling
+    // = 8 total. Asserts the cohort aggregation produces ONE candidate whose
+    // parallelSessionCount reflects the unified student count, NOT the sum of
+    // per-offering session counts.
+    const rooms = [
+      buildRoom(1, 30),
+      buildRoom(2, 30),
+      buildRoom(3, 30),
+      buildRoom(4, 30),
+      buildRoom(5, 30),
+    ];
+    const timeSlots = buildTimeSlots(8);
+    const lecturerA: Lecturer = { ...buildLecturer(), id: 400 };
+    const lecturerB: Lecturer = { ...buildLecturer(), id: 401 };
+    const offeringPrimary: CourseOffering = {
+      id: 50,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: null,
+      room: null, // null-room overflow path (Phase 11)
+      lecturers: [lecturerA],
+      effectiveStudentCount: 97,
+      isFixed: false,
+    };
+    const offeringSibling: CourseOffering = {
+      id: 51,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: null,
+      room: null,
+      lecturers: [lecturerB],
+      effectiveStudentCount: 97,
+      isFixed: false,
+    };
+
+    const { validation, candidates } = runPreGA(
+      [offeringPrimary, offeringSibling],
+      timeSlots,
+      rooms,
+    );
+
+    expect(validation.infeasible).toEqual([]);
+    // ONE candidate per cohort, NOT two.
+    expect(candidates).toHaveLength(1);
+
+    const candidate = candidates[0]!;
+    expect(candidate.siblingOfferingIds).toHaveLength(2);
+    expect(candidate.siblingOfferingIds).toEqual([50, 51]);
+    // OQ-23 default with max-of-equals: max(97, 97) = 97.
+    expect(candidate.effectiveStudentCount).toBe(97);
+    // Load-bearing assertion: ⌈97 / 30⌉ = 4, NOT 4 + 4 = 8.
+    expect(candidate.parallelSessionCount).toBe(4);
+    // Union of disjoint singleton lecturer sets → [400, 401].
+    expect(candidate.lecturerPool).toEqual([400, 401]);
+    // Null-room overflow path (Phase 11): all 5 rooms qualify on facilities.
+    expect(candidate.possibleRoomIds).toBeDefined();
+    expect(candidate.possibleRoomIds).toEqual(expect.arrayContaining([1, 2, 3, 4, 5]));
+    expect(candidate.possibleRoomIds).toHaveLength(5);
+  });
+
+  it('Phase 15 #4(b): siblings disagreeing on effectiveStudentCount resolve to max per OQ-23 default', () => {
+    // OQ-23 default (b) `max(siblings)`: with 50 vs 100, the cohort's
+    // effectiveStudentCount must be 100 — NOT 50 (min), NOT 150 (sum), NOT 75
+    // (mean). Room capacity is intentionally large (200) so parallelSessionCount
+    // collapses to 1 and this test focuses on the max-aggregation rule in
+    // isolation. Flip-point: if OQ-23 is ever switched to (a) min, (c) mean, or
+    // (d) reject, grep for "OQ-23" here to find this regression guard.
+    const rooms = [buildRoom(1, 200)];
+    const timeSlots = buildTimeSlots(5);
+    const lecturerA: Lecturer = { ...buildLecturer(), id: 500 };
+    const lecturerB: Lecturer = { ...buildLecturer(), id: 501 };
+    const offeringPrimary: CourseOffering = {
+      id: 60,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerA],
+      effectiveStudentCount: 50,
+      isFixed: false,
+    };
+    const offeringSibling: CourseOffering = {
+      id: 61,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerB],
+      effectiveStudentCount: 100,
+      isFixed: false,
+    };
+
+    const { validation, candidates } = runPreGA(
+      [offeringPrimary, offeringSibling],
+      timeSlots,
+      rooms,
+    );
+
+    expect(validation.infeasible).toEqual([]);
+    expect(candidates).toHaveLength(1);
+    const candidate = candidates[0]!;
+    expect(candidate.siblingOfferingIds).toHaveLength(2);
+    expect(candidate.siblingOfferingIds).toEqual([60, 61]);
+    // OQ-23 default (b): max(50, 100) = 100.
+    expect(candidate.effectiveStudentCount).toBe(100);
+  });
 });
 
 describe('runPreGA — Phase 14 #6 mappingDefects rejection', () => {
