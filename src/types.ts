@@ -48,6 +48,29 @@ export interface CourseOffering {
   isFixed: boolean;            // pinned by faculty — must not move
   fixedTimeSlotIds?: number[]; // if isFixed, which slots are locked
   parentOfferingId?: number;   // for parallel split offerings
+  /**
+   * Phase 14 #6: cross-semester / orphan-reference defects detected by the
+   * row→domain mapper (`src/repo/mappers/courseOfferingMapper.ts`). The
+   * mapper records orphan ids here instead of throwing so a single bad
+   * offering rejects as a single Pre-GA `CROSS_SEMESTER_DEFECT` entry
+   * (api_design §5.2) rather than killing the worker for the entire run.
+   *
+   * `checkIntegrity` (`src/pre-ga/checks.ts`) reads this and emits the
+   * rejection — the field is intentionally absent when the offering is
+   * clean (omitted, not `{}`).
+   *
+   * `missingCourseId` exists for type-shape symmetry / future-proofing
+   * only — at runtime the mapper still throws on a missing course because
+   * `CourseOffering.course: Course` is non-optional and the offering
+   * would be structurally unrepresentable without it. The slot stays in
+   * the type so a future softening of that contract doesn't require a
+   * type migration.
+   */
+  mappingDefects?: {
+    missingLecturerIds?: number[];
+    missingRoomId?: number | null;
+    missingCourseId?: number | null;
+  };
 }
 
 /**
@@ -76,6 +99,14 @@ export interface CheckResult {
   passed: boolean;
   code: string;
   message: string;
+  /**
+   * Phase 14 #6: optional structured payload attached by checks that need to
+   * surface richer rejection context (e.g. `CROSS_SEMESTER_DEFECT` carries a
+   * `{ field, expectedSemesterId, mismatches, fields }` envelope mirroring
+   * Phase 14 #4's `CROSS_SEMESTER_REFERENCE` shape). The orchestrator passes
+   * this through to `PreGAInfeasibleEntry.metadata`.
+   */
+  metadata?: unknown;
 }
 
 export interface PreGAValidationResult {
@@ -266,6 +297,15 @@ export interface PreGAInfeasibleEntry {
   offeringId: number;
   code: string;
   message: string;
+  /**
+   * Phase 14 #6: optional structured payload that survives the orchestrator's
+   * `CheckResult` → `PreGAInfeasibleEntry` translation. For
+   * `CROSS_SEMESTER_DEFECT` this carries `{ field, expectedSemesterId?,
+   * mismatches, fields }` — see api_design §5.2 / Phase 14 #4 for the shape.
+   * Adding this field is non-breaking: it is `?: unknown` so the wire
+   * contract for clients that ignore it is unchanged.
+   */
+  metadata?: unknown;
 }
 
 export interface SchedulerResponse {

@@ -91,12 +91,15 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
   // records (not a count). `COMPETENCY_MISMATCH` and any other Layer 1
   // reason surface here; the run only escalates to top-level
   // `NO_FEASIBLE_CANDIDATES` when `validation.feasible` is empty.
+  // Phase 14 #6: pass through `failedCheck.metadata` when present so the
+  // `CROSS_SEMESTER_DEFECT` envelope reaches the wire intact.
   const preGASummary = {
     feasible: validation.feasible.length,
     infeasible: validation.infeasible.map(({ offering, failedCheck }) => ({
       offeringId: offering.id,
       code: failedCheck.code,
       message: failedCheck.message,
+      ...(failedCheck.metadata !== undefined ? { metadata: failedCheck.metadata } : {}),
     })),
   };
 

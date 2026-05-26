@@ -31,6 +31,57 @@ export function isLecturerEligibleForCourse(lecturer: Lecturer, course: Course):
 // possibleRoomIds." Reject only when the course or lecturer relations are
 // missing or the student count is non-positive.
 export function checkIntegrity(offering: CourseOffering): CheckResult {
+  // Phase 14 #6: mapping defects detected at the row→domain boundary
+  // (`src/repo/mappers/courseOfferingMapper.ts`) surface here as the first
+  // branch. The mapper records orphan lecturer / room references in
+  // `offering.mappingDefects` instead of throwing, so a single bad offering
+  // turns into a single Pre-GA rejection rather than killing the worker
+  // for the entire run. Metadata shape mirrors Phase 14 #4's
+  // `CROSS_SEMESTER_REFERENCE` envelope (see
+  // `src/api/routes/course-offerings.ts:crossSemesterError`).
+  const defects = offering.mappingDefects;
+  if (defects && (
+    (defects.missingLecturerIds && defects.missingLecturerIds.length > 0) ||
+    (defects.missingRoomId !== undefined && defects.missingRoomId !== null)
+  )) {
+    type Mismatch = { id: number; actualSemesterId?: number };
+    type FieldGroup = {
+      field: 'lecturerIds' | 'roomId';
+      expectedSemesterId?: number;
+      mismatches: Mismatch[];
+    };
+    const groups: FieldGroup[] = [];
+    if (defects.missingLecturerIds && defects.missingLecturerIds.length > 0) {
+      groups.push({
+        field: 'lecturerIds',
+        mismatches: defects.missingLecturerIds.map((id) => ({ id })),
+      });
+    }
+    if (defects.missingRoomId !== undefined && defects.missingRoomId !== null) {
+      groups.push({
+        field: 'roomId',
+        mismatches: [{ id: defects.missingRoomId }],
+      });
+    }
+    const primary = groups[0]!;
+    const firstId = primary.mismatches[0]!.id;
+    const message =
+      `Offering ${offering.id}: ${primary.field} reference ${firstId} ` +
+      `does not exist in the current run's data scope ` +
+      `(likely a cross-semester / orphan reference).`;
+    return {
+      passed: false,
+      code: 'CROSS_SEMESTER_DEFECT',
+      message,
+      metadata: {
+        field: primary.field,
+        expectedSemesterId: primary.expectedSemesterId,
+        mismatches: primary.mismatches,
+        fields: groups,
+      },
+    };
+  }
+
   if (!offering.course) {
     return { passed: false, code: 'INTEGRITY_NO_COURSE', message: `Offering ${offering.id}: missing course relation.` };
   }
