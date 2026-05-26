@@ -69,6 +69,7 @@ interface RoomWire {
 
 interface LecturerWire {
   id: number
+  semesterId: number
   name: string
   maxSks: number
   competencies: string[]
@@ -390,10 +391,10 @@ export function CourseOfferingManagementPage() {
             page: 1,
             pageSize: 5000,
           }),
-          get<ListResponse<CourseWire>>('/courses', { page: 1, pageSize: 5000 }),
-          get<ListResponse<RoomWire>>('/rooms', { page: 1, pageSize: 500 }),
-          get<ListResponse<LecturerWire>>('/lecturers', { page: 1, pageSize: 500 }),
-          get<ListResponse<TimeSlotWire>>('/timeslots', { page: 1, pageSize: 500 }),
+          get<ListResponse<CourseWire>>('/courses', { ...semesterScope, page: 1, pageSize: 5000 }),
+          get<ListResponse<RoomWire>>('/rooms', { ...semesterScope, page: 1, pageSize: 5000 }),
+          get<ListResponse<LecturerWire>>('/lecturers', { ...semesterScope, page: 1, pageSize: 5000 }),
+          get<ListResponse<TimeSlotWire>>('/timeslots', { ...semesterScope, page: 1, pageSize: 5000 }),
           get<ListResponse<LockedRoomWire>>('/locked-rooms', {
             ...semesterScope,
             page: 1,
@@ -587,11 +588,15 @@ export function CourseOfferingManagementPage() {
 
   const lecturerOptions = useMemo(
     () =>
-      allLecturers.map((l) => ({
-        value: String(l.id),
-        label: l.competencies.length > 0 ? `${l.name} — ${l.competencies.join(', ')}` : l.name,
-      })),
-    [allLecturers],
+      // Phase 14 #3 — defensive filter against stale cache; Phase 14 #1 already
+      // scopes the fetch, this is belt-and-suspenders.
+      allLecturers
+        .filter((l) => l.semesterId === activeSemesterId)
+        .map((l) => ({
+          value: String(l.id),
+          label: l.competencies.length > 0 ? `${l.name} — ${l.competencies.join(', ')}` : l.name,
+        })),
+    [allLecturers, activeSemesterId],
   )
 
   /* ── Create / Edit ── */

@@ -59,7 +59,8 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/api/v1/health)",
       "Bash(curl -s -o /tmp/resp.json -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/api/v1/schedule-runs)",
       "Bash(redis-cli ping *)",
-      "WebFetch(domain:)"
+      "WebFetch(domain:)",
+      "WebSearch"
     ]
   }
 }
