@@ -92,10 +92,28 @@ interface SSAResultPayload {
   deadlockReport?: DeadlockReportPayload;
 }
 
+interface CrossSemesterFieldMismatch {
+  id: number;
+  actualSemesterId?: number;
+}
+
+interface CrossSemesterFieldEntry {
+  field: string;
+  expectedSemesterId?: number;
+  mismatches: CrossSemesterFieldMismatch[];
+}
+
 interface PreGAInfeasibleEntry {
   offeringId: number;
   code: string;
   message: string;
+  // Phase 14 #10 — optional structured payload for CROSS_SEMESTER_DEFECT
+  metadata?: {
+    fields?: CrossSemesterFieldEntry[];
+    field?: string;
+    expectedSemesterId?: number;
+    mismatches?: CrossSemesterFieldMismatch[];
+  };
 }
 
 interface PreGASummaryPayload {
@@ -689,6 +707,7 @@ function SSAFailurePanel({
 
 const REASON_BADGE_VARIANT: Record<string, string> = {
   COMPETENCY_MISMATCH: 'warning',
+  CROSS_SEMESTER_DEFECT: 'warning', // Phase 14 #10
   ROOM_MISSING: 'error',
   NO_ROOMS_QUALIFY: 'error',
   ROOM_ZERO_CAPACITY: 'error',
@@ -709,6 +728,44 @@ function formatReasonCode(code: string): string {
     .split('_')
     .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
     .join(' ');
+}
+
+// Phase 14 #10 — derive normalized field entries for CROSS_SEMESTER_DEFECT
+function crossSemesterFieldEntries(
+  metadata: PreGAInfeasibleEntry['metadata'],
+): CrossSemesterFieldEntry[] {
+  if (!metadata) return [];
+  if (Array.isArray(metadata.fields) && metadata.fields.length > 0) {
+    return metadata.fields;
+  }
+  if (metadata.field && Array.isArray(metadata.mismatches)) {
+    return [
+      {
+        field: metadata.field,
+        expectedSemesterId: metadata.expectedSemesterId,
+        mismatches: metadata.mismatches,
+      },
+    ];
+  }
+  return [];
+}
+
+// Phase 14 #10 — terse tooltip summarizing each offending field & mismatch
+function crossSemesterTooltip(entry: PreGAInfeasibleEntry): string | undefined {
+  if (entry.code !== 'CROSS_SEMESTER_DEFECT') return undefined;
+  const fields = crossSemesterFieldEntries(entry.metadata);
+  if (fields.length === 0) return undefined;
+  const parts: string[] = [];
+  for (const f of fields) {
+    const expected =
+      f.expectedSemesterId !== undefined ? `${f.expectedSemesterId}` : '?';
+    for (const m of f.mismatches) {
+      const actual =
+        m.actualSemesterId !== undefined ? `${m.actualSemesterId}` : '?';
+      parts.push(`${f.field} #${m.id} → semester ${actual} (expected ${expected})`);
+    }
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
 function PreGAFailurePanel({
@@ -756,25 +813,38 @@ function PreGAFailurePanel({
               </tr>
             </thead>
             <tbody>
-              {infeasible.map((entry) => (
-                <tr
-                  key={entry.offeringId}
-                  className={styles.rejectionTr}
-                  onClick={() => onNavigate(`/offerings?highlight=${entry.offeringId}`)}
-                >
-                  <td className={styles.rejectionTd}>
-                    <span className={styles.rejectionOfferingId}>#{entry.offeringId}</span>
-                  </td>
-                  <td className={styles.rejectionTd}>
-                    <span className={`${styles.reasonBadge} ${reasonBadgeClass(entry.code)}`}>
-                      {formatReasonCode(entry.code)}
-                    </span>
-                  </td>
-                  <td className={styles.rejectionTd}>
-                    <span className={styles.rejectionDetails}>{entry.message}</span>
-                  </td>
-                </tr>
-              ))}
+              {infeasible.map((entry) => {
+                // Phase 14 #10 — receiver wiring is a future task; URL carries the field key already
+                const fields = crossSemesterFieldEntries(entry.metadata);
+                const primaryField =
+                  entry.code === 'CROSS_SEMESTER_DEFECT' && fields.length > 0
+                    ? fields[0].field
+                    : undefined;
+                const href = primaryField
+                  ? `/offerings?highlight=${entry.offeringId}&field=${encodeURIComponent(primaryField)}`
+                  : `/offerings?highlight=${entry.offeringId}`;
+                const tooltip = crossSemesterTooltip(entry);
+                return (
+                  <tr
+                    key={entry.offeringId}
+                    className={styles.rejectionTr}
+                    onClick={() => onNavigate(href)}
+                    title={tooltip}
+                  >
+                    <td className={styles.rejectionTd}>
+                      <span className={styles.rejectionOfferingId}>#{entry.offeringId}</span>
+                    </td>
+                    <td className={styles.rejectionTd}>
+                      <span className={`${styles.reasonBadge} ${reasonBadgeClass(entry.code)}`}>
+                        {formatReasonCode(entry.code)}
+                      </span>
+                    </td>
+                    <td className={styles.rejectionTd}>
+                      <span className={styles.rejectionDetails}>{entry.message}</span>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
