@@ -60,7 +60,8 @@
       "Bash(curl -s -o /tmp/resp.json -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/api/v1/schedule-runs)",
       "Bash(redis-cli ping *)",
       "WebFetch(domain:)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts, null, 2\\)\\)\")"
     ]
   }
 }

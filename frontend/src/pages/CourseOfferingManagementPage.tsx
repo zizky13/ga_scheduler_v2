@@ -120,6 +120,8 @@ interface FormErrors {
   roomId?: string
   effectiveStudentCount?: string
   lecturerIds?: string
+  parentOfferingId?: string
+  fixedTimeSlotIds?: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -729,11 +731,92 @@ export function CourseOfferingManagementPage() {
       fetchData(page, pageSize)
     } catch (err) {
       const e = err as ApiRequestError
-      addToast({
-        type: 'error',
-        title: editTarget ? 'Failed to update' : 'Failed to create',
-        message: e.message,
-      })
+      // Phase 14 #9: richer toast + per-field inline highlight for
+      // CROSS_SEMESTER_REFERENCE. Read metadata.fields (plural, source of
+      // truth) defensively, falling back to a synthetic single-entry array
+      // built from the singular metadata keys if absent.
+      if (e.code === 'CROSS_SEMESTER_REFERENCE') {
+        const metadata =
+          e.details && typeof e.details === 'object'
+            ? ((e.details as Record<string, unknown>).metadata as
+                | Record<string, unknown>
+                | undefined)
+            : undefined
+
+        type Mismatch = { id: number; actualSemesterId: number }
+        type FieldEntry = {
+          field: string
+          expectedSemesterId: number
+          mismatches: Mismatch[]
+        }
+
+        let fields: FieldEntry[] = []
+        if (metadata && Array.isArray(metadata.fields)) {
+          fields = metadata.fields as FieldEntry[]
+        } else if (metadata && typeof metadata.field === 'string') {
+          fields = [
+            {
+              field: metadata.field as string,
+              expectedSemesterId: Number(metadata.expectedSemesterId),
+              mismatches: Array.isArray(metadata.mismatches)
+                ? (metadata.mismatches as Mismatch[])
+                : [],
+            },
+          ]
+        }
+
+        const FIELD_LABELS: Record<string, string> = {
+          lecturerIds: 'Lecturer',
+          roomId: 'Room',
+          courseId: 'Course',
+          fixedTimeSlotIds: 'Fixed time slot',
+          parentOfferingId: 'Parent offering',
+        }
+
+        const formErrorKeys = new Set<keyof FormErrors>([
+          'courseId',
+          'roomId',
+          'effectiveStudentCount',
+          'lecturerIds',
+          'parentOfferingId',
+          'fixedTimeSlotIds',
+        ])
+
+        const first = fields[0]
+        let message: string
+        if (first && first.mismatches.length > 0) {
+          const label = FIELD_LABELS[first.field] ?? first.field
+          const m = first.mismatches[0]
+          message = `${label} #${m.id} belongs to semester ${m.actualSemesterId} but this offering is in semester ${first.expectedSemesterId}. Switch the active semester or pick a current-semester ${label.toLowerCase()}.`
+        } else {
+          message = e.message
+        }
+
+        const title =
+          fields.length > 1
+            ? `Cross-semester reference (${fields.length} fields)`
+            : 'Cross-semester reference'
+
+        addToast({ type: 'error', title, message })
+
+        const inlineErrors: Partial<FormErrors> = {}
+        for (const entry of fields) {
+          if (!formErrorKeys.has(entry.field as keyof FormErrors)) continue
+          const m = entry.mismatches[0]
+          inlineErrors[entry.field as keyof FormErrors] = m
+            ? `Belongs to semester ${m.actualSemesterId}`
+            : `Belongs to a different semester`
+        }
+        if (Object.keys(inlineErrors).length > 0) {
+          setFormErrors((prev) => ({ ...prev, ...inlineErrors }))
+        }
+      } else {
+        addToast({
+          type: 'error',
+          title: editTarget ? 'Failed to update' : 'Failed to create',
+          message: e.message,
+        })
+      }
     } finally {
       setSaving(false)
     }
@@ -1240,9 +1323,11 @@ export function CourseOfferingManagementPage() {
               placeholder="None (standalone)"
               options={parentOfferingOptions}
               value={form.parentOfferingId ? String(form.parentOfferingId) : ''}
-              onChange={(v) =>
+              onChange={(v) => {
                 setForm((prev) => ({ ...prev, parentOfferingId: v ? Number(v) : null }))
-              }
+                setFormErrors((prev) => ({ ...prev, parentOfferingId: undefined }))
+              }}
+              error={formErrors.parentOfferingId}
             />
           )}
         </FormSection>
@@ -1318,13 +1403,15 @@ export function CourseOfferingManagementPage() {
                       <FormField
                         label="Fixed Time Slots"
                         helperText="Select the timeslots for this fixed offering."
+                        error={formErrors.fixedTimeSlotIds}
                       >
                         <FixedSlotsGrid
                           timeslots={allTimeslots}
                           selected={form.fixedTimeSlotIds}
-                          onChange={(ids) =>
+                          onChange={(ids) => {
                             setForm((prev) => ({ ...prev, fixedTimeSlotIds: ids }))
-                          }
+                            setFormErrors((prev) => ({ ...prev, fixedTimeSlotIds: undefined }))
+                          }}
                         />
                       </FormField>
                     )}
