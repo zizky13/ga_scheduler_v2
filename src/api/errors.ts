@@ -37,8 +37,13 @@ export class ValidationError extends ApiError {
     message = 'Request failed schema validation',
     issues: ValidationIssue[] = [],
     code = 'VALIDATION_FAILED',
+    metadata?: ApiErrorDetails,
   ) {
-    super(code, message, { issues });
+    const details: ApiErrorDetails = { issues };
+    if (metadata !== undefined) {
+      details.metadata = metadata;
+    }
+    super(code, message, details);
   }
 }
 

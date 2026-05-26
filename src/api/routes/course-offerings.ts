@@ -31,8 +31,8 @@ import {
   type UpdateCourseOfferingBody,
   type UpdateStudentCountBody,
 } from '../schemas/course-offerings';
-import { ConflictError, NotFoundError, ValidationError } from '../errors';
-import { getCrudRepositories } from '../lib/crudContext';
+import { ConflictError, NotFoundError, ValidationError, type ValidationIssue } from '../errors';
+import { getCrudRepositories, type CrudRepositories } from '../lib/crudContext';
 import { writeAudit } from '../lib/audit';
 import { isPrismaForeignKeyError, isPrismaNotFound } from '../lib/prismaErrors';
 import { buildListResponse } from '../lib/listResponse';
@@ -112,6 +112,147 @@ function fkValidationError(): ValidationError {
   );
 }
 
+// Phase 14 #4 — cross-semester reference guard. Loads the semesterId of every
+// referenced entity in parallel and rejects any whose semester differs from
+// `expectedSemesterId`. Missing rows are NOT this helper's concern — the
+// existing P2003 path (fkValidationError) covers that. Multi-field mismatches
+// are surfaced in a single envelope via `metadata.fields[]`; `metadata.field`
+// duplicates `metadata.fields[0].field` so single-field consumers keep working.
+type CrossSemesterField =
+  | 'courseId'
+  | 'lecturerIds'
+  | 'roomId'
+  | 'fixedTimeSlotIds'
+  | 'parentOfferingId';
+
+interface CrossSemesterMismatch {
+  id: number;
+  actualSemesterId: number;
+}
+
+interface CrossSemesterFieldGroup {
+  field: CrossSemesterField;
+  expectedSemesterId: number;
+  mismatches: CrossSemesterMismatch[];
+}
+
+interface CrossSemesterCheckBody {
+  courseId?: number;
+  lecturerIds?: number[];
+  roomId?: number | null;
+  fixedTimeSlotIds?: number[];
+  parentOfferingId?: number | null;
+}
+
+function describeCrossSemesterMismatch(group: CrossSemesterFieldGroup): string {
+  const first = group.mismatches[0]!;
+  return `${group.field} reference ${first.id} belongs to semester ${first.actualSemesterId} but offering is in semester ${group.expectedSemesterId}.`;
+}
+
+function crossSemesterError(groups: CrossSemesterFieldGroup[]): ValidationError {
+  const primary = groups[0]!;
+  const message = describeCrossSemesterMismatch(primary);
+  const issues: ValidationIssue[] = groups.map((g) => ({
+    path: [g.field],
+    message: describeCrossSemesterMismatch(g),
+    code: 'CROSS_SEMESTER_REFERENCE',
+  }));
+  return new ValidationError(message, issues, 'CROSS_SEMESTER_REFERENCE', {
+    field: primary.field,
+    expectedSemesterId: primary.expectedSemesterId,
+    mismatches: primary.mismatches,
+    fields: groups,
+  });
+}
+
+async function assertSameSemester(
+  expectedSemesterId: number,
+  body: CrossSemesterCheckBody,
+  repos: CrudRepositories,
+): Promise<void> {
+  const lecturerIds = body.lecturerIds ?? [];
+  const fixedTimeSlotIds = body.fixedTimeSlotIds ?? [];
+  const checkCourse = body.courseId !== undefined;
+  const checkRoom = body.roomId !== undefined && body.roomId !== null;
+  const checkParent =
+    body.parentOfferingId !== undefined && body.parentOfferingId !== null;
+
+  const [coursePromise, roomPromise, parentPromise, lecturers, slots] =
+    await Promise.all([
+      checkCourse ? repos.courses.findById(body.courseId as number) : Promise.resolve(null),
+      checkRoom ? repos.rooms.findById(body.roomId as number) : Promise.resolve(null),
+      checkParent
+        ? repos.courseOfferings.findById(body.parentOfferingId as number)
+        : Promise.resolve(null),
+      Promise.all(lecturerIds.map((id) => repos.lecturers.findById(id))),
+      Promise.all(fixedTimeSlotIds.map((id) => repos.timeSlots.findById(id))),
+    ]);
+
+  const groups: CrossSemesterFieldGroup[] = [];
+
+  if (checkCourse && coursePromise && coursePromise.semesterId !== expectedSemesterId) {
+    groups.push({
+      field: 'courseId',
+      expectedSemesterId,
+      mismatches: [{ id: coursePromise.id, actualSemesterId: coursePromise.semesterId }],
+    });
+  }
+  if (checkRoom && roomPromise && roomPromise.semesterId !== expectedSemesterId) {
+    groups.push({
+      field: 'roomId',
+      expectedSemesterId,
+      mismatches: [{ id: roomPromise.id, actualSemesterId: roomPromise.semesterId }],
+    });
+  }
+  if (checkParent && parentPromise && parentPromise.semesterId !== expectedSemesterId) {
+    groups.push({
+      field: 'parentOfferingId',
+      expectedSemesterId,
+      mismatches: [
+        { id: parentPromise.id, actualSemesterId: parentPromise.semesterId },
+      ],
+    });
+  }
+
+  const lecturerMismatches: CrossSemesterMismatch[] = [];
+  lecturers.forEach((row, idx) => {
+    if (row && row.semesterId !== expectedSemesterId) {
+      lecturerMismatches.push({
+        id: lecturerIds[idx]!,
+        actualSemesterId: row.semesterId,
+      });
+    }
+  });
+  if (lecturerMismatches.length > 0) {
+    groups.push({
+      field: 'lecturerIds',
+      expectedSemesterId,
+      mismatches: lecturerMismatches,
+    });
+  }
+
+  const slotMismatches: CrossSemesterMismatch[] = [];
+  slots.forEach((row, idx) => {
+    if (row && row.semesterId !== expectedSemesterId) {
+      slotMismatches.push({
+        id: fixedTimeSlotIds[idx]!,
+        actualSemesterId: row.semesterId,
+      });
+    }
+  });
+  if (slotMismatches.length > 0) {
+    groups.push({
+      field: 'fixedTimeSlotIds',
+      expectedSemesterId,
+      mismatches: slotMismatches,
+    });
+  }
+
+  if (groups.length > 0) {
+    throw crossSemesterError(groups);
+  }
+}
+
 async function getList(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const q = req.query as unknown as ListQuery;
@@ -168,6 +309,17 @@ async function postCreate(req: Request, res: Response, next: NextFunction): Prom
     const isAdmin = req.user?.role === 'admin';
     const isFixed = isAdmin ? body.isFixed ?? false : false;
     const fixedTimeSlotIds = isAdmin ? body.fixedTimeSlotIds ?? [] : [];
+    await assertSameSemester(
+      body.semesterId,
+      {
+        courseId: body.courseId,
+        lecturerIds: body.lecturerIds,
+        roomId: body.roomId ?? null,
+        fixedTimeSlotIds,
+        parentOfferingId: body.parentOfferingId ?? null,
+      },
+      repos,
+    );
     try {
       const created = await repos.courseOfferings.create({
         semesterId: body.semesterId,
@@ -213,6 +365,20 @@ async function patch(req: Request, res: Response, next: NextFunction): Promise<v
       next(new NotFoundError('Course offering not found'));
       return;
     }
+
+    // Phase 14 #4 — PATCH validates only fields present on the body against
+    // the existing offering's semester. Absent fields are unchanged.
+    const crossCheckBody: CrossSemesterCheckBody = {};
+    if (body.courseId !== undefined) crossCheckBody.courseId = body.courseId;
+    if (body.lecturerIds !== undefined) crossCheckBody.lecturerIds = body.lecturerIds;
+    if (body.roomId !== undefined) crossCheckBody.roomId = body.roomId;
+    if (body.fixedTimeSlotIds !== undefined) {
+      crossCheckBody.fixedTimeSlotIds = body.fixedTimeSlotIds;
+    }
+    if (body.parentOfferingId !== undefined) {
+      crossCheckBody.parentOfferingId = body.parentOfferingId;
+    }
+    await assertSameSemester(existing.semesterId, crossCheckBody, repos);
 
     const patchInput: {
       courseId?: number;
