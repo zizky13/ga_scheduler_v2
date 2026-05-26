@@ -215,6 +215,87 @@ describe('runPreGA — Phase 11 null-room overflow parallel split', () => {
   });
 });
 
+describe('runPreGA — Phase 15 #1 cohort aggregation (OQ-22 / OQ-23)', () => {
+  it('aggregates two same-course offerings into one cohort candidate with siblingOfferingIds.length === 2', () => {
+    // Two offerings sharing courseId=10 but with different lecturers and
+    // disagreeing effectiveStudentCount (40 vs 60). Per OQ-22 they form ONE
+    // cohort; per OQ-23 the cohort's effectiveStudentCount = max(siblings).
+    const rooms = [buildRoom(1, 80), buildRoom(2, 80)];
+    const timeSlots = buildTimeSlots(5);
+    const lecturerA: Lecturer = { ...buildLecturer(), id: 200 };
+    const lecturerB: Lecturer = { ...buildLecturer(), id: 201 };
+    const offeringPrimary: CourseOffering = {
+      id: 5,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerA],
+      effectiveStudentCount: 40,
+      isFixed: false,
+    };
+    const offeringSibling: CourseOffering = {
+      id: 7,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerB],
+      effectiveStudentCount: 60,
+      isFixed: false,
+    };
+
+    const { validation, candidates } = runPreGA(
+      [offeringSibling, offeringPrimary], // intentionally out of id order
+      timeSlots,
+      rooms,
+    );
+
+    expect(validation.infeasible).toEqual([]);
+    expect(validation.feasible).toHaveLength(2);
+    // ONE candidate per cohort, NOT one per offering.
+    expect(candidates).toHaveLength(1);
+
+    const candidate = candidates[0]!;
+    // Primary = lowest-id sibling (id=5).
+    expect(candidate.offeringId).toBe(5);
+    expect(candidate.courseId).toBe(10);
+    expect(candidate.siblingOfferingIds).toEqual([5, 7]);
+    // OQ-23 default: max(40, 60) = 60.
+    expect(candidate.effectiveStudentCount).toBe(60);
+    // Task #1 keeps primary's lecturerIds (task #2 owns the union/pool).
+    expect(candidate.lecturerIds).toEqual([200]);
+    // parallelSessionCount = ⌈60 / 80⌉ = 1 (primary.room.capacity).
+    expect(candidate.parallelSessionCount).toBe(1);
+  });
+
+  it('single-offering cohort emits a candidate structurally identical to today, with siblingOfferingIds = [offeringId]', () => {
+    // Backward-compatibility guard: the legacy "every fixture pre-Phase-15"
+    // shape must remain byte-identical aside from the new siblingOfferingIds.
+    const rooms = [buildRoom(1, 30)];
+    const timeSlots = buildTimeSlots(5);
+    const offering: CourseOffering = {
+      id: 42,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [buildLecturer()],
+      effectiveStudentCount: 20,
+      isFixed: false,
+    };
+
+    const { candidates } = runPreGA([offering], timeSlots, rooms);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.offeringId).toBe(42);
+    expect(candidates[0]!.siblingOfferingIds).toEqual([42]);
+    // parallelSessionCount unchanged from pre-Phase-15: ⌈20/30⌉ = 1.
+    expect(candidates[0]!.parallelSessionCount).toBe(1);
+    expect(candidates[0]!.effectiveStudentCount).toBe(20);
+  });
+});
+
 describe('runPreGA — Phase 14 #6 mappingDefects rejection', () => {
   // Inline helper that builds a clean offering and lets the caller overlay
   // mappingDefects / room / roomId fields. Kept local to this describe so the

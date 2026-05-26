@@ -60,6 +60,7 @@ const infeasibleCandidates: PreGACandidate[] = [
     effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
+    siblingOfferingIds: [101],
   },
   {
     offeringId: 102, courseId: 2, roomId: 1,
@@ -67,6 +68,7 @@ const infeasibleCandidates: PreGACandidate[] = [
     effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
+    siblingOfferingIds: [102],
   },
   {
     offeringId: 103, courseId: 3, roomId: 1,
@@ -74,6 +76,7 @@ const infeasibleCandidates: PreGACandidate[] = [
     effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
+    siblingOfferingIds: [103],
   },
 ];
 
@@ -98,6 +101,7 @@ const ac3ForcedCandidates: PreGACandidate[] = [
     effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1], isFixedRoom: false,
+    siblingOfferingIds: [201],
   },
   {
     offeringId: 202, courseId: 2, roomId: 1,
@@ -105,6 +109,7 @@ const ac3ForcedCandidates: PreGACandidate[] = [
     effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1], isFixedRoom: false,
+    siblingOfferingIds: [202],
   },
 ];
 
@@ -128,6 +133,7 @@ const exclusionInfeasible: PreGACandidate[] = [
     effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1], isFixedRoom: true,
+    siblingOfferingIds: [301],
   },
   // Fixed offering locks Room 1, Slot 2
   {
@@ -136,6 +142,7 @@ const exclusionInfeasible: PreGACandidate[] = [
     effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [2], isFixedRoom: true,
+    siblingOfferingIds: [302],
   },
   // Flexible offering in Room 1 — only has slots [1, 2] which are both locked
   {
@@ -144,6 +151,7 @@ const exclusionInfeasible: PreGACandidate[] = [
     effectiveStudentCount: 30,
     parallelSessionCount: 1, sessionDuration: 1,
     possibleTimeSlotIds: [1, 2], isFixedRoom: false,
+    siblingOfferingIds: [303],
   },
 ];
 

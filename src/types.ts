@@ -146,6 +146,21 @@ export interface PreGACandidate {
   isFixedRoom: boolean; // <-- FIXED
   fixedTimeSlotIds?: number[];
   parentOfferingId?: number; // <-- FIXED
+  /**
+   * Phase 15 #1 (OQ-22 cohort aggregation): the full list of constituent
+   * offering ids that were merged into this cohort candidate. Length ≥ 1:
+   *
+   *   - Single-offering cohorts (the legacy case, every fixture pre-Phase-15):
+   *     `siblingOfferingIds === [offeringId]`, structurally identical to the
+   *     pre-Phase-15 candidate shape.
+   *   - Multi-offering cohorts: the primary offering's id is `offeringId`
+   *     (lowest id among the siblings); `siblingOfferingIds` lists every
+   *     constituent offering id in ascending order, including the primary.
+   *
+   * Downstream consumers (Phase 15 tasks #2+) use this to derive the cohort's
+   * lecturer pool, per-session distribution, and SSA bipartite-graph adjacency.
+   */
+  siblingOfferingIds: number[];
 }
 
 // ─── Layer 2: SSA Types ──────────────────────────────────────────
