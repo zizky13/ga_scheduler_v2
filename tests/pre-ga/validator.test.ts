@@ -214,3 +214,141 @@ describe('runPreGA — Phase 11 null-room overflow parallel split', () => {
     expect(validation.infeasible[0]!.offering.id).toBe(11);
   });
 });
+
+describe('runPreGA — Phase 14 #6 mappingDefects rejection', () => {
+  // Inline helper that builds a clean offering and lets the caller overlay
+  // mappingDefects / room / roomId fields. Kept local to this describe so the
+  // existing buildRoom/buildCourse/buildLecturer/buildTimeSlots helpers above
+  // remain untouched (task constraint: additive only).
+  function buildOffering(overrides: Partial<CourseOffering> = {}): CourseOffering {
+    return {
+      id: 1,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: null,
+      room: buildRoom(1, 30),
+      lecturers: [buildLecturer()],
+      effectiveStudentCount: 20,
+      isFixed: false,
+      ...overrides,
+    };
+  }
+
+  it('rejects an offering with missingLecturerIds while a clean sibling proceeds', () => {
+    const rooms = [buildRoom(1, 30)];
+    const timeSlots = buildTimeSlots(5);
+
+    const clean = buildOffering({ id: 100 });
+    const defective = buildOffering({
+      id: 200,
+      mappingDefects: { missingLecturerIds: [999] },
+    });
+
+    let result: ReturnType<typeof runPreGA> | undefined;
+    expect(() => {
+      result = runPreGA([clean, defective], timeSlots, rooms);
+    }).not.toThrow();
+
+    const { validation, candidates } = result!;
+
+    // Clean offering proceeds; defective offering is rejected.
+    expect(validation.feasible).toHaveLength(1);
+    expect(validation.feasible[0]!.id).toBe(100);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.offeringId).toBe(100);
+
+    expect(validation.infeasible).toHaveLength(1);
+    const entry = validation.infeasible[0]!;
+    expect(entry.offering.id).toBe(200);
+    expect(entry.failedCheck.code).toBe('CROSS_SEMESTER_DEFECT');
+
+    // Metadata envelope (matches src/pre-ga/checks.ts:checkIntegrity).
+    const metadata = entry.failedCheck.metadata as {
+      field: 'lecturerIds' | 'roomId';
+      expectedSemesterId?: number;
+      mismatches: Array<{ id: number; actualSemesterId?: number }>;
+      fields: Array<{
+        field: 'lecturerIds' | 'roomId';
+        expectedSemesterId?: number;
+        mismatches: Array<{ id: number; actualSemesterId?: number }>;
+      }>;
+    };
+    expect(metadata.field).toBe('lecturerIds');
+    expect(metadata.mismatches).toEqual([{ id: 999 }]);
+    expect(metadata.fields).toHaveLength(1);
+    expect(metadata.fields[0]!.field).toBe('lecturerIds');
+    expect(metadata.fields[0]!.mismatches).toEqual([{ id: 999 }]);
+  });
+
+  it('rejects an offering with missingRoomId and surfaces the roomId envelope', () => {
+    const rooms = [buildRoom(1, 30)];
+    const timeSlots = buildTimeSlots(5);
+
+    const offering = buildOffering({
+      id: 300,
+      roomId: null,
+      room: null,
+      mappingDefects: { missingRoomId: 42 },
+    });
+
+    const { validation, candidates } = runPreGA([offering], timeSlots, rooms);
+
+    expect(candidates).toEqual([]);
+    expect(validation.feasible).toEqual([]);
+    expect(validation.infeasible).toHaveLength(1);
+
+    const entry = validation.infeasible[0]!;
+    expect(entry.offering.id).toBe(300);
+    expect(entry.failedCheck.code).toBe('CROSS_SEMESTER_DEFECT');
+
+    const metadata = entry.failedCheck.metadata as {
+      field: 'lecturerIds' | 'roomId';
+      mismatches: Array<{ id: number }>;
+      fields: Array<{ field: 'lecturerIds' | 'roomId'; mismatches: Array<{ id: number }> }>;
+    };
+    expect(metadata.field).toBe('roomId');
+    expect(metadata.mismatches).toEqual([{ id: 42 }]);
+    expect(metadata.fields).toHaveLength(1);
+    expect(metadata.fields[0]!.field).toBe('roomId');
+    expect(metadata.fields[0]!.mismatches).toEqual([{ id: 42 }]);
+  });
+
+  it('surfaces both lecturer and room defects together in metadata.fields', () => {
+    const rooms = [buildRoom(1, 30)];
+    const timeSlots = buildTimeSlots(5);
+
+    const offering = buildOffering({
+      id: 400,
+      roomId: null,
+      room: null,
+      mappingDefects: {
+        missingLecturerIds: [999],
+        missingRoomId: 42,
+      },
+    });
+
+    const { validation } = runPreGA([offering], timeSlots, rooms);
+
+    expect(validation.infeasible).toHaveLength(1);
+    const entry = validation.infeasible[0]!;
+    expect(entry.failedCheck.code).toBe('CROSS_SEMESTER_DEFECT');
+
+    const metadata = entry.failedCheck.metadata as {
+      field: 'lecturerIds' | 'roomId';
+      mismatches: Array<{ id: number }>;
+      fields: Array<{ field: 'lecturerIds' | 'roomId'; mismatches: Array<{ id: number }> }>;
+    };
+
+    // checkIntegrity pushes the lecturer group first, then room — the top-level
+    // `field` / `mismatches` mirrors groups[0] (lecturerIds).
+    expect(metadata.field).toBe('lecturerIds');
+    expect(metadata.mismatches).toEqual([{ id: 999 }]);
+
+    // Both groups are surfaced in `fields[]`, in lecturer-then-room order.
+    expect(metadata.fields).toHaveLength(2);
+    expect(metadata.fields[0]!.field).toBe('lecturerIds');
+    expect(metadata.fields[0]!.mismatches).toEqual([{ id: 999 }]);
+    expect(metadata.fields[1]!.field).toBe('roomId');
+    expect(metadata.fields[1]!.mismatches).toEqual([{ id: 42 }]);
+  });
+});
