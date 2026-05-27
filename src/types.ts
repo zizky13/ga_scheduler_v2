@@ -388,9 +388,53 @@ export interface PreGAInfeasibleEntry {
   metadata?: unknown;
 }
 
+/**
+ * Phase 16 #2 — per-offering warning record produced by Pre-GA. Surfaced to
+ * the API consumer as part of `SchedulerResponse.preGASummary.warnings[]`.
+ *
+ * Distinct from `infeasible[]` (Q3=B / OQ-33): warnings are offerings that
+ * stay in `validation.feasible` and reach the GA, but the timetable cannot
+ * hold their session as a single contiguous run — the GA will be forced to
+ * fragment the session and surface a `fragmentationPenalty` (Phase 16 #6).
+ * The frontend panel (Phase 16 #13/#15) consumes this channel to list the
+ * affected offerings without conflating them with hard rejections.
+ *
+ * `code` is currently always `'FRAGMENTATION_REQUIRED'` — the shape is left
+ * open-ended (string) so future Pre-GA visibility channels (e.g., a soft
+ * preference warning) can reuse the same envelope without a wire migration.
+ */
+export interface PreGAWarningEntry {
+  offeringId: number;
+  code: string;
+  message: string;
+  /**
+   * Mirrors `PreGACandidate.fragmentationRequired` — `true` whenever the
+   * candidate's `longestContiguousRun < sessionDuration`. Kept as an
+   * explicit boolean (not derived from `code`) so the integration test in
+   * Phase 16 #20 can assert on the flag directly.
+   */
+  fragmentationRequired?: boolean;
+  /** Snapshot of `PreGACandidate.longestContiguousRun` for UI rendering. */
+  longestContiguousRun?: number;
+  /** Snapshot of `PreGACandidate.sessionDuration` for UI rendering. */
+  sessionDuration?: number;
+  /**
+   * Structured payload for future Pre-GA warning codes (parallels
+   * `PreGAInfeasibleEntry.metadata`). Unused for `FRAGMENTATION_REQUIRED`.
+   */
+  metadata?: unknown;
+}
+
 export interface SchedulerResponse {
   status: 'SUCCESS' | 'INFEASIBLE' | 'NO_FEASIBLE_CANDIDATES';
-  preGASummary: { feasible: number; infeasible: PreGAInfeasibleEntry[] };
+  /**
+   * Phase 16 #2 — `warnings[]` is a visibility channel for candidates that
+   * passed Pre-GA but carry a soft signal the UI should surface (currently
+   * only `FRAGMENTATION_REQUIRED`). Warnings never reduce `feasible` and
+   * never block the run; consumers that only care about hard rejections
+   * keep reading `infeasible[]` and can safely ignore `warnings[]`.
+   */
+  preGASummary: { feasible: number; infeasible: PreGAInfeasibleEntry[]; warnings: PreGAWarningEntry[] };
   ssaResult?: SSAResult;
   gaResult?: GAResult;
   durationMs: number;

@@ -93,6 +93,13 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
   // `NO_FEASIBLE_CANDIDATES` when `validation.feasible` is empty.
   // Phase 14 #6: pass through `failedCheck.metadata` when present so the
   // `CROSS_SEMESTER_DEFECT` envelope reaches the wire intact.
+  //
+  // Phase 16 #2: `warnings[]` parallels `infeasible[]` for soft visibility
+  // signals — currently only `FRAGMENTATION_REQUIRED` (timetable's longest
+  // contiguous run is shorter than the offering's `sessionDuration`, so the
+  // GA will fragment the session and emit `fragmentationPenalty` per #6).
+  // The candidates stay in `feasible`, the run proceeds — this channel is
+  // for the Run Detail / Timetable Management panels (#13/#14/#15).
   const preGASummary = {
     feasible: validation.feasible.length,
     infeasible: validation.infeasible.map(({ offering, failedCheck }) => ({
@@ -101,6 +108,20 @@ export async function runPipeline(input: OrchestratorInput): Promise<Orchestrato
       message: failedCheck.message,
       ...(failedCheck.metadata !== undefined ? { metadata: failedCheck.metadata } : {}),
     })),
+    warnings: candidates
+      .filter(c => c.fragmentationRequired === true)
+      .map(c => ({
+        offeringId: c.offeringId,
+        code: 'FRAGMENTATION_REQUIRED',
+        message:
+          `Offering ${c.offeringId} requires a ${c.sessionDuration}-slot ` +
+          `contiguous session but the timetable's longest run for this ` +
+          `candidate is ${c.longestContiguousRun} slot(s). The session ` +
+          `will be fragmented across in-day breaks (soft penalty applied).`,
+        fragmentationRequired: true,
+        longestContiguousRun: c.longestContiguousRun,
+        sessionDuration: c.sessionDuration,
+      })),
   };
 
   if (candidates.length === 0) {
