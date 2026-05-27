@@ -723,6 +723,217 @@
   max-width: 360px;
 }
 
+/* ── Fragmented Sessions Panel (Phase 16 #15) ────────────────────────── */
+
+.fragPanel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.fragHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.fragHeaderIcon {
+  flex-shrink: 0;
+  color: var(--color-warning-500);
+  margin-top: 2px;
+}
+
+.fragHeaderText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fragHeaderTitle {
+  font-size: var(--text-subtitle);
+  font-weight: 600;
+  color: var(--color-secondary-900);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.fragHeaderSubtitle {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-500);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.fragEmpty {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-success-50);
+  border: 1px solid color-mix(in srgb, var(--color-success-500) 30%, transparent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.fragEmptyIcon {
+  flex-shrink: 0;
+  color: var(--color-success-500);
+}
+
+.fragEmptyMessage {
+  font-size: var(--text-body-sm);
+  color: var(--color-success-700);
+  margin: 0;
+  font-weight: 500;
+}
+
+.fragList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fragItem {
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning-500);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--color-surface);
+}
+
+.fragItemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.fragItemTitle {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-family-primary);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--color-primary-500);
+  text-align: left;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.fragItemTitle:hover {
+  text-decoration: underline;
+}
+
+.fragItemTitle:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring);
+  border-radius: var(--radius-sm);
+}
+
+.fragFixLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-body-sm);
+  font-weight: 500;
+  color: var(--color-warning-700);
+  background: var(--color-warning-50);
+  border: 1px solid color-mix(in srgb, var(--color-warning-500) 30%, transparent);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.fragFixLink:hover {
+  background: color-mix(in srgb, var(--color-warning-500) 15%, transparent);
+}
+
+.fragFixLink:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-ring);
+}
+
+.fragSessions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fragSessionRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fragSessionLabel {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-secondary-500);
+}
+
+.fragSequence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-mono-sm);
+  line-height: 1.6;
+}
+
+.fragSegmentGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fragSlotChip {
+  display: inline-block;
+  background: var(--color-secondary-100);
+  color: var(--color-secondary-900);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.fragBreakChip {
+  display: inline-block;
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
+  border: 1px dashed color-mix(in srgb, var(--color-warning-500) 40%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.fragArrow {
+  color: var(--color-secondary-400);
+  font-weight: 600;
+  user-select: none;
+}
+
+.fragNoAssignment {
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-500);
+  font-style: italic;
+  margin: 0;
+}
+
 /* ── Confetti Celebration ── */
 
 .confetti {
