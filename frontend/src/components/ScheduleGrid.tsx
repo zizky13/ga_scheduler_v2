@@ -41,7 +41,46 @@ function blockColorVars(letter: string): React.CSSProperties {
   } as React.CSSProperties
 }
 
-export function ScheduleGrid({ response, offerings, timeSlots, rooms }: ScheduleGridProps) {
+function getSessionLecturerIds(session: { lecturerIds: number[] }, offering: CourseOffering): number[] {
+  return session.lecturerIds.length > 0
+    ? session.lecturerIds
+    : offering.lecturers.map((lecturer) => lecturer.id)
+}
+
+function resolveSessionLecturers(
+  offering: CourseOffering,
+  session: { lecturerIds: number[] },
+  lecturerMap: Map<number, string>,
+) {
+  if (session.lecturerIds.length === 0) {
+    const fallbackNames = offering.lecturers
+      .map((lecturer) => lecturerMap.get(lecturer.id) ?? lecturer.name)
+      .join(', ')
+    return {
+      label: 'Team teach',
+      tooltip: fallbackNames ? `Team teach (legacy): ${fallbackNames}` : 'Team teach (legacy)',
+      legacy: true,
+    }
+  }
+
+  const names = session.lecturerIds.map((id) => lecturerMap.get(id) ?? `Lecturer #${id}`)
+  return {
+    label: names.join(', '),
+    tooltip: names.join(', '),
+    legacy: false,
+  }
+}
+
+export function ScheduleGrid({ response, offerings, timeSlots, rooms, lecturers }: ScheduleGridProps) {
+  const lecturerMap = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const lecturer of lecturers) map.set(lecturer.id, lecturer.name)
+    for (const offering of offerings) {
+      for (const lecturer of offering.lecturers) map.set(lecturer.id, lecturer.name)
+    }
+    return map
+  }, [lecturers, offerings])
+
   // Derive unique start times sorted chronologically
   const uniqueStartTimes = useMemo(() => {
     const times = new Set<string>()
@@ -91,7 +130,7 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
           if (existing) existing.push(blockKey)
           else roomOccupancy.set(roomKey, [blockKey])
 
-          for (const lecturerId of offering.lecturers.map((l) => l.id)) {
+          for (const lecturerId of getSessionLecturerIds(session, offering)) {
             const lecKey = `${slotId}:l${lecturerId}`
             const lexisting = lecturerOccupancy.get(lecKey)
             if (lexisting) lexisting.push(blockKey)
@@ -224,7 +263,7 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
               if (dayIdx === -1 || rowIdx === undefined) return null
               const room = rooms.find((r) => r.id === session.roomId)
               const roomName = room?.name ?? `Room ${session.roomId}`
-              const lecturerNames = offering.lecturers.map((l) => l.name).join(', ')
+              const sessionLecturers = resolveSessionLecturers(offering, session, lecturerMap)
               const isSingleSlot = session.timeSlotIds.length === 1
               const hasConflict = conflictingBlocks.has(`${geneIdx}-${sessionIdx}`)
               const blockClass = [
@@ -252,15 +291,33 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
                 >
                   {isFixed && <Lock size={10} className={styles.lockIcon} />}
                   {isSingleSlot ? (
-                    <span className={styles.blockCodeInline}>
-                      {offering.course.code}
-                      <span className={styles.blockRoomInline}>{roomName}</span>
-                    </span>
+                    <>
+                      <span className={styles.blockCodeInline}>
+                        {offering.course.code}
+                        <span className={styles.blockRoomInline}>{roomName}</span>
+                      </span>
+                      <span className={styles.lecturerPillRow} aria-label={`Lecturer: ${sessionLecturers.tooltip}`}>
+                        <span
+                          className={`${styles.lecturerPill} ${sessionLecturers.legacy ? styles.lecturerPillLegacy : ''}`}
+                          title={sessionLecturers.tooltip}
+                        >
+                          {sessionLecturers.label}
+                        </span>
+                      </span>
+                    </>
                   ) : (
                     <>
                       <span className={styles.blockCode}>{offering.course.code}</span>
                       <span className={styles.blockName}>{offering.course.name}</span>
-                      <span className={styles.blockMeta}>{roomName} · {lecturerNames}</span>
+                      <span className={styles.blockMeta}>{roomName}</span>
+                      <span className={styles.lecturerPillRow} aria-label={`Lecturer: ${sessionLecturers.tooltip}`}>
+                        <span
+                          className={`${styles.lecturerPill} ${sessionLecturers.legacy ? styles.lecturerPillLegacy : ''}`}
+                          title={sessionLecturers.tooltip}
+                        >
+                          {sessionLecturers.label}
+                        </span>
+                      </span>
                       {isParallel && (
                         <span className={styles.blockSession}>
                           Sesi {String.fromCharCode(65 + sessionIdx)}
@@ -273,7 +330,7 @@ export function ScheduleGrid({ response, offerings, timeSlots, rooms }: Schedule
                     <p className={styles.tooltipName}>{offering.course.name}</p>
                     <p className={styles.tooltipRow}>
                       <span className={styles.tooltipLabel}>Lecturer: </span>
-                      {offering.lecturers.map((l) => l.name).join(', ')}
+                      {sessionLecturers.tooltip}
                     </p>
                     <p className={styles.tooltipRow}>
                       <span className={styles.tooltipLabel}>Room: </span>
