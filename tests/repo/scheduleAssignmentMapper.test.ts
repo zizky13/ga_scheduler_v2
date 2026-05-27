@@ -32,6 +32,7 @@ describe('mapScheduleAssignmentRow', () => {
       overriddenAt: null,
       notes: null,
       slots: [{ timeSlotId: 11 }, { timeSlotId: 12 }, { timeSlotId: 13 }],
+      lecturers: [{ lecturerId: 500 }, { lecturerId: 600 }],
     };
     const record = mapScheduleAssignmentRow(row);
     expect(record).toEqual({
@@ -46,6 +47,7 @@ describe('mapScheduleAssignmentRow', () => {
       overriddenAt: null,
       notes: null,
       timeSlotIds: [11, 12, 13],
+      lecturerIds: [500, 600],
     });
   });
 
@@ -63,12 +65,33 @@ describe('mapScheduleAssignmentRow', () => {
       overriddenAt,
       notes: 'Kaprodi swap',
       slots: [{ timeSlotId: 5 }],
+      lecturers: [{ lecturerId: 77 }],
     };
     const record = mapScheduleAssignmentRow(row);
     expect(record.manualOverride).toBe(true);
     expect(record.overriddenById).toBe(99);
     expect(record.overriddenAt).toBe(overriddenAt);
     expect(record.notes).toBe('Kaprodi swap');
+    expect(record.lecturerIds).toEqual([77]);
+  });
+
+  it('surfaces [] lecturerIds for legacy rows with no ScheduleAssignmentLecturer joins', () => {
+    const row: ScheduleAssignmentRow = {
+      id: 3,
+      runId: 'legacy-run',
+      offeringId: 8,
+      sessionIndex: 0,
+      roomId: 4,
+      isFixedRoom: false,
+      manualOverride: false,
+      overriddenById: null,
+      overriddenAt: null,
+      notes: null,
+      slots: [{ timeSlotId: 5 }],
+      lecturers: [],
+    };
+
+    expect(mapScheduleAssignmentRow(row).lecturerIds).toEqual([]);
   });
 });
 
@@ -79,14 +102,14 @@ describe('chromosomeToScheduleAssignmentWrites', () => {
         kind: 'FLEXIBLE',
         offeringId: 10,
         sessions: [
-          { roomId: 1, timeSlotIds: [1, 2, 3] },
-          { roomId: 2, timeSlotIds: [4, 5, 6] },
+          { roomId: 1, timeSlotIds: [1, 2, 3], lecturerIds: [500] },
+          { roomId: 2, timeSlotIds: [4, 5, 6], lecturerIds: [600, 700] },
         ],
       },
       {
         kind: 'FIXED',
         offeringId: 20,
-        sessions: [{ roomId: 3, timeSlotIds: [7, 8, 9] }],
+        sessions: [{ roomId: 3, timeSlotIds: [7, 8, 9], lecturerIds: [800] }],
       },
     ];
     const writes = chromosomeToScheduleAssignmentWrites('run-1', chromosome);
@@ -99,9 +122,14 @@ describe('chromosomeToScheduleAssignmentWrites', () => {
       roomId: 1,
       isFixedRoom: false,
       slots: { create: [{ timeSlotId: 1 }, { timeSlotId: 2 }, { timeSlotId: 3 }] },
+      lecturers: { create: [{ runId: 'run-1', lecturerId: 500 }] },
     });
     expect(writes[1]!.sessionIndex).toBe(1);
     expect(writes[1]!.roomId).toBe(2);
+    expect(writes[1]!.lecturers.create).toEqual([
+      { runId: 'run-1', lecturerId: 600 },
+      { runId: 'run-1', lecturerId: 700 },
+    ]);
     expect(writes[2]).toEqual({
       runId: 'run-1',
       offeringId: 20,
@@ -109,6 +137,7 @@ describe('chromosomeToScheduleAssignmentWrites', () => {
       roomId: 3,
       isFixedRoom: true,
       slots: { create: [{ timeSlotId: 7 }, { timeSlotId: 8 }, { timeSlotId: 9 }] },
+      lecturers: { create: [{ runId: 'run-1', lecturerId: 800 }] },
     });
   });
 
@@ -119,25 +148,19 @@ describe('chromosomeToScheduleAssignmentWrites', () => {
 
 describe('scheduleAssignmentRecordsToChromosome (round-trip)', () => {
   it('reconstructs the original chromosome from persisted records', () => {
-    // Phase 15 #5 + feedback_mapper_tests.md memory: per-session lecturerIds
-    // is required on GeneSession but the persistence layer doesn't yet store
-    // it (task 14 adds the `ScheduleAssignmentLecturer` join table). The
-    // mapper rebuilds sessions with `lecturerIds: []` for legacy back-compat
-    // (OQ-30); the fixture matches that empty default so round-trip equality
-    // stays meaningful.
     const original: Chromosome = [
       {
         kind: 'FLEXIBLE',
         offeringId: 10,
         sessions: [
-          { roomId: 1, timeSlotIds: [1, 2, 3], lecturerIds: [] },
-          { roomId: 2, timeSlotIds: [4, 5, 6], lecturerIds: [] },
+          { roomId: 1, timeSlotIds: [1, 2, 3], lecturerIds: [500] },
+          { roomId: 2, timeSlotIds: [4, 5, 6], lecturerIds: [600, 700] },
         ],
       },
       {
         kind: 'FIXED',
         offeringId: 20,
-        sessions: [{ roomId: 3, timeSlotIds: [7, 8, 9], lecturerIds: [] }],
+        sessions: [{ roomId: 3, timeSlotIds: [7, 8, 9], lecturerIds: [800] }],
       },
     ];
     const writes = chromosomeToScheduleAssignmentWrites('run-1', original);
@@ -154,6 +177,7 @@ describe('scheduleAssignmentRecordsToChromosome (round-trip)', () => {
       overriddenAt: null,
       notes: null,
       timeSlotIds: w.slots.create.map((s) => s.timeSlotId),
+      lecturerIds: w.lecturers.create.map((l) => l.lecturerId),
     }));
 
     const rebuilt = scheduleAssignmentRecordsToChromosome(records);
@@ -167,12 +191,14 @@ describe('scheduleAssignmentRecordsToChromosome (round-trip)', () => {
         roomId: 1, isFixedRoom: false, manualOverride: false,
         overriddenById: null, overriddenAt: null, notes: null,
         timeSlotIds: [1, 2, 3],
+        lecturerIds: [500],
       },
       {
         id: 2, runId: 'r', offeringId: 10, sessionIndex: 2, // gap!
         roomId: 2, isFixedRoom: false, manualOverride: false,
         overriddenById: null, overriddenAt: null, notes: null,
         timeSlotIds: [4, 5, 6],
+        lecturerIds: [600],
       },
     ];
     expect(() => scheduleAssignmentRecordsToChromosome(records)).toThrow(
@@ -187,12 +213,14 @@ describe('scheduleAssignmentRecordsToChromosome (round-trip)', () => {
         roomId: 1, isFixedRoom: false, manualOverride: false,
         overriddenById: null, overriddenAt: null, notes: null,
         timeSlotIds: [1, 2],
+        lecturerIds: [500],
       },
       {
         id: 2, runId: 'r', offeringId: 10, sessionIndex: 1,
         roomId: 1, isFixedRoom: true, manualOverride: false,
         overriddenById: null, overriddenAt: null, notes: null,
         timeSlotIds: [3, 4],
+        lecturerIds: [500],
       },
     ];
     expect(() => scheduleAssignmentRecordsToChromosome(records)).toThrow(
