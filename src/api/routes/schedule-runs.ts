@@ -41,6 +41,8 @@ import {
   DomainError,
   NotFoundError,
   ServiceUnavailableError,
+  ValidationError,
+  type ValidationIssue,
 } from "../errors";
 import {
   isPrismaForeignKeyError,
@@ -759,7 +761,95 @@ function toAssignmentWire(a: AssignmentWithRun) {
     overriddenAt: a.overriddenAt ? a.overriddenAt.toISOString() : null,
     notes: a.notes,
     timeSlotIds: a.timeSlotIds,
+    lecturerIds: a.lecturerIds,
   };
+}
+
+function hasCompetencyOverlap(
+  lecturer: { competencies: string[] },
+  course: { requiredCompetencies: string[] },
+): boolean {
+  if (course.requiredCompetencies.length === 0) return true;
+  const owned = new Set(lecturer.competencies);
+  return course.requiredCompetencies.some((tag) => owned.has(tag));
+}
+
+async function assertOverrideLecturersValid(
+  lecturerIds: number[] | undefined,
+  existing: AssignmentWithRun,
+): Promise<void> {
+  if (lecturerIds === undefined) return;
+
+  const repos = getCrudRepositories();
+  const offering = await repos.courseOfferings.findById(existing.offeringId);
+  if (!offering) {
+    throw new DomainError(
+      "INVALID_REFERENCE",
+      `Course offering ${existing.offeringId} does not exist`,
+      { field: "offeringId", id: existing.offeringId },
+    );
+  }
+  const course = await repos.courses.findById(offering.courseId);
+  if (!course) {
+    throw new DomainError(
+      "INVALID_REFERENCE",
+      `Course ${offering.courseId} does not exist`,
+      { field: "courseId", id: offering.courseId },
+    );
+  }
+
+  const lecturers = await Promise.all(
+    lecturerIds.map((lecturerId) => repos.lecturers.findById(lecturerId)),
+  );
+  const missing = lecturerIds.filter((_, idx) => lecturers[idx] === null);
+  if (missing.length > 0) {
+    throw new DomainError(
+      "INVALID_REFERENCE",
+      "Referenced lecturer does not exist",
+      { field: "lecturerIds", ids: missing },
+    );
+  }
+
+  const semesterMismatches = lecturers
+    .map((lecturer, idx) => ({ lecturer: lecturer!, id: lecturerIds[idx]! }))
+    .filter(({ lecturer }) => lecturer.semesterId !== offering.semesterId)
+    .map(({ lecturer, id }) => ({ id, actualSemesterId: lecturer.semesterId }));
+  if (semesterMismatches.length > 0) {
+    const issues: ValidationIssue[] = [{
+      path: ["lecturerIds"],
+      message:
+        `lecturerIds reference ${semesterMismatches[0]!.id} belongs to semester ` +
+        `${semesterMismatches[0]!.actualSemesterId} but offering is in semester ${offering.semesterId}.`,
+      code: "CROSS_SEMESTER_REFERENCE",
+    }];
+    throw new ValidationError(
+      issues[0]!.message,
+      issues,
+      "CROSS_SEMESTER_REFERENCE",
+      {
+        field: "lecturerIds",
+        expectedSemesterId: offering.semesterId,
+        mismatches: semesterMismatches,
+      },
+    );
+  }
+
+  const competencyMismatches = lecturers
+    .map((lecturer, idx) => ({ lecturer: lecturer!, id: lecturerIds[idx]! }))
+    .filter(({ lecturer }) => !hasCompetencyOverlap(lecturer, course))
+    .map(({ id }) => ({ id }));
+  if (competencyMismatches.length > 0) {
+    throw new DomainError(
+      "COMPETENCY_MISMATCH",
+      "One or more lecturers do not satisfy the course required competencies",
+      {
+        field: "lecturerIds",
+        courseId: course.id,
+        requiredCompetencies: course.requiredCompetencies,
+        mismatches: competencyMismatches,
+      },
+    );
+  }
 }
 
 async function putOverrideAssignment(
@@ -814,11 +904,13 @@ async function putOverrideAssignment(
     }
 
     try {
+      await assertOverrideLecturersValid(body.lecturerIds, existing);
       const updated = await repos.scheduleRuns.overrideAssignment(
         assignmentId,
         {
           roomId: body.roomId,
           timeSlotIds: body.timeSlotIds,
+          lecturerIds: body.lecturerIds,
           notes: body.notes,
           overriddenById: req.user.id,
         },
@@ -827,12 +919,14 @@ async function putOverrideAssignment(
       const beforeSnap: Record<string, unknown> = {
         roomId: existing.roomId,
         timeSlotIds: existing.timeSlotIds,
+        lecturerIds: existing.lecturerIds,
         notes: existing.notes,
         manualOverride: existing.manualOverride,
       };
       const afterSnap: Record<string, unknown> = {
         roomId: updated.roomId,
         timeSlotIds: updated.timeSlotIds,
+        lecturerIds: updated.lecturerIds,
         notes: updated.notes,
         manualOverride: updated.manualOverride,
       };
@@ -860,7 +954,7 @@ async function putOverrideAssignment(
         next(
           new DomainError(
             "INVALID_REFERENCE",
-            "Referenced room or time slot does not exist",
+            "Referenced room, time slot, or lecturer does not exist",
           ),
         );
         return;

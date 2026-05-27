@@ -1019,6 +1019,73 @@ export function buildCrudFixture(): CrudFixture {
       }
       return { runIds: Array.from(seen) };
     },
+    async findAssignmentById(id) {
+      const a = scheduleAssignmentStore.get(id);
+      if (!a) return null;
+      const run = scheduleRunStore.get(a.runId);
+      if (!run) return null;
+      return {
+        id: a.id,
+        runId: a.runId,
+        offeringId: a.offeringId,
+        sessionIndex: a.sessionIndex,
+        roomId: a.roomId,
+        isFixedRoom: a.isFixedRoom,
+        manualOverride: a.manualOverride,
+        overriddenById: null,
+        overriddenAt: null,
+        notes: null,
+        timeSlotIds: a.slots.map((s) => s.id),
+        lecturerIds: [...a.lecturerIds],
+        run: { createdById: run.createdById, status: run.status },
+      };
+    },
+    async overrideAssignment(id, input) {
+      const a = scheduleAssignmentStore.get(id);
+      if (!a) throw prismaNotFound();
+      const run = scheduleRunStore.get(a.runId);
+      if (!run) throw prismaNotFound();
+      if (input.roomId !== undefined) {
+        if (!roomStore.has(input.roomId)) throw prismaForeignKey();
+        a.roomId = input.roomId;
+      }
+      if (input.timeSlotIds !== undefined) {
+        for (const timeSlotId of input.timeSlotIds) {
+          if (!timeSlotStore.has(timeSlotId)) throw prismaForeignKey();
+        }
+        a.slots = input.timeSlotIds.map((timeSlotId) => {
+          const slot = timeSlotStore.get(timeSlotId)!;
+          return {
+            id: slot.id,
+            day: slot.day,
+            startTime: slot.startTime,
+            endTime: slot.endTime,
+          };
+        });
+      }
+      if (input.lecturerIds !== undefined) {
+        for (const lecturerId of input.lecturerIds) {
+          if (!lecturerStore.has(lecturerId)) throw prismaForeignKey();
+        }
+        a.lecturerIds = [...input.lecturerIds];
+      }
+      a.manualOverride = true;
+      return {
+        id: a.id,
+        runId: a.runId,
+        offeringId: a.offeringId,
+        sessionIndex: a.sessionIndex,
+        roomId: a.roomId,
+        isFixedRoom: a.isFixedRoom,
+        manualOverride: a.manualOverride,
+        overriddenById: input.overriddenById,
+        overriddenAt: new Date(),
+        notes: input.notes ?? null,
+        timeSlotIds: a.slots.map((s) => s.id),
+        lecturerIds: [...a.lecturerIds],
+        run: { createdById: run.createdById, status: run.status },
+      };
+    },
   };
 
   // ── AuditLogs ───────────────────────────────────────────────────────────

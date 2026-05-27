@@ -59,6 +59,7 @@ export const overrideAssignmentBodySchema = z
   .object({
     roomId: numericIdSchema.optional(),
     timeSlotIds: z.array(numericIdSchema).min(1).max(64).optional(),
+    lecturerIds: z.array(numericIdSchema).min(1).max(16).optional(),
     notes: z.string().trim().max(1024).optional(),
   })
   .strict()
@@ -122,4 +123,4 @@ export const scheduleRunDetailResponseSchema = z.object({
       })),
     })),
   })),
-}).openapi('ScheduleRunDetailResponse');
+});

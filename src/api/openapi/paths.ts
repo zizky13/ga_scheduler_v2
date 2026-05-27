@@ -122,6 +122,10 @@ function okJson(description: string, schema: z.ZodTypeAny) {
   };
 }
 
+const scheduleRunDetailResponseOpenApiSchema = scheduleRunDetailResponseSchema.openapi(
+  'ScheduleRunDetailResponse',
+);
+
 function noContent(description: string) {
   return { description };
 }
@@ -725,7 +729,7 @@ export function registerPaths(registry: OpenAPIRegistry): void {
     security: bearerSecurity,
     request: { params: scheduleRunIdParamsSchema },
     responses: {
-      200: okJson('Run payload.', scheduleRunDetailResponseSchema),
+      200: okJson('Run payload.', scheduleRunDetailResponseOpenApiSchema),
       ...pickErrorResponses(401, 403, 404),
     },
   });

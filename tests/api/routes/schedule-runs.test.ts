@@ -599,6 +599,133 @@ describe('GET /schedule-runs/:id', () => {
   });
 });
 
+describe('PUT /schedule-runs/:id/assignments/:assignmentId', () => {
+  function seedOverrideScenario() {
+    seedAdmin();
+    const sem = fixture.insertSemester({ id: 1, code: 'S1', label: 'Semester 1' });
+    const otherSem = fixture.insertSemester({ id: 2, code: 'S2', label: 'Semester 2' });
+    const room = fixture.insertRoom({ id: 3, semesterId: sem.id, name: 'R', capacity: 30 });
+    const slot = fixture.insertTimeSlot({
+      id: 10,
+      semesterId: sem.id,
+      day: 'MONDAY',
+      startTime: '08:00',
+      endTime: '08:50',
+    });
+    const course = fixture.insertCourse({
+      id: 6,
+      semesterId: sem.id,
+      code: 'IF301',
+      name: 'RPL',
+      sks: 3,
+      requiredCompetencies: ['software'],
+    });
+    const lecturerA = fixture.insertLecturer({
+      id: 5,
+      semesterId: sem.id,
+      name: 'A',
+      competencies: ['software'],
+    });
+    const lecturerB = fixture.insertLecturer({
+      id: 8,
+      semesterId: sem.id,
+      name: 'B',
+      competencies: ['software'],
+    });
+    const ineligible = fixture.insertLecturer({
+      id: 9,
+      semesterId: sem.id,
+      name: 'C',
+      competencies: ['database'],
+    });
+    const otherSemesterLecturer = fixture.insertLecturer({
+      id: 10,
+      semesterId: otherSem.id,
+      name: 'D',
+      competencies: ['software'],
+    });
+    fixture.insertCourseOffering({
+      id: 6,
+      semesterId: sem.id,
+      courseId: course.id,
+      roomId: room.id,
+      effectiveStudentCount: 25,
+      lecturerIds: [lecturerA.id],
+    });
+    seedRun({ id: 'run-override', semesterId: sem.id, createdById: 7, status: 'COMPLETED' });
+    fixture.insertScheduleAssignment({
+      id: 77,
+      runId: 'run-override',
+      offeringId: 6,
+      roomId: room.id,
+      sessionIndex: 0,
+      lecturerIds: [lecturerA.id],
+      slots: [{ id: slot.id, day: slot.day, startTime: slot.startTime, endTime: slot.endTime }],
+      offering: {
+        id: 6,
+        courseCode: course.code,
+        courseName: course.name,
+        lecturers: [{ id: lecturerA.id, name: lecturerA.name }],
+      },
+    });
+    return { lecturerB, ineligible, otherSemesterLecturer };
+  }
+
+  it('200 — admin can override per-session lecturerIds and audit captures the diff', async () => {
+    const { lecturerB } = seedOverrideScenario();
+
+    const res = await request(app)
+      .put('/api/v1/schedule-runs/run-override/assignments/77')
+      .set('Authorization', adminBearer())
+      .send({ lecturerIds: [lecturerB.id], notes: 'Swap lecturer' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.lecturerIds).toEqual([lecturerB.id]);
+    const audit = fixture.auditLogStore.find((a) => a.action === 'schedule_run.assignment_override');
+    expect(audit).toBeDefined();
+    const metadata = JSON.parse(audit!.metadata!);
+    expect(metadata.before.lecturerIds).toEqual([5]);
+    expect(metadata.after.lecturerIds).toEqual([lecturerB.id]);
+  });
+
+  it('400 CROSS_SEMESTER_REFERENCE when override lecturer belongs to another semester', async () => {
+    const { otherSemesterLecturer } = seedOverrideScenario();
+
+    const res = await request(app)
+      .put('/api/v1/schedule-runs/run-override/assignments/77')
+      .set('Authorization', adminBearer())
+      .send({ lecturerIds: [otherSemesterLecturer.id] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CROSS_SEMESTER_REFERENCE');
+    expect(res.body.error.details.metadata.field).toBe('lecturerIds');
+  });
+
+  it('422 COMPETENCY_MISMATCH when override lecturer lacks course competency', async () => {
+    const { ineligible } = seedOverrideScenario();
+
+    const res = await request(app)
+      .put('/api/v1/schedule-runs/run-override/assignments/77')
+      .set('Authorization', adminBearer())
+      .send({ lecturerIds: [ineligible.id] });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('COMPETENCY_MISMATCH');
+    expect(res.body.error.details.field).toBe('lecturerIds');
+  });
+
+  it('400 schema rejects empty lecturerIds override', async () => {
+    seedOverrideScenario();
+
+    const res = await request(app)
+      .put('/api/v1/schedule-runs/run-override/assignments/77')
+      .set('Authorization', adminBearer())
+      .send({ lecturerIds: [] });
+
+    expect(res.status).toBe(400);
+  });
+});
+
 describe('DELETE /schedule-runs/:id', () => {
   it('401 without bearer', async () => {
     const res = await request(app).delete('/api/v1/schedule-runs/run-x');
