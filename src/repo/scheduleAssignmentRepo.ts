@@ -50,6 +50,7 @@ export async function persistScheduleAssignments(
           roomId: w.roomId,
           isFixedRoom: w.isFixedRoom,
           slots: w.slots,
+          lecturers: w.lecturers,
         },
       }),
     ),
@@ -67,7 +68,13 @@ export async function loadScheduleAssignments(
 ): Promise<ScheduleAssignmentRecord[]> {
   const rows = await prisma.scheduleAssignment.findMany({
     where: { runId },
-    include: { slots: { select: { timeSlotId: true } } },
+    include: {
+      slots: { select: { timeSlotId: true } },
+      lecturers: {
+        select: { lecturerId: true },
+        orderBy: { lecturerId: 'asc' },
+      },
+    },
     orderBy: [{ offeringId: 'asc' }, { sessionIndex: 'asc' }],
   });
 
