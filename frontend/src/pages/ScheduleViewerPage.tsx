@@ -12,7 +12,11 @@ import { Button } from '../components/Button';
 import { TimetableGrid, GRID_COL_OFFSET, GRID_ROW_OFFSET } from '../components/TimetableGrid';
 import { CourseBlock, getCategoryForCompetencies } from '../components/CourseBlock';
 import { ManualOverrideModal } from '../components/ManualOverrideModal';
-import type { OverrideTarget, OtherSession } from '../components/ManualOverrideModal';
+import type {
+  OverrideTarget,
+  OtherSession,
+  LecturerOption,
+} from '../components/ManualOverrideModal';
 import type { GridDensity } from '../components/TimetableGrid';
 import { useToastStore } from '../store/toastStore';
 import { useAuthStore } from '../store/authStore';
@@ -67,6 +71,7 @@ interface GroupedAssignmentWire {
 interface RunDetail {
   id: string;
   status: string;
+  semesterId: number;
   createdById: number;
   bestFitness: number;
   hardViolations: number;
@@ -94,6 +99,18 @@ interface RoomWire {
 interface LecturerWire {
   id: number;
   name: string;
+  semesterId: number;
+  competencies: string[];
+}
+
+interface CourseOfferingWire {
+  id: number;
+  courseId: number;
+}
+
+interface CourseWire {
+  id: number;
+  requiredCompetencies: string[];
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
@@ -199,6 +216,7 @@ export function ScheduleViewerPage() {
   // Override modal
   const [overrideTarget, setOverrideTarget] = useState<OverrideTarget | null>(null);
   const [overrideModalOpen, setOverrideModalOpen] = useState(false);
+  const [overrideRequiredCompetencies, setOverrideRequiredCompetencies] = useState<string[]>([]);
 
   /* ── Close export dropdown on outside click ── */
 
@@ -262,10 +280,30 @@ export function ScheduleViewerPage() {
     get<ListResponse<TimeslotFull>>('/timeslots', { page: 1, pageSize: 500 })
       .then((res) => setAllTimeslots(res.data))
       .catch(() => {});
-    get<ListResponse<LecturerWire>>('/lecturers', { page: 1, pageSize: 500 })
-      .then((res) => setAllLecturers(res.data))
-      .catch(() => {});
   }, []);
+
+  /* ── Fetch lecturers scoped to the run's semester (Phase 14 #1) ── */
+
+  useEffect(() => {
+    const semesterId = runDetail?.semesterId;
+    if (!semesterId) {
+      setAllLecturers([]);
+      return;
+    }
+    let cancelled = false;
+    get<ListResponse<LecturerWire>>('/lecturers', {
+      page: 1,
+      pageSize: 500,
+      semesterId,
+    })
+      .then((res) => {
+        if (!cancelled) setAllLecturers(res.data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [runDetail?.semesterId]);
 
   /* ── Fetch run detail when selection changes ── */
 
@@ -428,7 +466,26 @@ export function ScheduleViewerPage() {
       manualOverride: session.manualOverride,
       currentSlotIds: sortedSlots.map((s) => s.id),
     });
+    setOverrideRequiredCompetencies([]);
     setOverrideModalOpen(true);
+
+    // The runDetail wire doesn't carry courseId / requiredCompetencies on the
+    // grouped offering payload (see src/api/routes/schedule-runs.ts:386-395),
+    // so fetch offering → course lazily to scope the lecturer picker by the
+    // course's required competencies. Backend re-validates server-side either way.
+    (async () => {
+      try {
+        const offering = await get<CourseOfferingWire>(
+          `/course-offerings/${group.offeringId}`,
+        );
+        const course = await get<CourseWire>(`/courses/${offering.courseId}`);
+        setOverrideRequiredCompetencies(course.requiredCompetencies);
+      } catch {
+        // Non-fatal — picker degrades to "no competency filter" (every
+        // semester-scoped lecturer eligible). Server still validates.
+        setOverrideRequiredCompetencies([]);
+      }
+    })();
   }
 
   const otherSessions: OtherSession[] = useMemo(() => {
@@ -437,17 +494,36 @@ export function ScheduleViewerPage() {
     for (const group of runDetail.assignments) {
       for (const session of group.sessions) {
         if (session.assignmentId === overrideTarget.assignmentId) continue;
-        result.push({
+        const sortedSlots = [...session.timeSlots].sort((a, b) =>
+          a.startTime.localeCompare(b.startTime),
+        );
+        const first = sortedSlots[0];
+        const last = sortedSlots[sortedSlots.length - 1];
+        const timeRange = first && last ? `${first.startTime}–${last.endTime}` : undefined;
+        const entry: OtherSession = {
           assignmentId: session.assignmentId,
           roomId: session.roomId,
           timeSlotIds: session.timeSlots.map((s) => s.id),
           lecturerIds: resolveSessionLecturers(group, session, lecturerNameById).ids,
           courseCode: group.offering.courseCode,
-        });
+        };
+        if (timeRange !== undefined) entry.timeRange = timeRange;
+        result.push(entry);
       }
     }
     return result;
   }, [runDetail, overrideTarget, lecturerNameById]);
+
+  const lecturerOptions: LecturerOption[] = useMemo(
+    () =>
+      allLecturers.map((l) => ({
+        id: l.id,
+        name: l.name,
+        semesterId: l.semesterId,
+        competencies: l.competencies,
+      })),
+    [allLecturers],
+  );
 
   function handleOverrideSaved() {
     if (selectedRunId) {
@@ -762,6 +838,9 @@ export function ScheduleViewerPage() {
         otherSessions={otherSessions}
         rooms={rooms}
         timeslots={allTimeslots}
+        lecturers={lecturerOptions}
+        semesterId={runDetail?.semesterId ?? null}
+        requiredCompetencies={overrideRequiredCompetencies}
         onSaved={handleOverrideSaved}
       />
     </>

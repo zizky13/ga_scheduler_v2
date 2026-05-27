@@ -182,6 +182,76 @@
   margin: 6px 0 0;
 }
 
+/* ── Lecturer picker ── */
+.lecturerList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 6px;
+  background: var(--color-surface);
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background-color var(--duration-fast) var(--ease-out);
+}
+
+.lecturerListChanged {
+  border-color: var(--color-primary-400);
+  background-color: var(--color-primary-50);
+}
+
+.lecturerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-body-sm);
+  color: var(--color-secondary-700);
+  border: 1px solid transparent;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+
+.lecturerRow:hover {
+  background: var(--color-secondary-50);
+}
+
+.lecturerRow input[type="checkbox"] {
+  accent-color: var(--color-primary-500);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.lecturerRowSelected {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary-300);
+  color: var(--color-primary-700);
+}
+
+.lecturerRowOriginal {
+  border-color: var(--color-secondary-300);
+  border-style: dashed;
+}
+
+.lecturerName {
+  font-size: var(--text-body-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lecturerEmpty {
+  font-size: var(--text-caption);
+  color: var(--color-secondary-500);
+  margin: 4px 8px;
+}
+
 /* ── Textarea ── */
 .textarea {
   width: 100%;
@@ -246,6 +316,16 @@
 .conflictSuccess {
   background: var(--color-success-50);
   color: var(--color-success-700);
+}
+
+.conflictDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conflictLine {
+  margin: 0;
 }
 
 /* ── Footer ── */
