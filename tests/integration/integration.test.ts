@@ -1302,4 +1302,196 @@ describe('Pipeline integration — Phase 15 shared-cohort lecturer distribution'
     expect(lecturerCounts.get(lecturerX.id)).toBeGreaterThanOrEqual(1);
     expect(lecturerCounts.get(lecturerY.id)).toBeGreaterThanOrEqual(1);
   });
+
+  // Phase 15 task #24 — composition guard for the Phase 11 null-room overflow
+  // path and the Phase 15 cohort grouping. 110 students into 30-cap rooms
+  // forces ⌈110/30⌉ = 4 parallel sessions; three offerings of the same course
+  // collapse into ONE cohort whose lecturerPool is the deduplicated union of
+  // [X, Y, Z]. The 4-session bucket distributes across 3 lecturers via the
+  // seeder's sibling round-robin (sibling[i % 3] owns session i → 2 sessions
+  // for the first sibling, 1 each for the other two).
+  it('composes Phase 11 null-room overflow with Phase 15 cohort grouping (3-sibling cohort, 4 sessions)', async () => {
+    const rooms: Room[] = [
+      { id: 1, name: 'R-201', capacity: 30, facilities: [] },
+      { id: 2, name: 'R-202', capacity: 30, facilities: [] },
+      { id: 3, name: 'R-203', capacity: 30, facilities: [] },
+      { id: 4, name: 'R-204', capacity: 30, facilities: [] },
+    ];
+
+    const timeSlots: TimeSlot[] = [];
+    {
+      let nextId = 1;
+      for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+        for (const t of [
+          { start: '08:00', end: '08:50' },
+          { start: '09:00', end: '09:50' },
+          { start: '10:00', end: '10:50' },
+        ]) {
+          timeSlots.push({ id: nextId++, day, startTime: t.start, endTime: t.end });
+        }
+      }
+    }
+
+    const lecturerX: Lecturer = {
+      id: 10,
+      name: 'Mr. X',
+      isStructural: false,
+      maxSks: 2,
+      preferredTimeSlotIds: [],
+      competencies: ['core'],
+    };
+    const lecturerY: Lecturer = {
+      id: 20,
+      name: 'Mr. Y',
+      isStructural: false,
+      maxSks: 2,
+      preferredTimeSlotIds: [],
+      competencies: ['core'],
+    };
+    const lecturerZ: Lecturer = {
+      id: 30,
+      name: 'Mr. Z',
+      isStructural: false,
+      maxSks: 2,
+      preferredTimeSlotIds: [],
+      competencies: ['core'],
+    };
+    const lecturers = [lecturerX, lecturerY, lecturerZ];
+
+    const course = {
+      id: 1,
+      code: 'IF301',
+      name: 'Algoritma',
+      sks: 1,
+      requiredFacilities: [],
+      requiredCompetencies: ['core'],
+    };
+
+    const offerings: CourseOffering[] = [
+      {
+        id: 100,
+        courseId: course.id,
+        course,
+        roomId: null,
+        room: null,
+        lecturers: [lecturerX],
+        effectiveStudentCount: 110,
+        isFixed: false,
+      },
+      {
+        id: 200,
+        courseId: course.id,
+        course,
+        roomId: null,
+        room: null,
+        lecturers: [lecturerY],
+        effectiveStudentCount: 110,
+        isFixed: false,
+      },
+      {
+        id: 300,
+        courseId: course.id,
+        course,
+        roomId: null,
+        room: null,
+        lecturers: [lecturerZ],
+        effectiveStudentCount: 110,
+        isFixed: false,
+      },
+    ];
+
+    const config: GAConfig = {
+      populationSize: 40,
+      generations: 80,
+      mutationRate: 0.1,
+      elitismCount: 2,
+      tournamentSize: 3,
+      crossoverType: 'singlePoint',
+      noiseRate: 0.15,
+      hardPenaltyWeight: 100,
+      softPenaltyWeight: 1,
+    };
+
+    const { response, context } = await runPipeline({
+      offerings,
+      timeSlots,
+      rooms,
+      lecturers,
+      config,
+    });
+
+    // ─── Cohort aggregation invariants ─────────────────────────────
+    expect(context.validation.infeasible).toEqual([]);
+    expect(context.candidates).toHaveLength(1);
+
+    const cand = context.candidates[0]!;
+    expect(cand.courseId).toBe(course.id);
+    expect(cand.siblingOfferingIds).toEqual([100, 200, 300]);
+    expect(cand.lecturerPool).toEqual([lecturerX.id, lecturerY.id, lecturerZ.id]);
+    expect(cand.parallelSessionCount).toBe(4); // ⌈110 / 30⌉
+    expect(cand.effectiveStudentCount).toBe(110); // OQ-23 default: max(siblings)
+    expect(cand.siblingLecturerGroups).toEqual([
+      [lecturerX.id],
+      [lecturerY.id],
+      [lecturerZ.id],
+    ]);
+
+    // Phase 11 overflow invariant — null-room cohort emits possibleRoomIds.
+    expect(cand.roomId).toBeNull();
+    expect(cand.possibleRoomIds).toBeDefined();
+    expect(cand.possibleRoomIds!.length).toBeGreaterThan(0);
+
+    // ─── GA result invariants ──────────────────────────────────────
+    expect(['SUCCESS', 'STAGNATED']).toContain(response.status);
+
+    const gaResult = response.gaResult!;
+    expect(gaResult).toBeDefined();
+    // Three offerings collapse into ONE chromosome locus.
+    expect(gaResult.bestChromosome).toHaveLength(1);
+
+    const gene = gaResult.bestChromosome[0]!;
+    expect(gene.offeringId).toBe(100); // lowest sibling id is the primary
+    expect(gene.kind).toBe('FLEXIBLE');
+    expect(gene.sessions).toHaveLength(4);
+
+    // Phase 11 invariant: every session's roomId is drawn from possibleRoomIds.
+    const roomPool = new Set(cand.possibleRoomIds!);
+    for (const session of gene.sessions) {
+      expect(roomPool.has(session.roomId)).toBe(true);
+    }
+
+    // 4 sessions × 1 lecturer-assignment each = 4 total.
+    let totalLecturerAssignments = 0;
+    const lecturerCounts = new Map<number, number>([
+      [lecturerX.id, 0],
+      [lecturerY.id, 0],
+      [lecturerZ.id, 0],
+    ]);
+    for (const session of gene.sessions) {
+      expect(session.lecturerIds.length).toBeGreaterThanOrEqual(1);
+      totalLecturerAssignments += session.lecturerIds.length;
+      for (const lid of session.lecturerIds) {
+        expect([lecturerX.id, lecturerY.id, lecturerZ.id]).toContain(lid);
+        lecturerCounts.set(lid, (lecturerCounts.get(lid) ?? 0) + 1);
+      }
+    }
+    expect(totalLecturerAssignments).toBe(4);
+
+    // All three lecturers participate in the cohort — sibling round-robin
+    // seeds 2/1/1 and the soft loadPenalty (maxSks=2 per lecturer) keeps the
+    // distribution close to balanced. Strict equality on the per-lecturer
+    // count would be brittle against mutation drift; the contract is just
+    // "the lecturer pool is exercised, not concentrated on one teacher".
+    let lecturersWithAtLeastOneSession = 0;
+    for (const count of lecturerCounts.values()) {
+      if (count >= 1) lecturersWithAtLeastOneSession++;
+    }
+    expect(lecturersWithAtLeastOneSession).toBeGreaterThanOrEqual(2);
+    // No lecturer should be loaded with all 4 sessions — that would violate
+    // maxSks=2 and pull a soft penalty of 2; the GA prefers any other
+    // distribution.
+    for (const count of lecturerCounts.values()) {
+      expect(count).toBeLessThanOrEqual(3);
+    }
+  });
 });
