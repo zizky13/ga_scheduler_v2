@@ -186,6 +186,34 @@ export interface PreGACandidate {
    * equivalent (as a set) to `lecturerIds`.
    */
   siblingLecturerGroups: number[][];
+  /**
+   * Phase 16 #1 (OQ-32 / OQ-33): the longest run of strictly back-to-back
+   * timeslots found in `possibleTimeSlotIds`, computed per-day (`slots[i].endTime
+   * === slots[i+1].startTime`, OQ-32 strict-equality default) and reduced via
+   * `max(perDayLongestRun)`. Captures the candidate's wall-clock topology so
+   * downstream consumers can decide whether a session can fit contiguously.
+   * Cross-day runs are never considered contiguous (OQ-33 default — sessions
+   * never span days).
+   */
+  longestContiguousRun: number;
+  /**
+   * Phase 16 #1 (Q3=B best-effort visibility): stamped `true` when
+   * `longestContiguousRun < sessionDuration` — the timetable cannot hold the
+   * cohort's session as a single contiguous run on any single day, so the GA
+   * will be forced to fragment the session across one or more in-day breaks.
+   *
+   * Crucially, fragmentationRequired candidates are NOT rejected from
+   * `validation.feasible` (Q3=B — best-effort with soft penalty + visible
+   * warning). The flag is a visibility channel only: the run still reaches the
+   * GA, the GA flags it via `fragmentationPenalty` (Phase 16 #6), the
+   * Fragmented Sessions panel renders the offering (Phase 16 #15), and the
+   * Timetable Management warning (Phase 16 #14) drives the admin to fix the
+   * underlying timetable per the long-term-intent fix. Absent (omitted) when
+   * the candidate's longest run is ≥ sessionDuration — sparse on purpose so a
+   * consumer can `if (candidate.fragmentationRequired)` without comparing to
+   * `false`.
+   */
+  fragmentationRequired?: boolean;
 }
 
 // ─── Layer 2: SSA Types ──────────────────────────────────────────
