@@ -516,6 +516,12 @@ describe('GET /schedule-runs/:id', () => {
     );
   });
 
+  // Phase 15 task #28 — API contract: a single COMPLETED run mixing Phase 15
+  // assignment rows (with `ScheduleAssignmentLecturer` joins) and legacy
+  // Phase 11 rows (no joins) must surface `sessions[i].lecturerIds: number[]`
+  // populated correctly for the former and `[]` for the latter (OQ-30
+  // backward-compat — the frontend renders the "Team teach (legacy)"
+  // placeholder when the array is empty).
   it('200 — Phase 15 assignments include per-session lecturerIds and legacy rows surface []', async () => {
     seedUser();
     seedRun({
