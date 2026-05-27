@@ -23,9 +23,10 @@ import {
   calculatePreferencePenalty,
   calculateLoadPenalty,
   calculateCapacityShortfallPenalty,
+  calculateFragmentationPenalty,
   calculateLecturerDistributionEntropy,
 } from '../../src/ga/fitness.js';
-import type { Chromosome, FlexibleGene, PreGACandidate, Room } from '../../src/types.js';
+import type { Chromosome, FlexibleGene, PreGACandidate, Room, TimeSlot } from '../../src/types.js';
 
 function flex(
   offeringId: number,
@@ -408,6 +409,63 @@ describe('calculateCapacityShortfallPenalty — null-room overflow (Phase 11 tas
     };
     const rooms = new Map<number, Room>([[10, room(10, 30)]]);
     expect(calculateCapacityShortfallPenalty(chrom, [preAssignedCand], rooms)).toBe(0);
+  });
+});
+
+describe('calculateFragmentationPenalty — same-day session gaps', () => {
+  const slots: TimeSlot[] = [
+    { id: 1, day: 'Mon', startTime: '08:00', endTime: '08:50' },
+    { id: 2, day: 'Mon', startTime: '08:50', endTime: '09:40' },
+    { id: 3, day: 'Mon', startTime: '09:40', endTime: '10:30' },
+    { id: 4, day: 'Mon', startTime: '10:40', endTime: '11:30' },
+    { id: 5, day: 'Mon', startTime: '11:30', endTime: '12:20' },
+    { id: 6, day: 'Tue', startTime: '08:00', endTime: '08:50' },
+  ];
+  const slotById = new Map(slots.map((slot) => [slot.id, slot]));
+
+  it('returns 0 for strictly contiguous same-day slots', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 3] }], [100]),
+    ];
+
+    expect(calculateFragmentationPenalty(chrom, [candidate(1, [100], 3)], slotById)).toBe(0);
+  });
+
+  it('counts same-day missing slot positions across breaks', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 4] }], [100]),
+    ];
+
+    expect(calculateFragmentationPenalty(chrom, [candidate(1, [100], 3)], slotById)).toBe(1);
+  });
+
+  it('charges a large defense-in-depth penalty for cross-day pairs', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 6] }], [100]),
+    ];
+
+    expect(calculateFragmentationPenalty(chrom, [candidate(1, [100], 3)], slotById)).toBeGreaterThan(50);
+  });
+
+  it('is included in evaluateFitness softPenalty when timetable topology is supplied', () => {
+    const chrom: Chromosome = [
+      flex(1, [{ roomId: 10, timeSlotIds: [1, 2, 4] }], [100]),
+    ];
+    const evaluated = evaluateFitness(
+      chrom,
+      [candidate(1, [100], 3)],
+      new Map<number, boolean>(),
+      new Map<number, Set<number>>(),
+      new Map<number, number>(),
+      { hardPenaltyWeight: 100, softPenaltyWeight: 1 },
+      undefined,
+      undefined,
+      slotById,
+    );
+
+    expect(evaluated.fragmentationPenalty).toBe(1);
+    expect(evaluated.softPenalty).toBe(1);
+    expect(evaluated.fitness).toBe(1 / 2);
   });
 });
 

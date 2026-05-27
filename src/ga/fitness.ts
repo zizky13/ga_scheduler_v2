@@ -27,7 +27,7 @@
  * per-session reading and per-candidate reading converge.
  */
 
-import type { Chromosome, EvaluatedChromosome, PreGACandidate, Room } from '../types.js';
+import type { Chromosome, EvaluatedChromosome, PreGACandidate, Room, TimeSlot } from '../types.js';
 
 export interface FitnessConfig {
   hardPenaltyWeight: number;   // W_H — default 100
@@ -41,6 +41,8 @@ export interface FitnessConfig {
  * any non-eligible lecturer assigned in a gene counts as a hard violation.
  */
 export type CompetencyEligibilityMap = Map<number, Set<number>>;
+
+const MAX_DAY_GAP = 100;
 
 /**
  * Evaluate hard constraint violations.
@@ -248,6 +250,73 @@ export function calculateCapacityShortfallPenalty(
 }
 
 /**
+ * Fragmentation penalty (Phase 16 task #6).
+ *
+ * A session is ideal when every adjacent slot pair is same-day and strictly
+ * back-to-back (`current.endTime === next.startTime`, OQ-32). Same-day gaps
+ * are charged by the number of missing slot positions between the two slots.
+ * Cross-day pairs are charged a large defense-in-depth constant; OQ-33 keeps
+ * production seeding / mutation same-day, but stale or hand-built chromosomes
+ * can still surface here.
+ *
+ * When `timeSlotById` is omitted, returns 0 for legacy unit callers that do
+ * not have timetable topology available.
+ */
+export function calculateFragmentationPenalty(
+  chromosome: Chromosome,
+  candidates: PreGACandidate[],
+  timeSlotById?: ReadonlyMap<number, TimeSlot>,
+): number {
+  if (!timeSlotById) return 0;
+  const candidateMap = new Map(candidates.map(c => [c.offeringId, c]));
+
+  const slotIndexByDay = new Map<string, Map<number, number>>();
+  const slotsByDay = new Map<string, TimeSlot[]>();
+  for (const slot of timeSlotById.values()) {
+    const slots = slotsByDay.get(slot.day) ?? [];
+    slots.push(slot);
+    slotsByDay.set(slot.day, slots);
+  }
+  for (const [day, slots] of slotsByDay) {
+    slots.sort((a, b) => a.startTime.localeCompare(b.startTime));
+    slotIndexByDay.set(day, new Map(slots.map((slot, index) => [slot.id, index])));
+  }
+
+  let penalty = 0;
+  for (const gene of chromosome) {
+    const candidate = candidateMap.get(gene.offeringId);
+    if (!candidate) continue;
+
+    for (const session of gene.sessions) {
+      for (let i = 0; i < session.timeSlotIds.length - 1; i++) {
+        const current = timeSlotById.get(session.timeSlotIds[i]!);
+        const next = timeSlotById.get(session.timeSlotIds[i + 1]!);
+        if (!current || !next) continue;
+
+        if (current.day !== next.day) {
+          penalty += MAX_DAY_GAP;
+          continue;
+        }
+
+        if (current.endTime === next.startTime) continue;
+
+        const dayIndex = slotIndexByDay.get(current.day);
+        const currentIndex = dayIndex?.get(current.id);
+        const nextIndex = dayIndex?.get(next.id);
+        if (currentIndex === undefined || nextIndex === undefined) {
+          penalty += 1;
+          continue;
+        }
+
+        penalty += Math.max(1, Math.abs(nextIndex - currentIndex) - 1);
+      }
+    }
+  }
+
+  return penalty;
+}
+
+/**
  * Phase 15 #10 — distribution audit telemetry for multi-offering cohorts.
  *
  * Shannon entropy over the per-lecturer session-assignment counts across
@@ -336,6 +405,7 @@ export function evaluateFitness(
   config: FitnessConfig = { hardPenaltyWeight: 100, softPenaltyWeight: 1 },
   competencyEligibilityMap?: CompetencyEligibilityMap,
   roomById?: ReadonlyMap<number, Room>,
+  timeSlotById?: ReadonlyMap<number, TimeSlot>,
 ): EvaluatedChromosome {
   const collisionViolations = evaluateHardFitness(chromosome, candidates);
   const competencyMismatch = evaluateCompetencyMismatch(chromosome, candidates, competencyEligibilityMap);
@@ -344,8 +414,14 @@ export function evaluateFitness(
   const preferencePenalty = calculatePreferencePenalty(chromosome, candidates, lecturerPreferenceMap);
   const loadPenalty = calculateLoadPenalty(chromosome, candidates, lecturerMaxSksMap);
   const capacityShortfallPenalty = calculateCapacityShortfallPenalty(chromosome, candidates, roomById);
+  const fragmentationPenalty = calculateFragmentationPenalty(chromosome, candidates, timeSlotById);
   const lecturerDistributionEntropy = calculateLecturerDistributionEntropy(chromosome, candidates);
-  const softPenalty = structuralPenalty + preferencePenalty + loadPenalty + capacityShortfallPenalty;
+  const softPenalty =
+    structuralPenalty +
+    preferencePenalty +
+    loadPenalty +
+    capacityShortfallPenalty +
+    fragmentationPenalty;
 
   const fitness = 1 / (
     1 +
@@ -362,6 +438,7 @@ export function evaluateFitness(
     preferencePenalty,
     loadPenalty,
     capacityShortfallPenalty,
+    fragmentationPenalty,
     lecturerDistributionEntropy,
     competencyMismatch,
   };

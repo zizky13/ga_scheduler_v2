@@ -145,7 +145,7 @@ export async function runGA(
       softPenaltyWeight: config.softPenaltyWeight,
     };
     const evaluated: EvaluatedChromosome[] = population.map(ch =>
-      evaluateFitness(ch, candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, fitnessConfig, competencyEligibilityMap, roomById)
+      evaluateFitness(ch, candidates, lecturerStructuralMap, lecturerPreferenceMap, lecturerMaxSksMap, fitnessConfig, competencyEligibilityMap, roomById, slotLookup)
     );
 
     // Sort by fitness descending
@@ -179,7 +179,7 @@ export async function runGA(
         `Best: ${best.fitness.toFixed(4)} | ` +
         `Avg: ${avgFitness.toFixed(4)} | ` +
         `Hard: ${best.hardViolations} | ` +
-        `Soft: ${best.softPenalty} (struct=${best.structuralPenalty} pref=${best.preferencePenalty} load=${best.loadPenalty} cap=${best.capacityShortfallPenalty})`
+        `Soft: ${best.softPenalty} (struct=${best.structuralPenalty} pref=${best.preferencePenalty} load=${best.loadPenalty} cap=${best.capacityShortfallPenalty} frag=${best.fragmentationPenalty})`
       );
     }
 
