@@ -242,7 +242,27 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
     // Easy dataset has plenty of supply; convergence should not require the
     // stagnation safety net.
     expect(result.stagnatedEarly).toBe(false);
-    // Sanity: every assigned slot is among the candidate's allowed slots.
+
+    // Phase 15 task #23 — backward-compatibility guard. The easy dataset has
+    // five courses each with exactly one offering, so cohort aggregation must
+    // collapse to a single sibling and the legacy "every session shares
+    // candidate.lecturerIds" stamp must hold (no per-session distribution).
+    for (const cand of candidates) {
+      expect(cand.siblingOfferingIds).toHaveLength(1);
+      expect(cand.siblingOfferingIds[0]).toBe(cand.offeringId);
+      // Single-sibling cohort: lecturerPool equals sorted lecturerIds.
+      expect(cand.lecturerPool).toEqual(
+        [...cand.lecturerIds].sort((a, b) => a - b),
+      );
+      // Single-sibling cohort: groups is a one-row matrix of sorted lecturerIds.
+      expect(cand.siblingLecturerGroups).toEqual([
+        [...cand.lecturerIds].sort((a, b) => a - b),
+      ]);
+    }
+
+    // Sanity: every assigned slot is among the candidate's allowed slots,
+    // AND every session of a single-offering gene carries the legacy
+    // candidate.lecturerIds stamp verbatim (no per-session distribution).
     const candidateById = new Map(candidates.map(c => [c.offeringId, c]));
     for (const gene of result.bestChromosome) {
       const cand = candidateById.get(gene.offeringId)!;
@@ -253,6 +273,14 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
         for (const slot of session.timeSlotIds) {
           expect(cand.possibleTimeSlotIds).toContain(slot);
         }
+        // Phase 15 task #23 — single-sibling cohorts skip the multi-sibling
+        // round-robin and stamp candidate.lecturerIds on every session. The
+        // GA's lecturer-mutation operator is gated to multi-sibling cohorts
+        // (`mutateLecturer` in src/ga/mutation.ts), so the seed stamp must
+        // survive every generation of the legacy easy-dataset run.
+        expect([...session.lecturerIds].sort((a, b) => a - b)).toEqual(
+          [...cand.lecturerIds].sort((a, b) => a - b),
+        );
       }
     }
   });
@@ -1105,5 +1133,173 @@ describe('Pipeline integration — Phase 14 cross-semester defect end-to-end', (
       expect(entry.code).toBe('CROSS_SEMESTER_DEFECT');
       expect(entry.metadata).toBeDefined();
     }
+  });
+});
+
+// ─── Phase 15 — Shared-cohort lecturer distribution ─────────────
+//
+// The user-reported scenario from backlog Phase 15 task #22: two offerings
+// of the same course (IF301) in the same semester, each taught by a different
+// lecturer. 97 students into 30-cap rooms → ⌈97/30⌉ = 4 parallel sessions.
+// Under the new cohort model (OQ-22 default — siblings keyed on courseId),
+// Pre-GA aggregates the two offerings into ONE candidate; the GA produces
+// ONE gene with 4 sessions; the 4 sessions hold lecturerIds distributed
+// across {X, Y} so each lecturer teaches their share of the cohort instead
+// of each offering scheduling its own 4 sessions (the pre-Phase-15 bug).
+describe('Pipeline integration — Phase 15 shared-cohort lecturer distribution', () => {
+  it("produces ONE cohort gene with 4 sessions split across the cohort's lecturer pool", async () => {
+    // Four 30-cap rooms — every qualifying room is the same capacity so the
+    // null-room overflow formula resolves to ⌈97/30⌉ = 4 parallel sessions.
+    const rooms: Room[] = [
+      { id: 1, name: 'R-201', capacity: 30, facilities: [] },
+      { id: 2, name: 'R-202', capacity: 30, facilities: [] },
+      { id: 3, name: 'R-203', capacity: 30, facilities: [] },
+      { id: 4, name: 'R-204', capacity: 30, facilities: [] },
+    ];
+
+    // sks=1 keeps each session a single contiguous slot; 5 days × 3 slots
+    // gives the GA enough room/slot variety to converge on a valid placement.
+    const timeSlots: TimeSlot[] = [];
+    {
+      let nextId = 1;
+      for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+        for (const t of [
+          { start: '08:00', end: '08:50' },
+          { start: '09:00', end: '09:50' },
+          { start: '10:00', end: '10:50' },
+        ]) {
+          timeSlots.push({ id: nextId++, day, startTime: t.start, endTime: t.end });
+        }
+      }
+    }
+
+    // Lecturers X (id 10) and Y (id 20). maxSks=2 makes the soft loadPenalty
+    // actively pull toward a 2/2 split — any imbalanced distribution pushes
+    // one lecturer over cap. lecturerPool is sorted ascending so the pool is
+    // deterministically [10, 20] for the assertion.
+    const lecturerX: Lecturer = {
+      id: 10,
+      name: 'Mr. X',
+      isStructural: false,
+      maxSks: 2,
+      preferredTimeSlotIds: [],
+      competencies: ['core'],
+    };
+    const lecturerY: Lecturer = {
+      id: 20,
+      name: 'Mr. Y',
+      isStructural: false,
+      maxSks: 2,
+      preferredTimeSlotIds: [],
+      competencies: ['core'],
+    };
+    const lecturers = [lecturerX, lecturerY];
+
+    const course = {
+      id: 1,
+      code: 'IF301',
+      name: 'Algoritma',
+      sks: 1,
+      requiredFacilities: [],
+      requiredCompetencies: ['core'],
+    };
+
+    // Two offerings, same (courseId), different lecturers — the trigger for
+    // Pre-GA cohort aggregation. roomId/room null → null-room overflow path,
+    // which fans the cohort across qualifying rooms.
+    const offerings: CourseOffering[] = [
+      {
+        id: 100,
+        courseId: course.id,
+        course,
+        roomId: null,
+        room: null,
+        lecturers: [lecturerX],
+        effectiveStudentCount: 97,
+        isFixed: false,
+      },
+      {
+        id: 200,
+        courseId: course.id,
+        course,
+        roomId: null,
+        room: null,
+        lecturers: [lecturerY],
+        effectiveStudentCount: 97,
+        isFixed: false,
+      },
+    ];
+
+    const config: GAConfig = {
+      populationSize: 40,
+      generations: 80,
+      mutationRate: 0.1,
+      elitismCount: 2,
+      tournamentSize: 3,
+      crossoverType: 'singlePoint',
+      noiseRate: 0.15,
+      hardPenaltyWeight: 100,
+      softPenaltyWeight: 1,
+    };
+
+    const { response, context } = await runPipeline({
+      offerings,
+      timeSlots,
+      rooms,
+      lecturers,
+      config,
+    });
+
+    // ─── Cohort aggregation invariants ─────────────────────────────
+    expect(context.validation.infeasible).toEqual([]);
+    expect(context.candidates).toHaveLength(1);
+
+    const cand = context.candidates[0]!;
+    expect(cand.courseId).toBe(course.id);
+    expect(cand.siblingOfferingIds).toEqual([100, 200]);
+    expect(cand.lecturerPool).toEqual([lecturerX.id, lecturerY.id]); // [10, 20]
+    expect(cand.parallelSessionCount).toBe(4); // ⌈97 / 30⌉
+    expect(cand.sessionDuration).toBe(1);
+    expect(cand.effectiveStudentCount).toBe(97); // OQ-23 default: max(siblings)
+    expect(cand.siblingLecturerGroups).toEqual([[lecturerX.id], [lecturerY.id]]);
+
+    // ─── GA result invariants ──────────────────────────────────────
+    expect(['SUCCESS', 'STAGNATED']).toContain(response.status);
+
+    const gaResult = response.gaResult!;
+    expect(gaResult).toBeDefined();
+    // The cohort merge means the chromosome has ONE gene for the course,
+    // not two — same-course offerings collapse into a single locus.
+    expect(gaResult.bestChromosome).toHaveLength(1);
+
+    const gene = gaResult.bestChromosome[0]!;
+    expect(gene.offeringId).toBe(100); // primary sibling (lowest id)
+    expect(gene.kind).toBe('FLEXIBLE');
+    expect(gene.sessions).toHaveLength(4);
+
+    // 4 sessions × 1 lecturer-assignment each = 4 lecturer-assignments total.
+    // Each session carries a single lecturer (sibling round-robin seed; lecturer
+    // mutation re-picks single-cardinality from the pool).
+    let totalLecturerAssignments = 0;
+    const lecturerCounts = new Map<number, number>([
+      [lecturerX.id, 0],
+      [lecturerY.id, 0],
+    ]);
+    for (const session of gene.sessions) {
+      expect(session.lecturerIds.length).toBeGreaterThanOrEqual(1);
+      totalLecturerAssignments += session.lecturerIds.length;
+      for (const lid of session.lecturerIds) {
+        expect([lecturerX.id, lecturerY.id]).toContain(lid);
+        lecturerCounts.set(lid, (lecturerCounts.get(lid) ?? 0) + 1);
+      }
+    }
+    expect(totalLecturerAssignments).toBe(4);
+
+    // Both lecturers appear at least once — loadPenalty (maxSks=2) penalises
+    // any chromosome that gives a single lecturer all 4 sessions, so the GA
+    // converges on a split distribution. Tight 2/2 is the seeder default and
+    // the lowest-penalty distribution.
+    expect(lecturerCounts.get(lecturerX.id)).toBeGreaterThanOrEqual(1);
+    expect(lecturerCounts.get(lecturerY.id)).toBeGreaterThanOrEqual(1);
   });
 });
