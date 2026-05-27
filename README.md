@@ -219,6 +219,75 @@ curl http://localhost:3000/api/v1/ready
 
 If `db` or `redis` shows `"fail"`, check that the respective service is running and that your `.env` values are correct.
 
+### 8. Demo database isolation (optional)
+
+Git branches isolate **code**, not **database state**. If you run `npx prisma migrate dev` on a fix branch and the migration alters a table, your local PostgreSQL is permanently changed. Checking out the demo branch afterwards will surface schema mismatches — the demo code expects the old shape, but the DB has the new one.
+
+To keep a presentable demo build that survives experimental schema work on other branches, point the demo at its own database:
+
+```bash
+# 1. Create a second PostgreSQL database alongside the dev one
+createdb ga_scheduler_v2_demo
+
+# 2. Copy the template and fill in the demo connection string
+cp .env.demo.example .env.demo
+# Edit .env.demo so DATABASE_URL ends in /ga_scheduler_v2_demo
+
+# 3. Apply migrations and seed against the demo DB
+npm run db:migrate:demo
+npm run db:seed:demo
+```
+
+When you want to run the demo build (typically: check out the demo branch first, then), use the `*:demo` scripts:
+
+```bash
+npm run check:migrations:demo  # status against the demo DB
+npm run api:dev:demo           # API server pointing at the demo DB
+npm run worker:demo            # GA worker pointing at the demo DB
+```
+
+These wrap the regular commands with `dotenv -e .env.demo`, so the demo DB is never touched unless you explicitly call a `:demo` script. Migrations you run on fix/feature branches go to the dev DB only and leave the demo build intact.
+
+Note: Redis (BullMQ jobs) is still shared. If demo and dev run simultaneously you may want to set a different `REDIS_URL` or a BullMQ queue prefix in `.env.demo`.
+
+#### Rolling-demo workflow
+
+The intended pattern: **demo tracks `main`**. Fix/feature branches stay isolated from the demo DB while in progress; when a fix merges into `main`, the demo rolls forward to match.
+
+**A. Starting a fix (don't touch the demo DB yet)**
+
+```bash
+git checkout -b fix/whatever
+# edit code, change schema.prisma, etc.
+npx prisma migrate dev --name your_fix   # applies to DEV DB only (.env)
+```
+
+Migration files exist on the fix branch only. The demo DB stays on the pre-fix schema, matching `main`.
+
+**B. Presentation arrives, fix is NOT done**
+
+Nothing to do. The demo DB already matches `main`. Just run:
+
+```bash
+git checkout main
+npm run api:dev:demo
+```
+
+**C. Fix is merged into `main` — roll the demo forward**
+
+```bash
+git checkout main
+git pull
+npm run check:migrations:demo   # confirm what's pending on demo DB
+npm run db:migrate:demo         # apply the merged migrations
+npm run db:seed:demo            # optional: re-run seed if fixture shape changed
+npm run api:dev:demo            # verify
+```
+
+**Gotcha:** while on a fix branch, never run `*:demo` scripts — they would apply your in-progress migration to the demo DB before merge, defeating the isolation. Use `:demo` scripts only at the post-merge promotion step.
+
+**Destructive migrations:** if a merged migration drops columns or tables, the demo DB loses that data the same way the dev DB did. Re-seed (`db:seed:demo`) or restore from a `pg_dump` snapshot if you need the old data back.
+
 ---
 
 ## Running
