@@ -638,6 +638,7 @@ async function getStream(
             preferencePenalty: event.snapshot.preferencePenalty,
             loadPenalty: event.snapshot.loadPenalty,
             capacityShortfallPenalty: event.snapshot.capacityShortfallPenalty,
+            fragmentationPenalty: event.snapshot.fragmentationPenalty,
             lecturerDistributionEntropy: event.snapshot.lecturerDistributionEntropy,
           });
           break;

@@ -35,6 +35,7 @@ export interface GenerationSnapshot {
   preferencePenalty: number;
   loadPenalty: number;
   capacityShortfallPenalty: number;
+  fragmentationPenalty: number;
   lecturerDistributionEntropy: number;
 }
 
@@ -195,6 +196,7 @@ export async function runGA(
         preferencePenalty: best.preferencePenalty,
         loadPenalty: best.loadPenalty,
         capacityShortfallPenalty: best.capacityShortfallPenalty,
+        fragmentationPenalty: best.fragmentationPenalty,
         lecturerDistributionEntropy: best.lecturerDistributionEntropy,
       });
     }

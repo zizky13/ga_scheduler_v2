@@ -211,6 +211,9 @@ describe('processGaPipelineJob', () => {
         competencyMismatch: 1,
         structuralPenalty: 2,
         preferencePenalty: 1,
+        loadPenalty: 0,
+        capacityShortfallPenalty: 0,
+        fragmentationPenalty: 7,
       });
       await input.hooks?.onGeneration?.({
         generation: 2,
@@ -221,6 +224,9 @@ describe('processGaPipelineJob', () => {
         competencyMismatch: 0,
         structuralPenalty: 1,
         preferencePenalty: 1,
+        loadPenalty: 0,
+        capacityShortfallPenalty: 0,
+        fragmentationPenalty: 4,
       });
       await input.hooks?.onGeneration?.({
         generation: 3,
@@ -231,6 +237,9 @@ describe('processGaPipelineJob', () => {
         competencyMismatch: 0,
         structuralPenalty: 0,
         preferencePenalty: 1,
+        loadPenalty: 0,
+        capacityShortfallPenalty: 0,
+        fragmentationPenalty: 2,
       });
       const out: OrchestratorOutput = {
         response: {
@@ -300,6 +309,7 @@ describe('processGaPipelineJob', () => {
     expect(progressTypes).toHaveLength(3);
     expect((progressTypes[0]!.event as { snapshot: { generation: number } }).snapshot.generation).toBe(1);
     expect((progressTypes[2]!.event as { snapshot: { generation: number } }).snapshot.generation).toBe(3);
+    expect((progressTypes[2]!.event as { snapshot: { fragmentationPenalty: number } }).snapshot.fragmentationPenalty).toBe(2);
   });
 
   it('Checkpoint: writes latest onCheckpoint snapshot to Redis under `ga:run:<id>:checkpoint` with 1h TTL (techspec §7.2)', async () => {
@@ -415,6 +425,9 @@ describe('processGaPipelineJob', () => {
         competencyMismatch: 0,
         structuralPenalty: 0,
         preferencePenalty: 5,
+        loadPenalty: 0,
+        capacityShortfallPenalty: 0,
+        fragmentationPenalty: 1,
       });
       const out: OrchestratorOutput = {
         response: {

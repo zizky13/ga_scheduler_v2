@@ -14,6 +14,7 @@ export interface SSEProgressPayload {
   preferencePenalty: number;
   loadPenalty: number;
   capacityShortfallPenalty: number;
+  fragmentationPenalty: number;
 }
 
 export interface SSEStatePayload {
