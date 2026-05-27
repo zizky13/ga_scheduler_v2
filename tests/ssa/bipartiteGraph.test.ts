@@ -31,21 +31,28 @@ function candidate(args: {
   offeringId: number;
   roomId?: number;
   lecturerIds?: number[];
+  lecturerPool?: number[];
+  siblingOfferingIds?: number[];
+  siblingLecturerGroups?: number[][];
   parallelSessionCount?: number;
   sessionDuration: number;
   possibleTimeSlotIds: number[];
   isFixedRoom?: boolean;
 }): PreGACandidate {
+  const lecturerIds = args.lecturerIds ?? [100];
   return {
     offeringId: args.offeringId,
     courseId: args.offeringId * 10,
     roomId: args.roomId ?? 1,
-    lecturerIds: args.lecturerIds ?? [100],
+    lecturerIds,
     effectiveStudentCount: 30,
     parallelSessionCount: args.parallelSessionCount ?? 1,
     sessionDuration: args.sessionDuration,
     possibleTimeSlotIds: args.possibleTimeSlotIds,
     isFixedRoom: args.isFixedRoom ?? false,
+    siblingOfferingIds: args.siblingOfferingIds ?? [args.offeringId],
+    lecturerPool: args.lecturerPool ?? [...lecturerIds],
+    siblingLecturerGroups: args.siblingLecturerGroups ?? [[...lecturerIds]],
   };
 }
 
@@ -125,6 +132,48 @@ describe('buildBipartiteGraph — multi-slot block matching nodes', () => {
     const adj1 = Array.from(graph.adjacency.get(graph.sessions[1]!.sessionId)!).sort((a, b) => a - b);
     expect(adj0).toEqual([1, 2, 3]);
     expect(adj1).toEqual([1, 2, 3]);
+  });
+
+  it('stamps multi-sibling cohort SessionNodes with the full lecturerPool', () => {
+    const slots = buildDay('Monday', 4, 1);
+    const cand = candidate({
+      offeringId: 20,
+      sessionDuration: 2,
+      parallelSessionCount: 3,
+      possibleTimeSlotIds: [1, 2, 3, 4],
+      lecturerIds: [100],
+      lecturerPool: [100, 200, 300],
+      siblingOfferingIds: [20, 21, 22],
+      siblingLecturerGroups: [[100], [200], [300]],
+    });
+
+    const graph = buildBipartiteGraph([cand], slots);
+
+    expect(graph.sessions).toHaveLength(3);
+    for (const session of graph.sessions) {
+      expect(session.lecturerIds).toEqual([100, 200, 300]);
+    }
+  });
+
+  it('keeps legacy lecturerIds for single-sibling candidates', () => {
+    const slots = buildDay('Monday', 3, 1);
+    const cand = candidate({
+      offeringId: 30,
+      sessionDuration: 1,
+      parallelSessionCount: 2,
+      possibleTimeSlotIds: [1, 2, 3],
+      lecturerIds: [100],
+      lecturerPool: [100, 200],
+      siblingOfferingIds: [30],
+      siblingLecturerGroups: [[100]],
+    });
+
+    const graph = buildBipartiteGraph([cand], slots);
+
+    expect(graph.sessions).toHaveLength(2);
+    for (const session of graph.sessions) {
+      expect(session.lecturerIds).toEqual([100]);
+    }
   });
 
   it('Hopcroft-Karp proves feasibility for whole chunks, not isolated slots', () => {
