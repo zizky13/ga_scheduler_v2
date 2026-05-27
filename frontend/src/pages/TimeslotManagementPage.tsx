@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Clock, Plus, Pencil, Trash2, LayoutGrid, List } from 'lucide-react'
+import { AlertTriangle, Clock, Plus, Pencil, Trash2, LayoutGrid, List } from 'lucide-react'
 import { PageHeader } from '../components/ContentArea'
 import { DataTable, type Column } from '../components/DataTable'
 import { Button } from '../components/Button'
@@ -30,9 +30,63 @@ interface LecturerWire {
   preferredTimeSlotIds: number[]
 }
 
+interface CourseOfferingWire {
+  id: number
+  semesterId: number
+  courseId: number
+}
+
+interface CourseWire {
+  id: number
+  code: string
+  name: string
+  sks: number
+}
+
 interface ListResponse<T> {
   data: T[]
   meta: { page: number; pageSize: number; total: number }
+}
+
+/**
+ * Phase 16 #14 / OQ-32 — strict-equality contiguous-run helper.
+ *
+ * Mirrors the backend definition in `src/pre-ga/validator.ts`'s
+ * `computeLongestContiguousRun` and `src/ga/chromosome.ts`'s
+ * `pickSameDaySessionSlots`: slots are contiguous iff
+ * `slot[i].endTime === slot[i+1].startTime` (exact HH:MM string match, no
+ * tolerance). Per OQ-33 sessions never span days, so we bucket by `day`
+ * first and take the max across days. Returns 0 for an empty slot list.
+ *
+ * Keep this byte-for-byte aligned with the backend — if the contiguity
+ * definition drifts (e.g. tolerance is introduced server-side), update
+ * both sites in lockstep so the UI's warning matches GA reality.
+ */
+function computeGlobalLongestRun(slots: ReadonlyArray<TimeSlot>): number {
+  if (slots.length === 0) return 0
+  const byDay = new Map<Weekday, TimeSlot[]>()
+  for (const s of slots) {
+    const bucket = byDay.get(s.day) ?? []
+    bucket.push(s)
+    byDay.set(s.day, bucket)
+  }
+
+  let maxRun = 0
+  for (const bucket of byDay.values()) {
+    bucket.sort((a, b) => a.startTime.localeCompare(b.startTime))
+    let run = 1
+    let bestForDay = 1
+    for (let i = 1; i < bucket.length; i++) {
+      if (bucket[i - 1]!.endTime === bucket[i]!.startTime) {
+        run += 1
+        if (run > bestForDay) bestForDay = run
+      } else {
+        run = 1
+      }
+    }
+    if (bestForDay > maxRun) maxRun = bestForDay
+  }
+  return maxRun
 }
 
 interface TimeSlotEnriched extends TimeSlot {
@@ -153,6 +207,11 @@ export function TimeslotManagementPage() {
   const activeSemesterId = useSemesterStore((s) => s.activeSemester?.id ?? null)
 
   const [slots, setSlots] = useState<TimeSlotEnriched[]>([])
+  // Phase 16 #14 / OQ-34 — drives the fragmentation warning banner. Held in
+  // page state (not fetched inside the memo) so the warning recomputes on
+  // every successful save via the existing fetchData() refresh path.
+  const [offerings, setOfferings] = useState<CourseOfferingWire[]>([])
+  const [courses, setCourses] = useState<CourseWire[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
 
@@ -178,12 +237,18 @@ export function TimeslotManagementPage() {
     try {
       if (activeSemesterId === null) {
         setSlots([])
+        setOfferings([])
+        setCourses([])
         setLoading(false)
         return
       }
 
+      // Phase 14 #1 semesterScope pattern (mirrors LecturerManagementPage /
+      // CourseOfferingManagementPage). Phase 16 #14 adds /course-offerings +
+      // /courses so we can compute max(course.sks) for the fragmentation
+      // warning banner alongside the existing timeslot fetch.
       const semesterScope = { semesterId: activeSemesterId }
-      const [slotRes, lecRes] = await Promise.all([
+      const [slotRes, lecRes, offRes, courseRes] = await Promise.all([
         get<ListResponse<TimeSlot>>('/timeslots', {
           ...semesterScope,
           page: 1,
@@ -194,6 +259,16 @@ export function TimeslotManagementPage() {
           ...semesterScope,
           page: 1,
           pageSize: 500,
+        }),
+        get<ListResponse<CourseOfferingWire>>('/course-offerings', {
+          ...semesterScope,
+          page: 1,
+          pageSize: 5000,
+        }),
+        get<ListResponse<CourseWire>>('/courses', {
+          ...semesterScope,
+          page: 1,
+          pageSize: 5000,
         }),
       ])
 
@@ -211,6 +286,8 @@ export function TimeslotManagementPage() {
       }))
 
       setSlots(enriched)
+      setOfferings(offRes.data)
+      setCourses(courseRes.data)
     } catch {
       addToast({ type: 'error', title: 'Failed to load timeslots' })
     } finally {
@@ -273,6 +350,50 @@ export function TimeslotManagementPage() {
     }
     return map
   }, [slots])
+
+  /* ── Fragmentation warning (Phase 16 #14 / OQ-32 / OQ-34) ── */
+
+  // LOAD-BEARING: this memo (and the banner it feeds below) is the
+  // user-facing mechanism that drives admins to fix fragmenting timetables
+  // per the Phase 16 long-term intent (a). Re-evaluates on initial mount and
+  // after every save via the fetchData() refresh. Per OQ-34 it is warn-only
+  // — DO NOT use this to block save / disable the modal. Per OQ-32 the
+  // contiguity test is strict string equality (no tolerance) to match the
+  // backend (`src/pre-ga/validator.ts` + `src/ga/chromosome.ts`).
+  // Do not demote to dismissable / inline / collapsed without an OQ-34
+  // reversal recorded in docs/open-questions.md.
+  const fragmentationWarning = useMemo<{
+    globalLongestRun: number
+    maxRequiredSks: number
+    offendingCourses: Array<{ id: number; code: string; name: string; sks: number }>
+  } | null>(() => {
+    if (slots.length === 0 || offerings.length === 0 || courses.length === 0) return null
+
+    const globalLongestRun = computeGlobalLongestRun(slots)
+
+    // Collect distinct courses appearing in the active semester's offerings.
+    const courseById = new Map(courses.map((c) => [c.id, c]))
+    const activeCourseIds = new Set<number>()
+    for (const o of offerings) activeCourseIds.add(o.courseId)
+
+    let maxRequiredSks = 0
+    const offendingMap = new Map<number, { id: number; code: string; name: string; sks: number }>()
+    for (const courseId of activeCourseIds) {
+      const c = courseById.get(courseId)
+      if (!c) continue
+      if (c.sks > maxRequiredSks) maxRequiredSks = c.sks
+      if (c.sks > globalLongestRun) {
+        offendingMap.set(c.id, { id: c.id, code: c.code, name: c.name, sks: c.sks })
+      }
+    }
+
+    if (globalLongestRun >= maxRequiredSks) return null
+
+    const offendingCourses = [...offendingMap.values()].sort(
+      (a, b) => b.sks - a.sks || a.code.localeCompare(b.code),
+    )
+    return { globalLongestRun, maxRequiredSks, offendingCourses }
+  }, [slots, offerings, courses])
 
   /* ── Create / Edit ── */
 
@@ -451,6 +572,48 @@ export function TimeslotManagementPage() {
           ) : undefined
         }
       />
+
+      {/*
+        Fragmentation warning banner — Phase 16 #14 / OQ-32 / OQ-34.
+        LOAD-BEARING: this is the user-facing mechanism that drives admins
+        to fix fragmenting timetables per Phase 16's long-term intent (a).
+        Non-dismissable by design (warn-only per OQ-34 — save is NOT blocked,
+        but the banner stays visible as long as the condition holds). Do not
+        demote to dismissable / inline / collapsed without an OQ-34 reversal
+        recorded in docs/open-questions.md.
+      */}
+      {fragmentationWarning && (
+        <div
+          className={styles.warningBanner}
+          role="alert"
+          aria-live="polite"
+          data-testid="fragmentation-warning"
+        >
+          <div className={styles.warningBannerIcon} aria-hidden="true">
+            <AlertTriangle size={20} />
+          </div>
+          <div className={styles.warningBannerBody}>
+            <div className={styles.warningBannerTitle}>
+              Timetable fragments long courses
+            </div>
+            <div className={styles.warningBannerMessage}>
+              Your longest contiguous run is {fragmentationWarning.globalLongestRun} slot
+              {fragmentationWarning.globalLongestRun === 1 ? '' : 's'}, but you have courses
+              requiring up to {fragmentationWarning.maxRequiredSks} slot
+              {fragmentationWarning.maxRequiredSks === 1 ? '' : 's'}. Sessions for those
+              courses will be fragmented across breaks. Add more back-to-back slots or
+              restructure your breaks.
+            </div>
+            <ul className={styles.warningBannerList}>
+              {fragmentationWarning.offendingCourses.map((c) => (
+                <li key={c.id}>
+                  <code>{c.code}</code> — {c.name} ({c.sks} SKS)
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* Toolbar with view switcher */}
       <div className={styles.toolbar}>
