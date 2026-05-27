@@ -41,6 +41,7 @@ export function runSSA(
       status: 'INFEASIBLE',
       totalSessionsRequired,
       maximumAchievableMatching: 0,
+      degradedOfferings: graph.degradedOfferings,
       deadlockReport: {
         code: 'AC3_DOMAIN_EMPTY',
         message: ac3Result.reason ?? 'Domain became empty during constraint propagation.',
@@ -70,6 +71,7 @@ export function runSSA(
       status: 'INFEASIBLE',
       totalSessionsRequired,
       maximumAchievableMatching: matchingResult.maximumMatching,
+      degradedOfferings: graph.degradedOfferings,
       deadlockReport: {
         code: 'BIPARTITE_MATCHING_INSUFFICIENT',
         message:
@@ -90,5 +92,6 @@ export function runSSA(
     status: 'FEASIBLE',
     totalSessionsRequired,
     maximumAchievableMatching: matchingResult.maximumMatching,
+    degradedOfferings: graph.degradedOfferings,
   };
 }

@@ -240,6 +240,14 @@ export interface BipartiteGraph {
   sessions: SessionNode[];
   slots: SlotNode[];
   adjacency: Map<number, Set<number>>; // sessionId → Set<slotId>
+  /**
+   * Phase 16 #9: offerings whose adjacency had to degrade from
+   * `sessionDuration`-sized contiguous block starts to the legacy per-slot
+   * fallback because no day can hold a full contiguous session. SSA remains
+   * FEASIBLE when matching succeeds (Q3=B); this list is visibility metadata
+   * for the run-detail fragmented-session surface.
+   */
+  degradedOfferings: number[];
 }
 
 export interface AC3Result {
@@ -269,6 +277,7 @@ export interface SSAResult {
   status: SSAStatus;
   totalSessionsRequired: number;
   maximumAchievableMatching: number;
+  degradedOfferings: number[];
   deadlockReport?: DeadlockReport;
 }
 
