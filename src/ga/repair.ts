@@ -19,6 +19,7 @@ import type { Chromosome, Gene, GeneSession, PreGACandidate, Room } from '../typ
 import {
   fisherYatesShuffle,
   findContiguousSlots,
+  pickSameDaySessionSlots,
   type SlotLookup,
 } from './chromosome.js';
 
@@ -145,7 +146,8 @@ function pickLecturerSwapForBlock(
  *   1. A clean block on the same room.
  *   2. (FLEXIBLE only) a clean block on any allowed room.
  *   3. Any contiguous block on the same room (residual conflict accepted).
- *   4. The original session (no contiguous blocks exist at all).
+ *   4. Same-day fragmented block from the Phase 16 shared selector.
+ *   5. The original session (no same-day slots exist at all).
  */
 function repairSessionAsBlock(
   session: GeneSession,
@@ -191,7 +193,46 @@ function repairSessionAsBlock(
 
   const blocks = findContiguousSlots(candidate.possibleTimeSlotIds, sessionDuration, lookup);
   if (blocks.length === 0) {
-    return session; // degenerate dataset — nothing better to offer
+    // note (Phase 16 #7 / OQ-33): no full contiguous block exists for this
+    // candidate, but repair should still move the session onto the same-day
+    // degraded shape shared by chromosome seeding and mutation. The resulting
+    // in-day gap is charged by `fragmentationPenalty`; the key invariant here
+    // is that repair never preserves or creates a cross-day fallback when it
+    // has any same-day slot metadata to work with.
+    const fallbackBlock = pickSameDaySessionSlots(
+      candidate.possibleTimeSlotIds,
+      sessionDuration,
+      lookup,
+      candidate.fragmentationRequired,
+    );
+    if (fallbackBlock.length === 0) {
+      return session; // no resolvable slots; future telemetry can count this abort
+    }
+
+    if (!roomOrGeneSlotConflicts(fallbackBlock, session.roomId, index, usedSlotsInGene)) {
+      if (!lecturerConflicts(fallbackBlock, session.lecturerIds, index)) {
+        return { roomId: session.roomId, timeSlotIds: fallbackBlock, lecturerIds: [...session.lecturerIds] };
+      }
+      const lecturerIds = pickLecturerSwapForBlock(fallbackBlock, candidate, session.lecturerIds, index);
+      if (lecturerIds) return { roomId: session.roomId, timeSlotIds: fallbackBlock, lecturerIds };
+    }
+
+    if (geneKind === 'FLEXIBLE' && candidate.possibleRoomIds?.length) {
+      for (const altRoom of fisherYatesShuffle(candidate.possibleRoomIds)) {
+        if (altRoom === session.roomId) continue;
+        if (roomOrGeneSlotConflicts(fallbackBlock, altRoom, index, usedSlotsInGene)) continue;
+        if (!lecturerConflicts(fallbackBlock, session.lecturerIds, index)) {
+          return { roomId: altRoom, timeSlotIds: fallbackBlock, lecturerIds: [...session.lecturerIds] };
+        }
+        const lecturerIds = pickLecturerSwapForBlock(fallbackBlock, candidate, session.lecturerIds, index);
+        if (lecturerIds) return { roomId: altRoom, timeSlotIds: fallbackBlock, lecturerIds };
+      }
+    }
+
+    const fallbackLecturerIds =
+      pickLecturerSwapForBlock(fallbackBlock, candidate, session.lecturerIds, index) ??
+      [...session.lecturerIds];
+    return { roomId: session.roomId, timeSlotIds: fallbackBlock, lecturerIds: fallbackLecturerIds };
   }
 
   const shuffledBlocks = fisherYatesShuffle(blocks);

@@ -19,6 +19,19 @@ const TIME_SLOTS: TimeSlot[] = [
 
 const SLOT_LOOKUP = buildSlotLookup(TIME_SLOTS);
 
+const PHASE16_FRAGMENTED_SLOTS: TimeSlot[] = [
+  { id: 101, day: 'Mon', startTime: '08:00', endTime: '08:50' },
+  { id: 102, day: 'Mon', startTime: '08:50', endTime: '09:40' },
+  { id: 103, day: 'Mon', startTime: '09:40', endTime: '10:30' },
+  { id: 104, day: 'Mon', startTime: '10:40', endTime: '11:30' },
+  { id: 105, day: 'Mon', startTime: '11:30', endTime: '12:20' },
+  { id: 201, day: 'Tue', startTime: '08:00', endTime: '08:50' },
+  { id: 202, day: 'Tue', startTime: '09:00', endTime: '09:50' },
+  { id: 203, day: 'Tue', startTime: '10:00', endTime: '10:50' },
+];
+
+const PHASE16_LOOKUP = buildSlotLookup(PHASE16_FRAGMENTED_SLOTS);
+
 function candidate(
   offeringId: number,
   lecturerIds: number[],
@@ -47,6 +60,30 @@ function flex(offeringId: number, roomId: number, slotId: number, lecturerIds: n
     offeringId,
     sessions: [{ roomId, timeSlotIds: [slotId], lecturerIds }],
   };
+}
+
+function fragmentedFiveSksCandidate(kind: 'FIXED' | 'FLEXIBLE' = 'FLEXIBLE'): PreGACandidate {
+  return {
+    offeringId: 1607,
+    courseId: 16,
+    roomId: kind === 'FIXED' ? 31 : null,
+    lecturerIds: [77],
+    effectiveStudentCount: 30,
+    parallelSessionCount: 1,
+    sessionDuration: 5,
+    possibleTimeSlotIds: PHASE16_FRAGMENTED_SLOTS.map((slot) => slot.id),
+    possibleRoomIds: [31, 32],
+    isFixedRoom: kind === 'FIXED',
+    siblingOfferingIds: [1607],
+    lecturerPool: [77],
+    siblingLecturerGroups: [[77]],
+    longestContiguousRun: 3,
+    fragmentationRequired: true,
+  };
+}
+
+function phase16SlotDays(slotIds: number[]): string[] {
+  return slotIds.map((id) => PHASE16_LOOKUP.get(id)!.day);
 }
 
 describe('repairChromosome — Phase 15 #9 lecturer dimension', () => {
@@ -82,5 +119,71 @@ describe('repairChromosome — Phase 15 #9 lecturer dimension', () => {
     expect(repaired[0]!.sessions[0]!.roomId).toBe(1);
     expect(repaired[0]!.sessions[0]!.timeSlotIds).toEqual([1]);
     expect(repaired[0]!.sessions[0]!.lecturerIds).toEqual([20]);
+  });
+});
+
+describe('repairChromosome — Phase 16 #7 same-day fragmented fallback', () => {
+  it('repairs a conflicted FLEXIBLE session with same-day fragmented slots when no full contiguous block exists', () => {
+    const fragmentedCandidate = fragmentedFiveSksCandidate();
+    const chrom: Chromosome = [
+      {
+        kind: 'FLEXIBLE',
+        offeringId: fragmentedCandidate.offeringId,
+        sessions: [{
+          roomId: 31,
+          timeSlotIds: [101, 201, 102, 202, 103],
+          lecturerIds: [77],
+        }],
+      },
+      {
+        kind: 'FLEXIBLE',
+        offeringId: 999,
+        sessions: [{ roomId: 31, timeSlotIds: [101], lecturerIds: [999] }],
+      },
+    ];
+    const blocker = {
+      ...candidate(999, [999], [999]),
+      possibleTimeSlotIds: [101],
+      possibleRoomIds: [31],
+    };
+
+    const repaired = repairChromosome(chrom, [fragmentedCandidate, blocker], PHASE16_LOOKUP);
+    const session = repaired[0]!.sessions[0]!;
+
+    expect(session.timeSlotIds).toHaveLength(5);
+    expect(new Set(phase16SlotDays(session.timeSlotIds))).toEqual(new Set(['Mon']));
+    expect(session.roomId).toBe(32);
+  });
+
+  it('preserves FIXED room masking while replacing cross-day slots with same-day fragmented slots', () => {
+    const fragmentedCandidate = fragmentedFiveSksCandidate('FIXED');
+    const chrom: Chromosome = [
+      {
+        kind: 'FIXED',
+        offeringId: fragmentedCandidate.offeringId,
+        sessions: [{
+          roomId: 31,
+          timeSlotIds: [101, 201, 102, 202, 103],
+          lecturerIds: [77],
+        }],
+      },
+      {
+        kind: 'FLEXIBLE',
+        offeringId: 999,
+        sessions: [{ roomId: 31, timeSlotIds: [101], lecturerIds: [999] }],
+      },
+    ];
+    const blocker = {
+      ...candidate(999, [999], [999]),
+      possibleTimeSlotIds: [101],
+      possibleRoomIds: [31],
+    };
+
+    const repaired = repairChromosome(chrom, [fragmentedCandidate, blocker], PHASE16_LOOKUP);
+    const session = repaired[0]!.sessions[0]!;
+
+    expect(session.roomId).toBe(31);
+    expect(session.timeSlotIds).toHaveLength(5);
+    expect(new Set(phase16SlotDays(session.timeSlotIds))).toEqual(new Set(['Mon']));
   });
 });
