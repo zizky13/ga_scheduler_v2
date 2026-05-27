@@ -130,6 +130,114 @@ function pickDistinctBlocks(blocks: number[][], count: number): number[][] {
 }
 
 /**
+ * Phase 16 #4 (OQ-33 default — same-day only) — same-day-anchored session
+ * selector. Used as the fallback when `findContiguousSlots` returns zero
+ * blocks for the requested `duration` (i.e. no day holds a contiguous run
+ * of `duration` slots). Task #5 will share this helper with mutation and
+ * repair so all three layers stay in lockstep — divergent fallbacks would
+ * re-introduce the cross-day fragmentation bug Phase 16 fixes.
+ *
+ * Precedence (cited by the caller's `// note:` block):
+ *   A. Contiguous run ≥ duration on some day  → take the run's first
+ *      `duration` slots. This path is normally served by
+ *      `findContiguousSlots`; this helper still produces it as a graceful
+ *      fallback when the caller skipped that pre-check.
+ *   B. Day's longest run < duration           → take that run as the prefix,
+ *      then fill from the same day's next-best runs in length-desc order.
+ *      The resulting in-day gap is the fragmentation Phase 16 #6's
+ *      `fragmentationPenalty` measures; the GA evolves it down where the
+ *      timetable allows, the Timetable Management warning (#14) drives the
+ *      admin to fix the underlying timetable where it does not.
+ *   C. Picked day exhausted, still < duration → switch to the day with the
+ *      MOST available slots (may equal the path-B day if that day also has
+ *      the most slots), take its slots in run-order. Still same-day —
+ *      never crosses days, ever (OQ-33 default).
+ *
+ * Returns up to `duration` slot ids; may return fewer when no day has
+ * enough total slots. Callers should treat short returns as a degraded
+ * session and rely on `fragmentationPenalty` to surface it. Day-selection
+ * ties are broken uniformly at random so the GA seed retains some
+ * diversity even when the timetable's topology is symmetric.
+ */
+export function pickSameDaySessionSlots(
+  possibleTimeSlotIds: number[],
+  duration: number,
+  lookup: SlotLookup,
+): number[] {
+  if (duration <= 0) return [];
+
+  const resolved = possibleTimeSlotIds
+    .map(id => lookup.get(id))
+    .filter((ts): ts is TimeSlot => ts !== undefined);
+  if (resolved.length === 0) return [];
+
+  type DayProfile = {
+    day: string;
+    slots: TimeSlot[];
+    runs: TimeSlot[][];
+    longestRun: number;
+  };
+
+  const byDay = new Map<string, TimeSlot[]>();
+  for (const ts of resolved) {
+    const bucket = byDay.get(ts.day) ?? [];
+    bucket.push(ts);
+    byDay.set(ts.day, bucket);
+  }
+
+  const profiles: DayProfile[] = [];
+  for (const [day, slots] of byDay) {
+    slots.sort((a, b) => a.startTime.localeCompare(b.startTime));
+    const runs: TimeSlot[][] = [];
+    let start = 0;
+    for (let i = 1; i <= slots.length; i++) {
+      const continues = i < slots.length && slots[i - 1]!.endTime === slots[i]!.startTime;
+      if (!continues) {
+        runs.push(slots.slice(start, i));
+        start = i;
+      }
+    }
+    runs.sort((a, b) => b.length - a.length); // longest first
+    profiles.push({ day, slots, runs, longestRun: runs[0]?.length ?? 0 });
+  }
+
+  const longestRunLen = profiles.reduce((m, p) => Math.max(m, p.longestRun), 0);
+  const tiedLongest = profiles.filter(p => p.longestRun === longestRunLen);
+  const primary = tiedLongest[Math.floor(Math.random() * tiedLongest.length)]!;
+
+  const picked: number[] = [];
+  for (const run of primary.runs) {
+    for (const slot of run) {
+      if (picked.length >= duration) return picked;
+      picked.push(slot.id);
+    }
+  }
+  if (picked.length >= duration) return picked;
+
+  // Path C — primary day's total slots < duration. Switch to the day with the
+  // most available slots (still same-day per OQ-33). When the primary day is
+  // already the densest, we keep its result as-is — returning short is
+  // explicitly allowed (see docblock).
+  const mostSlots = profiles.reduce((m, p) => Math.max(m, p.slots.length), 0);
+  if (mostSlots > picked.length) {
+    const tiedMost = profiles.filter(p => p.slots.length === mostSlots);
+    const fallbackDay = tiedMost[Math.floor(Math.random() * tiedMost.length)]!;
+    if (fallbackDay.day !== primary.day) {
+      const alt: number[] = [];
+      for (const run of fallbackDay.runs) {
+        for (const slot of run) {
+          if (alt.length >= duration) return alt;
+          alt.push(slot.id);
+        }
+      }
+      if (alt.length > picked.length) return alt;
+    }
+  }
+
+  return picked;
+}
+
+/**
  * Create a typed gene from a candidate.
  * isFixedRoom=true  → FixedRoomGene (kind: 'FIXED'); roomId is immutable.
  * isFixedRoom=false → FlexibleGene  (kind: 'FLEXIBLE'); roomId is mutable.
@@ -234,16 +342,43 @@ export function createGeneFromCandidate(
         lecturerIds: pickLecturersForSession(i),
       }));
     } else {
-      // Fallback: no contiguous blocks available (edge case)
-      const shuffled = fisherYatesShuffle(candidate.possibleTimeSlotIds);
+      // note (Phase 16 #4 / OQ-33 default): the pre-Phase-16 fallback here
+      // was `fisherYatesShuffle(possibleTimeSlotIds).slice(i*sks, (i+1)*sks)`
+      // — a GLOBAL shuffle whose slices could span days, silently fragmenting
+      // any course whose sks exceeded the timetable's longest contiguous run
+      // (the primary bug Phase 16 fixes). Replaced with the same-day-anchored
+      // selector below; precedence:
+      //   A. Contiguous run ≥ sessionDuration on some day → use as-is.
+      //      (Normally handled by `findContiguousSlots` above; this branch
+      //      only runs when that returned []. The helper still produces
+      //      path A as a graceful fallback.)
+      //   B. Day's longest run < sessionDuration → take that run as the
+      //      prefix and fill from the same day's next-best runs (in-day
+      //      gap = fragmentation, surfaced by #6's fragmentationPenalty).
+      //   C. Day exhausted, still short → switch to the day with the MOST
+      //      available slots, still same-day (OQ-33 default — never crosses
+      //      days, ever).
+      // Each parallel session calls the helper independently; sessions may
+      // collide on slots and the GA evolves the conflict away. The original
+      // partition-by-slice did not avoid collisions either, so this is no
+      // worse on that axis.
       sessions = Array.from({ length: parallelSessionCount }, (_, i) => ({
         roomId: pickRoomForSession(),
-        timeSlotIds: shuffled.slice(i * sessionDuration, (i + 1) * sessionDuration),
+        timeSlotIds: pickSameDaySessionSlots(
+          candidate.possibleTimeSlotIds,
+          sessionDuration,
+          lookup,
+        ),
         lecturerIds: pickLecturersForSession(i),
       }));
     }
   } else {
-    // Legacy path (no lookup) — plain shuffle, kept for backward-compat
+    // Legacy no-lookup path — used only by unit tests that omit the SlotLookup.
+    // The same-day-anchored selector can't run without day metadata, so this
+    // branch keeps the shuffle-slice shape. Production callers (runGA) always
+    // supply a lookup, so the bug Phase 16 fixes cannot reach this path in
+    // real runs. Documented here so a future contributor doesn't promote
+    // this fallback to production semantics.
     const shuffled = fisherYatesShuffle(candidate.possibleTimeSlotIds);
     sessions = Array.from({ length: parallelSessionCount }, (_, i) => ({
       roomId: pickRoomForSession(),
