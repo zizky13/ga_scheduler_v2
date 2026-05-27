@@ -228,3 +228,62 @@ describe('scheduleAssignmentRecordsToChromosome (round-trip)', () => {
     );
   });
 });
+
+// Phase 15 task #27 — persistence round-trip for the canonical two-lecturer
+// team-teach session. Pins the contract the Phase 15 cohort model relies on:
+// when a session's `lecturerIds` is `[X, Y]`, (a) the write payload emits
+// one `ScheduleAssignmentLecturer` per lecturer in order, and (b) feeding
+// those rows back through the read mapper reconstructs the same gene shape.
+// Per the `feedback_mapper_tests.md` memory: fixture values stay rule-
+// agnostic (no domain rules baked into ids), and the assertions stay
+// focused on the mapper's actual behaviour rather than type-required field
+// presence already enforced by the compiler.
+describe('ScheduleAssignment mapper — Phase 15 #27 round-trip', () => {
+  it('round-trips a two-lecturer [X, Y] team-teach session through the join table', () => {
+    const X = 500;
+    const Y = 600;
+
+    const original: Chromosome = [
+      {
+        kind: 'FLEXIBLE',
+        offeringId: 42,
+        sessions: [
+          { roomId: 7, timeSlotIds: [1, 2, 3], lecturerIds: [X, Y] },
+        ],
+      },
+    ];
+
+    // Forward direction — chromosome → write payload. The mapper must emit
+    // one `lecturers.create` row per lecturer with the run id propagated and
+    // the original lecturer order preserved (mirrors the existing
+    // `CourseOfferingLecturer` mapper pattern).
+    const writes = chromosomeToScheduleAssignmentWrites('run-27', original);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]!.lecturers.create).toEqual([
+      { runId: 'run-27', lecturerId: X },
+      { runId: 'run-27', lecturerId: Y },
+    ]);
+
+    // Reverse direction — simulate what Prisma returns after the writes
+    // land, then feed it back through `scheduleAssignmentRecordsToChromosome`
+    // and confirm the round-trip preserves the lecturer list verbatim.
+    const records: ScheduleAssignmentRecord[] = writes.map((w, i) => ({
+      id: i + 1,
+      runId: w.runId,
+      offeringId: w.offeringId,
+      sessionIndex: w.sessionIndex,
+      roomId: w.roomId,
+      isFixedRoom: w.isFixedRoom,
+      manualOverride: false,
+      overriddenById: null,
+      overriddenAt: null,
+      notes: null,
+      timeSlotIds: w.slots.create.map(s => s.timeSlotId),
+      lecturerIds: w.lecturers.create.map(l => l.lecturerId),
+    }));
+
+    const rebuilt = scheduleAssignmentRecordsToChromosome(records);
+    expect(rebuilt).toEqual(original);
+    expect(rebuilt[0]!.sessions[0]!.lecturerIds).toEqual([X, Y]);
+  });
+});
