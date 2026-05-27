@@ -248,6 +248,43 @@ describe('buildBipartiteGraph — multi-slot block matching nodes', () => {
     expect(result.maximumAchievableMatching).toBe(1);
     expect(result.degradedOfferings).toEqual([42]);
   });
+
+  it('Phase 16 #10: marks a 5-SKS offering degraded when longest contiguous run is only 3 slots', () => {
+    // Monday and Tuesday each have a longest contiguous run of 3. No single
+    // day can hold this 5-SKS session, so SSA falls back to per-slot adjacency
+    // and records the offering for downstream fragmented-session visibility.
+    const slots = [
+      ...buildDay('Monday', 3, 1),
+      ...buildDay('Tuesday', 3, 10),
+    ];
+    const cand = candidate({
+      offeringId: 50,
+      sessionDuration: 5,
+      possibleTimeSlotIds: [1, 2, 3, 10, 11, 12],
+    });
+
+    const result = runSSA([cand], slots);
+
+    expect(result.status).toBe('FEASIBLE');
+    expect(result.maximumAchievableMatching).toBe(1);
+    expect(result.degradedOfferings).toContain(50);
+  });
+
+  it('Phase 16 #10: does not mark an offering degraded when a 5-slot contiguous run exists', () => {
+    const slots = buildDay('Monday', 5, 1);
+    const cand = candidate({
+      offeringId: 51,
+      sessionDuration: 5,
+      possibleTimeSlotIds: [1, 2, 3, 4, 5],
+    });
+
+    const result = runSSA([cand], slots);
+
+    expect(result.status).toBe('FEASIBLE');
+    expect(result.maximumAchievableMatching).toBe(1);
+    expect(result.degradedOfferings).not.toContain(51);
+    expect(result.degradedOfferings).toEqual([]);
+  });
 });
 
 // Phase 15 task #26 — SSA bipartite graph cohort awareness
