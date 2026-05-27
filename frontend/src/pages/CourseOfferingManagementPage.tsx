@@ -539,6 +539,30 @@ export function CourseOfferingManagementPage() {
       }))
   }, [form.courseId, offerings, editTarget])
 
+  // Phase 15 task #21 — shared-cohort info banner. Detects whether the chosen
+  // course already has another offering in the active semester that is NOT
+  // linked to `editTarget` via the parent-split tree. When true, the scheduler
+  // (`src/pre-ga/validator.ts` cohort aggregation) will merge them into a
+  // single cohort and split sessions across the union of lecturers — this
+  // banner just makes that behavior visible to the user. We exclude any
+  // offering that shares the parent-split tree with `editTarget` because the
+  // existing `parallelBanner` already covers that case.
+  const hasCohortSibling = useMemo(() => {
+    if (!activeSemesterId) return false
+    if (!form.courseId) return false
+    const editId = editTarget?.id ?? null
+    const editParentId = editTarget?.parentOfferingId ?? null
+    return allOfferings.some((o) => {
+      if (o.courseId !== form.courseId) return false
+      if (editId !== null && o.id === editId) return false
+      // Exclude parent-split relatives of editTarget so we don't double-banner.
+      if (editId !== null && o.parentOfferingId === editId) return false
+      if (editParentId !== null && o.id === editParentId) return false
+      if (editParentId !== null && o.parentOfferingId === editParentId) return false
+      return true
+    })
+  }, [activeSemesterId, form.courseId, allOfferings, editTarget])
+
   const courseOptions: SelectOption[] = useMemo(
     () => allCourses.map((c) => ({ value: String(c.id), label: `${c.code} — ${c.name}` })),
     [allCourses],
@@ -1302,6 +1326,18 @@ export function CourseOfferingManagementPage() {
             error={formErrors.courseId}
             required
           />
+
+          {/* Phase 15 task #21 — shared-cohort info banner */}
+          {hasCohortSibling && (
+            <div className={styles.parallelBanner}>
+              <Info size={14} className={styles.parallelBannerIcon} />
+              <span>
+                This course already has an offering in this semester. The scheduler will treat
+                both as <strong>ONE cohort</strong> and split the parallel sessions across all
+                assigned lecturers.
+              </span>
+            </div>
+          )}
 
           <NumberInput
             label="Effective Student Count"
