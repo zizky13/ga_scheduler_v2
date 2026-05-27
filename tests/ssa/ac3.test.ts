@@ -137,12 +137,13 @@ describe('runAC3 (techspec §10.1)', () => {
     expect(result.consistent).toBe(true);
   });
 
-  it('propagates shared-lecturer constraint between sibling sessions (Phase 11 OQ-19)', () => {
-    // Two sibling sessions of the SAME null-room offering — different
-    // sessionIndex, both roomId=null (per-session room decided post-SSA),
-    // sharing the same lecturer. Sibling A has [1,2] and B is forced to [1]:
-    // the shared-lecturer arc must prune slot 1 from A. The null roomIds must
-    // NOT introduce a spurious shared-room constraint.
+  it('does NOT propagate shared-lecturer constraint between sibling sessions (Phase 15 OQ-26)', () => {
+    // Two sibling sessions of the SAME cohort — different sessionIndex, both
+    // roomId=null (per-session room decided post-SSA), sharing the same
+    // lecturerPool. Phase 15 moves per-session lecturer distribution to the
+    // GA, so AC-3 must not prune slot 1 from sibling A just because sibling B
+    // is forced to slot 1. The null roomIds also must not introduce a
+    // spurious shared-room constraint.
     const graph = buildGraph([
       { sessionId: 100, offeringId: 1, sessionIndex: 0, roomId: null, lecturerIds: [500], domain: [1, 2] },
       { sessionId: 101, offeringId: 1, sessionIndex: 1, roomId: null, lecturerIds: [500], domain: [1] },
@@ -151,8 +152,21 @@ describe('runAC3 (techspec §10.1)', () => {
     const result = runAC3(graph);
 
     expect(result.consistent).toBe(true);
-    expect(Array.from(graph.adjacency.get(100)!).sort()).toEqual([2]);
+    expect(Array.from(graph.adjacency.get(100)!).sort()).toEqual([1, 2]);
     expect(Array.from(graph.adjacency.get(101)!).sort()).toEqual([1]);
+  });
+
+  it('still propagates shared-lecturer constraints across different cohorts', () => {
+    const graph = buildGraph([
+      { sessionId: 300, offeringId: 3, sessionIndex: 0, roomId: null, lecturerIds: [500], domain: [1, 2] },
+      { sessionId: 400, offeringId: 4, sessionIndex: 0, roomId: null, lecturerIds: [500], domain: [1] },
+    ]);
+
+    const result = runAC3(graph);
+
+    expect(result.consistent).toBe(true);
+    expect(Array.from(graph.adjacency.get(300)!).sort()).toEqual([2]);
+    expect(Array.from(graph.adjacency.get(400)!).sort()).toEqual([1]);
   });
 
   it('does NOT add shared-room constraint between null-room siblings (Phase 11 task #10)', () => {
