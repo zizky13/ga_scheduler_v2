@@ -16,6 +16,7 @@
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1.0 → 2.0 | Aligned the doc to techspec v2.0 / PRD v6.0. Specifically: added `[HC-COMPETENCY]` data fields (`Lecturer.competencies`, `Course.requiredCompetencies`) to §3 with the dual-target SQLite/Postgres encoding rule from `[ARCH-OBS-05]`; added the `COMPETENCY_MISMATCH` 422 `DomainError` code (§5.2, §6) as a Pre-GA per-offering rejection; added the `competencyMismatch` audit counter on `ScheduleRun` and `FitnessHistory` (§3.2, §5.3.8, §8); added a new runtime subsection (§7.x) describing `CompetencyEligibilityMap` construction via `isLecturerEligibleForCourse`; updated the §4.5 / §4.6 permission matrix to cover the two new fields; updated CRUD bodies in §5.3.5 / §5.3.6; added Zod validation rules for the two arrays in §6; opened OQ-9 in §9. |
 | 2.0 → 2.1 | Phase 11 — null-room parallel split. Added §7.2 documenting the orthogonal `parallelSessionCount` derivation regimes (pre-assigned-room → across timeslots vs null-room overflow → across rooms) and the new `capacityShortfallPenalty` soft constraint. New Pre-GA rejection codes `NO_FACILITY_MATCH` and `NO_CAPACITY_COMBINATION` apply to the null-room path (§5.2 codes list — non-breaking additions to `preGASummary.infeasible[].code`). New `capacityShortfallPenalty Int @default(0)` column on `ScheduleRun` and `FitnessHistory` (§3.2, §5.3.8). |
+| 2.1 → 2.2 | Phase 15 — shared-cohort lecturer distribution. New `ScheduleAssignmentLecturer` join table persists per-session lecturer assignments (§3.2, §3.3, §3.4). `GET /schedule-runs/:id` now surfaces `assignments[].sessions[].lecturerIds: number[]` (legacy runs surface `[]` per OQ-30). `PUT /schedule-runs/:id/assignments/:aid` body accepts an optional `lecturerIds: number[]` (`min(1)`, `max(16)`) — validated against the offering's `semesterId` (Phase 14 cross-semester guard → `CROSS_SEMESTER_REFERENCE` 400) and the course's `requiredCompetencies` (`[HC-COMPETENCY]` → `COMPETENCY_MISMATCH` 422). New Pre-GA rejection codes `COHORT_LECTURER_POOL_EMPTY` (defensive) and `EFFECTIVE_STUDENT_COUNT_MISMATCH` (policy-gated, off by default) — see techspec §5.3 / §6.3. |
 
 ---
 
@@ -290,9 +291,10 @@ model Lecturer {
   updatedAt       DateTime @updatedAt
   createdById     Int?                             // who entered this record (audit)
 
-  semester        Semester                  @relation(fields: [semesterId], references: [id], onDelete: Cascade)
-  preferredSlots  LecturerPreferredSlot[]
-  offerings       CourseOfferingLecturer[]
+  semester             Semester                     @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  preferredSlots       LecturerPreferredSlot[]
+  offerings            CourseOfferingLecturer[]
+  assignmentLecturers  ScheduleAssignmentLecturer[]   // Phase 15 — back-relation
 
   @@index([semesterId])
   @@index([isStructural])
@@ -468,10 +470,11 @@ model ScheduleRun {
   // Idempotency for run creation (see §7).
   idempotencyKey    String?    @unique
 
-  semester     Semester             @relation(fields: [semesterId], references: [id], onDelete: Restrict)
-  createdBy    User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  assignments  ScheduleAssignment[]
-  fitness      FitnessHistory[]
+  semester             Semester             @relation(fields: [semesterId], references: [id], onDelete: Restrict)
+  createdBy            User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  assignments          ScheduleAssignment[]
+  assignmentLecturers  ScheduleAssignmentLecturer[]   // Phase 15 — back-relation
+  fitness              FitnessHistory[]
 
   @@index([semesterId])
   @@index([createdById])
@@ -496,9 +499,10 @@ model ScheduleAssignment {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  run         ScheduleRun              @relation(fields: [runId], references: [id], onDelete: Cascade)
-  offering    CourseOffering           @relation(fields: [offeringId], references: [id], onDelete: Restrict)
+  run         ScheduleRun                  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  offering    CourseOffering               @relation(fields: [offeringId], references: [id], onDelete: Restrict)
   slots       ScheduleAssignmentSlot[]
+  lecturers   ScheduleAssignmentLecturer[]   // Phase 15 — per-session lecturers
 
   @@unique([runId, offeringId])
   @@index([runId])
@@ -514,6 +518,29 @@ model ScheduleAssignmentSlot {
 
   @@id([assignmentId, timeSlotId])
   @@map("schedule_assignment_slots")
+}
+
+// Phase 15 — per-session lecturer assignment for a ScheduleAssignment.
+// Persists the GeneSession.lecturerIds array as a join table so a single
+// assignment row can name multiple lecturers (team-teach, OQ-25) and so
+// multi-sibling cohorts can carry per-session distributions (OQ-24/26).
+// Legacy runs (pre-Phase-15) have no rows here; the API surfaces an empty
+// `lecturerIds: []` and the frontend renders a "Team teach (legacy)"
+// placeholder (OQ-30).
+model ScheduleAssignmentLecturer {
+  runId         String
+  assignmentId  Int
+  lecturerId    Int
+  assignedAt    DateTime @default(now())
+
+  run         ScheduleRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  assignment  ScheduleAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  lecturer    Lecturer           @relation(fields: [lecturerId], references: [id], onDelete: Restrict)
+
+  @@id([assignmentId, lecturerId])
+  @@index([runId])
+  @@index([lecturerId])
+  @@map("schedule_assignment_lecturers")
 }
 
 // Normalized fitness history — one row per generation.
@@ -582,6 +609,7 @@ Each entry below: purpose · key fields · relationships · indexes · TS-type m
 | `ScheduleRun`             | One execution of the Pre-GA → SSA → GA pipeline.                                                                                | techspec §8.2 `GARun`, plus `SchedulerResponse` and `GAResult`. |
 | `ScheduleAssignment`      | Final placement of one offering in the winning chromosome.                                                                      | `Gene` (post-run, persisted form).                              |
 | `ScheduleAssignmentSlot`  | The 1+ time slots that an assignment occupies.                                                                                  | `Gene.assignedTimeSlotIds[]`.                                   |
+| `ScheduleAssignmentLecturer` | Per-session lecturer assignment for a `ScheduleAssignment` (Phase 15). One row per `(assignment, lecturer)` pair; multi-row → team-teach (OQ-25). | `GeneSession.lecturerIds`.                                      |
 | `FitnessHistory`          | Per-generation row for chart queries.                                                                                           | `GAResult.history[]` + `GAResult.avgHistory[]`.                 |
 | `AuditLog`                | Tamper-evident trail of admin and user actions.                                                                                 | New entity (techspec §3.2 calls for a thesis audit log).        |
 
@@ -628,6 +656,10 @@ erDiagram
 
     ScheduleAssignment ||--o{ ScheduleAssignmentSlot : occupies
     TimeSlot ||--o{ ScheduleAssignmentSlot : usedBy
+
+    ScheduleAssignment ||--o{ ScheduleAssignmentLecturer : taughtBy
+    Lecturer ||--o{ ScheduleAssignmentLecturer : teaches
+    ScheduleRun ||--o{ ScheduleAssignmentLecturer : produces
 
     CourseOffering ||--o{ CourseOffering : parentOf
 ```
@@ -997,6 +1029,7 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
         "roomId": 3,
         "isFixedRoom": true,
         "manualOverride": false,
+        "lecturerIds": [12, 34],
         "slots": [{ "id": 1, "day": "MONDAY", "startTime": "08:00", "endTime": "10:00" }],
         "offering": { "id": 6, "courseCode": "IF301", "courseName": "Rekayasa Perangkat Lunak", "lecturers": [...] }
       }
@@ -1007,6 +1040,8 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
   }
   ```
 - Errors: 404 if not found, or if `user` and not the owner.
+
+**Phase 15 — per-session `lecturerIds` in the response.** Each `assignments[].sessions[].lecturerIds: number[]` is materialised from the `ScheduleAssignmentLecturer` join (§3.2) and surfaces the GA's per-session lecturer distribution (techspec §6.3). A single-element array is the common case (single-sibling cohort, single lecturer); multi-element arrays carry team-teach assignments (OQ-25). Pre-Phase-15 runs have no rows in `ScheduleAssignmentLecturer`; the API surfaces `lecturerIds: []` on every session and the frontend renders a "Team teach (legacy)" placeholder using `assignments[].offering.lecturers[]` as a fallback display set (OQ-30). The Zod response schema is `overrideAssignmentBodySchema`'s counterpart in `src/api/schemas/schedule-runs.ts:scheduleRunDetailResponseSchema`.
 
 **`GET /schedule-runs/:id/stream`** — Server-Sent Events. Recommendation: SSE over WebSocket (OQ-4) — the channel is one-way (worker → client), SSE auto-reconnects on the browser side, and there is no need for client-driven messages here. The HTTP request stays open and emits:
 
@@ -1025,9 +1060,16 @@ The endpoint terminates the stream on COMPLETED, FAILED, CANCELLED, SSA_INFEASIB
 
 **`PUT /schedule-runs/:id/assignments/:assignmentId`** — manual override. **Permitted for admin always; permitted for the run's owner only if `status === COMPLETED`** (you cannot edit a stagnated/infeasible/cancelled run — those have no schedule to fix; you cannot edit a running run — race condition).
 
-- Request: `{ "roomId"?: number, "timeSlotIds"?: number[], "notes"?: string }`
+- Request: `{ "roomId"?: number, "timeSlotIds"?: number[], "lecturerIds"?: number[], "notes"?: string }`. At least one field is required.
 - The server marks `manualOverride=true`, sets `overriddenById` and `overriddenAt`, and writes an `AuditLog` entry.
 - Validation: room and slot must belong to the same semester as the run; `timeSlotIds.length` must equal the offering's `requiredSessions` (computed per techspec §1.3).
+
+**Phase 15 — `lecturerIds` override.** The body accepts an optional `lecturerIds: number[]` field (Zod: `z.array(numericIdSchema).min(1).max(16).optional()` in `src/api/schemas/schedule-runs.ts:overrideAssignmentBodySchema`). When provided, the server validates two invariants (`assertOverrideLecturersValid` in `src/api/routes/schedule-runs.ts`):
+
+  1. Every referenced lecturer belongs to the same `semesterId` as the offering (Phase 14 cross-semester guard). Failures return **400 `CROSS_SEMESTER_REFERENCE`** as a `ValidationError`, with a `mismatches` payload naming each offending lecturer's actual `semesterId`.
+  2. Every lecturer's `competencies` overlaps the course's `requiredCompetencies` (`[HC-COMPETENCY]` — `hasCompetencyOverlap`). Failures return **422 `COMPETENCY_MISMATCH`** as a `DomainError`, with `requiredCompetencies` and the list of `mismatches` in the payload. An empty `requiredCompetencies` set passes trivially (open assignment, per techspec §5.5).
+
+A missing lecturer id (deleted/never existed) returns **400 `INVALID_REFERENCE`** with the missing ids — same envelope shape as other reference-integrity errors. On success, the server overwrites the `ScheduleAssignmentLecturer` rows for `assignmentId`, marks `manualOverride=true`, and writes an `AuditLog` entry whose `metadata.diff` carries `before.lecturerIds` and `after.lecturerIds` alongside the existing `roomId` / `timeSlotIds` / `notes` deltas.
 
 #### 5.3.9 Health
 
