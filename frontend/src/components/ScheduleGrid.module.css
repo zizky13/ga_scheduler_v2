@@ -107,9 +107,8 @@
 
 .blockCompact {
   min-height: auto;
-  flex-direction: row;
-  align-items: center;
-  gap: 0;
+  gap: 2px;
+  padding: 4px 10px;
 }
 
 /* Fixed offering: dashed left border + Lock icon */
@@ -169,6 +168,34 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Per-session lecturer assignment (Phase 15) */
+.lecturerPillRow {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.lecturerPill {
+  display: inline-block;
+  max-width: 100%;
+  padding: 1px 6px;
+  border: 1px solid var(--block-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--block-text);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lecturerPillLegacy {
+  border-style: dashed;
+  color: var(--color-secondary-500);
 }
 
 /* Line 4: session label for parallel splits */

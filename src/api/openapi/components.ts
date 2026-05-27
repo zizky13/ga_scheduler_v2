@@ -45,8 +45,37 @@ export const errorEnvelopeRef = {
  */
 export const errorResponses = {
   400: {
-    description: 'Validation failure (`code: VALIDATION_FAILED`).',
-    content: { 'application/json': { schema: errorEnvelopeRef } },
+    description:
+      'Validation failure (`code: VALIDATION_FAILED | INVALID_REFERENCE | CROSS_SEMESTER_REFERENCE`). `CROSS_SEMESTER_REFERENCE` surfaces a `details.metadata` payload `{ field, expectedSemesterId, mismatches: [{ id, actualSemesterId }] }` (or `fields` plural when more than one body field crosses semesters) so the frontend can highlight the offending row — see Phase 14 backlog tasks #4-#5.',
+    content: {
+      'application/json': {
+        schema: errorEnvelopeRef,
+        examples: {
+          // Phase 14 #5 — cross-semester reference rejected before the repo call
+          // in `src/api/routes/course-offerings.ts`. Real wire shape: the
+          // `metadata` object lives under `details` (see `ValidationError` in
+          // `src/api/errors.ts`); flat-`metadata` at the envelope top level
+          // is only the backlog's task-text shorthand.
+          crossSemesterReference: {
+            summary: 'CROSS_SEMESTER_REFERENCE — lecturer belongs to a different semester',
+            value: {
+              error: {
+                code: 'CROSS_SEMESTER_REFERENCE',
+                message:
+                  'Lecturer 42 belongs to semester 2024-GENAP but offering is in 2025-GANJIL.',
+                details: {
+                  metadata: {
+                    field: 'lecturerIds',
+                    expectedSemesterId: 7,
+                    mismatches: [{ id: 42, actualSemesterId: 5 }],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   },
   401: {
     description:

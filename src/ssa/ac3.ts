@@ -20,12 +20,7 @@ export function runAC3(graph: BipartiteGraph): AC3Result {
   // note (Phase 11 task #10 — sibling-session audit, OQ-19): for a null-room
   // overflow offering, every emitted sibling SessionNode carries `roomId: null`,
   // so the guard below correctly skips them — they don't get a spurious
-  // shared-room self-conflict. The shared-LECTURER constraint, however, MUST
-  // still fire between siblings (the same lecturer can't be in two parallel
-  // sessions at the same slot). That's handled by the lecturer index below,
-  // which makes no roomId distinction. Verified via the
-  // "propagates shared-lecturer constraint between sibling sessions" case in
-  // tests/ssa/ac3.test.ts.
+  // shared-room self-conflict.
   const roomToSessions = new Map<number, SessionNode[]>();
   for (const session of sessions) {
     if (session.roomId === null) continue;
@@ -49,6 +44,8 @@ export function runAC3(graph: BipartiteGraph): AC3Result {
   // Build worklist: pairs of sessions that share a resource
   const worklist: Array<[number, number]> = [];
   const addedPairs = new Set<string>();
+  const isSiblingSessionPair = (a: SessionNode, b: SessionNode): boolean =>
+    a.offeringId === b.offeringId && a.sessionIndex !== b.sessionIndex;
 
   function addPair(a: number, b: number) {
     const key = `${a}-${b}`;
@@ -70,6 +67,13 @@ export function runAC3(graph: BipartiteGraph): AC3Result {
   for (const [, lecSessions] of lecturerToSessions) {
     for (let i = 0; i < lecSessions.length; i++) {
       for (let j = i + 1; j < lecSessions.length; j++) {
+        // note (Phase 15 task #12 / OQ-26): sibling sessions of the same
+        // cohort may end up with different per-session lecturers in the GA.
+        // SSA only proves the cohort can be scheduled under some distribution
+        // of its lecturerPool, so it must not hard-propagate a shared-lecturer
+        // constraint between sibling sessions. Cross-cohort lecturer overlap
+        // remains a real hard constraint and is still propagated.
+        if (isSiblingSessionPair(lecSessions[i]!, lecSessions[j]!)) continue;
         addPair(lecSessions[i]!.sessionId, lecSessions[j]!.sessionId);
         addPair(lecSessions[j]!.sessionId, lecSessions[i]!.sessionId);
       }
@@ -97,9 +101,10 @@ export function runAC3(graph: BipartiteGraph): AC3Result {
       sessionI.roomId !== null &&
       sessionJ.roomId !== null &&
       sessionI.roomId === sessionJ.roomId;
-    const sharedLecturers = sessionI.lecturerIds.filter(id =>
-      sessionJ.lecturerIds.includes(id)
-    );
+    const enforceLecturerConstraint = !isSiblingSessionPair(sessionI, sessionJ);
+    const sharedLecturers = enforceLecturerConstraint
+      ? sessionI.lecturerIds.filter(id => sessionJ.lecturerIds.includes(id))
+      : [];
     const hasConstraint = shareRoom || sharedLecturers.length > 0;
     if (!hasConstraint) continue;
 
@@ -140,7 +145,9 @@ export function runAC3(graph: BipartiteGraph): AC3Result {
       // and contributes no spurious neighbours.
       const relatedSessions = [
         ...(sessionI.roomId !== null ? (roomToSessions.get(sessionI.roomId) ?? []) : []),
-        ...sessionI.lecturerIds.flatMap(id => lecturerToSessions.get(id) ?? []),
+        ...sessionI.lecturerIds
+          .flatMap(id => lecturerToSessions.get(id) ?? [])
+          .filter(s => !isSiblingSessionPair(sessionI, s)),
       ].filter(s => s.sessionId !== xi);
 
       for (const related of relatedSessions) {

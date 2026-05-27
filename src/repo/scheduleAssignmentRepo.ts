@@ -40,9 +40,9 @@ export async function persistScheduleAssignments(
   const writes = chromosomeToScheduleAssignmentWrites(runId, chromosome);
   if (writes.length === 0) return;
 
-  await prisma.$transaction(
-    writes.map((w) =>
-      prisma.scheduleAssignment.create({
+  await prisma.$transaction(async (tx) => {
+    for (const w of writes) {
+      const assignment = await tx.scheduleAssignment.create({
         data: {
           runId: w.runId,
           offeringId: w.offeringId,
@@ -51,9 +51,19 @@ export async function persistScheduleAssignments(
           isFixedRoom: w.isFixedRoom,
           slots: w.slots,
         },
-      }),
-    ),
-  );
+      });
+
+      if (w.lecturers.create.length > 0) {
+        await tx.scheduleAssignmentLecturer.createMany({
+          data: w.lecturers.create.map((l) => ({
+            runId: l.runId,
+            assignmentId: assignment.id,
+            lecturerId: l.lecturerId,
+          })),
+        });
+      }
+    }
+  });
 }
 
 /**
@@ -67,7 +77,13 @@ export async function loadScheduleAssignments(
 ): Promise<ScheduleAssignmentRecord[]> {
   const rows = await prisma.scheduleAssignment.findMany({
     where: { runId },
-    include: { slots: { select: { timeSlotId: true } } },
+    include: {
+      slots: { select: { timeSlotId: true } },
+      lecturers: {
+        select: { lecturerId: true },
+        orderBy: { lecturerId: 'asc' },
+      },
+    },
     orderBy: [{ offeringId: 'asc' }, { sessionIndex: 'asc' }],
   });
 

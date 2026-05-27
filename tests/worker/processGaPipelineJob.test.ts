@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 import type { Redis } from 'ioredis';
 
-import type { GAConfig, GAResult } from '../../src/types';
+import type { Chromosome, GAConfig, GAResult } from '../../src/types';
 import type { OrchestratorOutput } from '../../src/orchestrator';
 
 vi.mock('../../src/orchestrator', () => ({
@@ -179,8 +179,19 @@ describe('processGaPipelineJob', () => {
     const { prisma, runs, fitnessRows } = makePrismaStub([baseRun()]);
     const { redis, calls } = makeRedisStub();
 
+    const bestChromosome: Chromosome = [
+      {
+        kind: 'FLEXIBLE',
+        offeringId: 10,
+        sessions: [
+          { roomId: 1, timeSlotIds: [1, 2], lecturerIds: [500] },
+          { roomId: 2, timeSlotIds: [3, 4], lecturerIds: [600, 700] },
+        ],
+      },
+    ];
+
     const gaResult: GAResult = {
-      bestChromosome: [],
+      bestChromosome,
       bestFitness: 0.99,
       hardViolations: 0,
       softPenalty: 5,
@@ -271,7 +282,7 @@ describe('processGaPipelineJob', () => {
     expect(fitnessRows[2]).toMatchObject({ runId: 'run-1', generation: 3, bestFitness: 0.99 });
 
     expect(mockedPersist).toHaveBeenCalledTimes(1);
-    expect(mockedPersist).toHaveBeenCalledWith(prisma, 'run-1', gaResult.bestChromosome);
+    expect(mockedPersist).toHaveBeenCalledWith(prisma, 'run-1', bestChromosome);
 
     const events = decodedEvents(calls);
     expect(events.every((e) => e.channel === 'ga-progress:run-1')).toBe(true);

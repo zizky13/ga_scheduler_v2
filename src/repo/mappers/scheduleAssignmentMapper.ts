@@ -1,8 +1,8 @@
 /**
  * ScheduleAssignment mapper — Prisma `schedule_assignments` row (+ joined
- * `schedule_assignment_slots`) to a plain TS record, plus the inverse
- * direction: turning a GA `Chromosome` into the create-payloads the worker
- * will pass to `prisma.scheduleAssignment.createMany` / nested writes.
+ * `schedule_assignment_slots` + `schedule_assignment_lecturers`) to a plain
+ * TS record, plus the inverse direction: turning a GA `Chromosome` into the
+ * create-payloads the worker will pass to nested Prisma writes.
  *
  * Phase 1 task 11 (SKS Blocks, Persistence): each parallel session of a
  * `CourseOffering` is persisted as its own row, keyed by
@@ -15,7 +15,7 @@
 
 import type { Chromosome, Gene } from '../../types';
 
-/** Shape of a Prisma `schedule_assignments` row with its `slots` join. */
+/** Shape of a Prisma `schedule_assignments` row with its slot/lecturer joins. */
 export interface ScheduleAssignmentRow {
   id: number;
   runId: string;
@@ -28,6 +28,7 @@ export interface ScheduleAssignmentRow {
   overriddenAt: Date | null;
   notes: string | null;
   slots: ReadonlyArray<{ timeSlotId: number }>;
+  lecturers: ReadonlyArray<{ lecturerId: number }>;
 }
 
 /**
@@ -49,6 +50,12 @@ export interface ScheduleAssignmentRecord {
   notes: string | null;
   /** Contiguous, same-day slot ids (length === offering's sessionDuration). */
   timeSlotIds: number[];
+  /**
+   * Phase 15 #15 / OQ-29: per-session lecturers are stored in the
+   * `ScheduleAssignmentLecturer` join table. Legacy rows with no join entries
+   * surface as `[]` for OQ-30 backward compatibility.
+   */
+  lecturerIds: number[];
 }
 
 /** Read direction: Prisma row → domain record. */
@@ -67,6 +74,7 @@ export function mapScheduleAssignmentRow(
     overriddenAt: row.overriddenAt,
     notes: row.notes,
     timeSlotIds: row.slots.map((s) => s.timeSlotId),
+    lecturerIds: row.lecturers.map((l) => l.lecturerId),
   };
 }
 
@@ -83,6 +91,8 @@ export interface ScheduleAssignmentWriteInput {
   isFixedRoom: boolean;
   /** One entry per slot in the contiguous block. */
   slots: { create: Array<{ timeSlotId: number }> };
+  /** One entry per lecturer assigned to this persisted session. */
+  lecturers: { create: Array<{ runId: string; lecturerId: number }> };
 }
 
 /**
@@ -111,6 +121,13 @@ export function chromosomeToScheduleAssignmentWrites(
         isFixedRoom,
         slots: {
           create: session.timeSlotIds.map((timeSlotId) => ({ timeSlotId })),
+        },
+        // note (Phase 15 #15 / OQ-29): per-session lecturer assignment is a
+        // relational join, matching CourseOfferingLecturer's table-per-array
+        // pattern. `runId` is intentionally denormalized on the join row so
+        // read paths can filter by run without joining through assignments.
+        lecturers: {
+          create: session.lecturerIds.map((lecturerId) => ({ runId, lecturerId })),
         },
       });
     }
@@ -166,6 +183,10 @@ export function scheduleAssignmentRecordsToChromosome(
     const geneSessions = sessions.map((s) => ({
       roomId: s.roomId,
       timeSlotIds: [...s.timeSlotIds],
+      // note (Phase 15 #15 / OQ-29): persisted per-session lecturerIds come
+      // from ScheduleAssignmentLecturer. Legacy pre-Phase-15 assignments have
+      // no join rows, so they naturally reconstruct as [] for OQ-30.
+      lecturerIds: [...s.lecturerIds],
     }));
 
     const gene: Gene = isFixedRoom

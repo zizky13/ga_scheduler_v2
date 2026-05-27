@@ -40,6 +40,10 @@ export function buildBipartiteGraph(
     // Each parallel session of the same offering has identical eligibility,
     // so they share this set.
     const blockStarts = computeBlockStarts(candidate, lookup);
+    const lecturerIdsForSSA =
+      candidate.siblingOfferingIds.length > 1
+        ? candidate.lecturerPool
+        : candidate.lecturerIds;
 
     for (let i = 0; i < candidate.parallelSessionCount; i++) {
       const sessionId = candidate.offeringId * 100 + i;
@@ -65,7 +69,13 @@ export function buildBipartiteGraph(
         // gap means SSA may flag a configuration INFEASIBLE that OQ-18's
         // room-sharing could rescue. Acceptable for an admissibility check.
         roomId: candidate.roomId,
-        lecturerIds: candidate.lecturerIds,
+        // note (Phase 15 task #11): for multi-sibling cohort candidates, SSA
+        // stamps every SessionNode with the full `lecturerPool`, not the GA's
+        // eventual per-session distribution. SSA proves "this cohort can be
+        // scheduled under SOME distribution of lecturerPool across sessions";
+        // the GA then finds the actual per-session lecturer assignment. Single
+        // sibling candidates keep the legacy `lecturerIds` shape.
+        lecturerIds: [...lecturerIdsForSSA],
       });
       adjacency.set(sessionId, new Set(blockStarts));
       blockStarts.forEach(s => slotIdSet.add(s));

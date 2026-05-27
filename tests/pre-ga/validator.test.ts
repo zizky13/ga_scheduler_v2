@@ -214,3 +214,383 @@ describe('runPreGA — Phase 11 null-room overflow parallel split', () => {
     expect(validation.infeasible[0]!.offering.id).toBe(11);
   });
 });
+
+describe('runPreGA — Phase 15 #1 cohort aggregation (OQ-22 / OQ-23)', () => {
+  it('aggregates two same-course offerings into one cohort candidate with siblingOfferingIds.length === 2', () => {
+    // Two offerings sharing courseId=10 but with different lecturers and
+    // disagreeing effectiveStudentCount (40 vs 60). Per OQ-22 they form ONE
+    // cohort; per OQ-23 the cohort's effectiveStudentCount = max(siblings).
+    const rooms = [buildRoom(1, 80), buildRoom(2, 80)];
+    const timeSlots = buildTimeSlots(5);
+    const lecturerA: Lecturer = { ...buildLecturer(), id: 200 };
+    const lecturerB: Lecturer = { ...buildLecturer(), id: 201 };
+    const offeringPrimary: CourseOffering = {
+      id: 5,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerA],
+      effectiveStudentCount: 40,
+      isFixed: false,
+    };
+    const offeringSibling: CourseOffering = {
+      id: 7,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerB],
+      effectiveStudentCount: 60,
+      isFixed: false,
+    };
+
+    const { validation, candidates } = runPreGA(
+      [offeringSibling, offeringPrimary], // intentionally out of id order
+      timeSlots,
+      rooms,
+    );
+
+    expect(validation.infeasible).toEqual([]);
+    expect(validation.feasible).toHaveLength(2);
+    // ONE candidate per cohort, NOT one per offering.
+    expect(candidates).toHaveLength(1);
+
+    const candidate = candidates[0]!;
+    // Primary = lowest-id sibling (id=5).
+    expect(candidate.offeringId).toBe(5);
+    expect(candidate.courseId).toBe(10);
+    expect(candidate.siblingOfferingIds).toEqual([5, 7]);
+    // OQ-23 default: max(40, 60) = 60.
+    expect(candidate.effectiveStudentCount).toBe(60);
+    // `lecturerIds` keeps primary-only semantics for SSA back-compat.
+    expect(candidate.lecturerIds).toEqual([200]);
+    // Phase 15 #2: `lecturerPool` is the union of every sibling's lecturer
+    // ids, deduplicated and sorted ascending. Disjoint sets here → [200, 201].
+    expect(candidate.lecturerPool).toEqual([200, 201]);
+    // parallelSessionCount = ⌈60 / 80⌉ = 1 (primary.room.capacity).
+    expect(candidate.parallelSessionCount).toBe(1);
+  });
+
+  it('Phase 15 #2: lecturerPool deduplicates lecturers shared across siblings and sorts ascending', () => {
+    // Two siblings whose lecturer sets overlap on one shared id; the cohort's
+    // `lecturerPool` must collapse the duplicate and emit a sorted union.
+    // Picks shuffled ids so the ascending sort is observably load-bearing.
+    const rooms = [buildRoom(1, 80)];
+    const timeSlots = buildTimeSlots(5);
+    const lecturerA: Lecturer = { ...buildLecturer(), id: 305 };
+    const lecturerB: Lecturer = { ...buildLecturer(), id: 110 };
+    const lecturerC: Lecturer = { ...buildLecturer(), id: 220 };
+    const offeringPrimary: CourseOffering = {
+      id: 12,
+      courseId: 99,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerA, lecturerB], // [305, 110]
+      effectiveStudentCount: 30,
+      isFixed: false,
+    };
+    const offeringSibling: CourseOffering = {
+      id: 18,
+      courseId: 99,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerB, lecturerC], // [110, 220] — 110 overlaps
+      effectiveStudentCount: 30,
+      isFixed: false,
+    };
+
+    const { candidates } = runPreGA(
+      [offeringPrimary, offeringSibling],
+      timeSlots,
+      rooms,
+    );
+
+    expect(candidates).toHaveLength(1);
+    const candidate = candidates[0]!;
+    expect(candidate.siblingOfferingIds).toEqual([12, 18]);
+    // Primary-only lecturerIds — preserves insertion order from primary.
+    expect(candidate.lecturerIds).toEqual([305, 110]);
+    // Union {305, 110, 220} → dedup'd, ascending → [110, 220, 305].
+    expect(candidate.lecturerPool).toEqual([110, 220, 305]);
+  });
+
+  it('single-offering cohort emits a candidate structurally identical to today, with siblingOfferingIds = [offeringId]', () => {
+    // Backward-compatibility guard: the legacy "every fixture pre-Phase-15"
+    // shape must remain byte-identical aside from the new siblingOfferingIds.
+    const rooms = [buildRoom(1, 30)];
+    const timeSlots = buildTimeSlots(5);
+    const offering: CourseOffering = {
+      id: 42,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [buildLecturer()],
+      effectiveStudentCount: 20,
+      isFixed: false,
+    };
+
+    const { candidates } = runPreGA([offering], timeSlots, rooms);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.offeringId).toBe(42);
+    expect(candidates[0]!.siblingOfferingIds).toEqual([42]);
+    // parallelSessionCount unchanged from pre-Phase-15: ⌈20/30⌉ = 1.
+    expect(candidates[0]!.parallelSessionCount).toBe(1);
+    expect(candidates[0]!.effectiveStudentCount).toBe(20);
+  });
+
+  // Phase 15 task #4 case (c) — "single-offering cohort of one" — is covered
+  // by the test above ("single-offering cohort emits a candidate structurally
+  // identical to today..."). The two `it` blocks below cover cases (a) and (b).
+
+  it('Phase 15 #4(a): two same-course offerings at 97 students each yield one cohort candidate with parallelSessionCount = 4 (NOT 8)', () => {
+    // User's reported bug case (Phase 15 motivating example): 97 students +
+    // room cap 30 → 4 sessions distributed across siblings, not 4 per sibling
+    // = 8 total. Asserts the cohort aggregation produces ONE candidate whose
+    // parallelSessionCount reflects the unified student count, NOT the sum of
+    // per-offering session counts.
+    const rooms = [
+      buildRoom(1, 30),
+      buildRoom(2, 30),
+      buildRoom(3, 30),
+      buildRoom(4, 30),
+      buildRoom(5, 30),
+    ];
+    const timeSlots = buildTimeSlots(8);
+    const lecturerA: Lecturer = { ...buildLecturer(), id: 400 };
+    const lecturerB: Lecturer = { ...buildLecturer(), id: 401 };
+    const offeringPrimary: CourseOffering = {
+      id: 50,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: null,
+      room: null, // null-room overflow path (Phase 11)
+      lecturers: [lecturerA],
+      effectiveStudentCount: 97,
+      isFixed: false,
+    };
+    const offeringSibling: CourseOffering = {
+      id: 51,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: null,
+      room: null,
+      lecturers: [lecturerB],
+      effectiveStudentCount: 97,
+      isFixed: false,
+    };
+
+    const { validation, candidates } = runPreGA(
+      [offeringPrimary, offeringSibling],
+      timeSlots,
+      rooms,
+    );
+
+    expect(validation.infeasible).toEqual([]);
+    // ONE candidate per cohort, NOT two.
+    expect(candidates).toHaveLength(1);
+
+    const candidate = candidates[0]!;
+    expect(candidate.siblingOfferingIds).toHaveLength(2);
+    expect(candidate.siblingOfferingIds).toEqual([50, 51]);
+    // OQ-23 default with max-of-equals: max(97, 97) = 97.
+    expect(candidate.effectiveStudentCount).toBe(97);
+    // Load-bearing assertion: ⌈97 / 30⌉ = 4, NOT 4 + 4 = 8.
+    expect(candidate.parallelSessionCount).toBe(4);
+    // Union of disjoint singleton lecturer sets → [400, 401].
+    expect(candidate.lecturerPool).toEqual([400, 401]);
+    // Null-room overflow path (Phase 11): all 5 rooms qualify on facilities.
+    expect(candidate.possibleRoomIds).toBeDefined();
+    expect(candidate.possibleRoomIds).toEqual(expect.arrayContaining([1, 2, 3, 4, 5]));
+    expect(candidate.possibleRoomIds).toHaveLength(5);
+  });
+
+  it('Phase 15 #4(b): siblings disagreeing on effectiveStudentCount resolve to max per OQ-23 default', () => {
+    // OQ-23 default (b) `max(siblings)`: with 50 vs 100, the cohort's
+    // effectiveStudentCount must be 100 — NOT 50 (min), NOT 150 (sum), NOT 75
+    // (mean). Room capacity is intentionally large (200) so parallelSessionCount
+    // collapses to 1 and this test focuses on the max-aggregation rule in
+    // isolation. Flip-point: if OQ-23 is ever switched to (a) min, (c) mean, or
+    // (d) reject, grep for "OQ-23" here to find this regression guard.
+    const rooms = [buildRoom(1, 200)];
+    const timeSlots = buildTimeSlots(5);
+    const lecturerA: Lecturer = { ...buildLecturer(), id: 500 };
+    const lecturerB: Lecturer = { ...buildLecturer(), id: 501 };
+    const offeringPrimary: CourseOffering = {
+      id: 60,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerA],
+      effectiveStudentCount: 50,
+      isFixed: false,
+    };
+    const offeringSibling: CourseOffering = {
+      id: 61,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers: [lecturerB],
+      effectiveStudentCount: 100,
+      isFixed: false,
+    };
+
+    const { validation, candidates } = runPreGA(
+      [offeringPrimary, offeringSibling],
+      timeSlots,
+      rooms,
+    );
+
+    expect(validation.infeasible).toEqual([]);
+    expect(candidates).toHaveLength(1);
+    const candidate = candidates[0]!;
+    expect(candidate.siblingOfferingIds).toHaveLength(2);
+    expect(candidate.siblingOfferingIds).toEqual([60, 61]);
+    // OQ-23 default (b): max(50, 100) = 100.
+    expect(candidate.effectiveStudentCount).toBe(100);
+  });
+});
+
+describe('runPreGA — Phase 14 #6 mappingDefects rejection', () => {
+  // Inline helper that builds a clean offering and lets the caller overlay
+  // mappingDefects / room / roomId fields. Kept local to this describe so the
+  // existing buildRoom/buildCourse/buildLecturer/buildTimeSlots helpers above
+  // remain untouched (task constraint: additive only).
+  function buildOffering(overrides: Partial<CourseOffering> = {}): CourseOffering {
+    return {
+      id: 1,
+      courseId: 10,
+      course: buildCourse(),
+      roomId: null,
+      room: buildRoom(1, 30),
+      lecturers: [buildLecturer()],
+      effectiveStudentCount: 20,
+      isFixed: false,
+      ...overrides,
+    };
+  }
+
+  it('rejects an offering with missingLecturerIds while a clean sibling proceeds', () => {
+    const rooms = [buildRoom(1, 30)];
+    const timeSlots = buildTimeSlots(5);
+
+    const clean = buildOffering({ id: 100 });
+    const defective = buildOffering({
+      id: 200,
+      mappingDefects: { missingLecturerIds: [999] },
+    });
+
+    let result: ReturnType<typeof runPreGA> | undefined;
+    expect(() => {
+      result = runPreGA([clean, defective], timeSlots, rooms);
+    }).not.toThrow();
+
+    const { validation, candidates } = result!;
+
+    // Clean offering proceeds; defective offering is rejected.
+    expect(validation.feasible).toHaveLength(1);
+    expect(validation.feasible[0]!.id).toBe(100);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.offeringId).toBe(100);
+
+    expect(validation.infeasible).toHaveLength(1);
+    const entry = validation.infeasible[0]!;
+    expect(entry.offering.id).toBe(200);
+    expect(entry.failedCheck.code).toBe('CROSS_SEMESTER_DEFECT');
+
+    // Metadata envelope (matches src/pre-ga/checks.ts:checkIntegrity).
+    const metadata = entry.failedCheck.metadata as {
+      field: 'lecturerIds' | 'roomId';
+      expectedSemesterId?: number;
+      mismatches: Array<{ id: number; actualSemesterId?: number }>;
+      fields: Array<{
+        field: 'lecturerIds' | 'roomId';
+        expectedSemesterId?: number;
+        mismatches: Array<{ id: number; actualSemesterId?: number }>;
+      }>;
+    };
+    expect(metadata.field).toBe('lecturerIds');
+    expect(metadata.mismatches).toEqual([{ id: 999 }]);
+    expect(metadata.fields).toHaveLength(1);
+    expect(metadata.fields[0]!.field).toBe('lecturerIds');
+    expect(metadata.fields[0]!.mismatches).toEqual([{ id: 999 }]);
+  });
+
+  it('rejects an offering with missingRoomId and surfaces the roomId envelope', () => {
+    const rooms = [buildRoom(1, 30)];
+    const timeSlots = buildTimeSlots(5);
+
+    const offering = buildOffering({
+      id: 300,
+      roomId: null,
+      room: null,
+      mappingDefects: { missingRoomId: 42 },
+    });
+
+    const { validation, candidates } = runPreGA([offering], timeSlots, rooms);
+
+    expect(candidates).toEqual([]);
+    expect(validation.feasible).toEqual([]);
+    expect(validation.infeasible).toHaveLength(1);
+
+    const entry = validation.infeasible[0]!;
+    expect(entry.offering.id).toBe(300);
+    expect(entry.failedCheck.code).toBe('CROSS_SEMESTER_DEFECT');
+
+    const metadata = entry.failedCheck.metadata as {
+      field: 'lecturerIds' | 'roomId';
+      mismatches: Array<{ id: number }>;
+      fields: Array<{ field: 'lecturerIds' | 'roomId'; mismatches: Array<{ id: number }> }>;
+    };
+    expect(metadata.field).toBe('roomId');
+    expect(metadata.mismatches).toEqual([{ id: 42 }]);
+    expect(metadata.fields).toHaveLength(1);
+    expect(metadata.fields[0]!.field).toBe('roomId');
+    expect(metadata.fields[0]!.mismatches).toEqual([{ id: 42 }]);
+  });
+
+  it('surfaces both lecturer and room defects together in metadata.fields', () => {
+    const rooms = [buildRoom(1, 30)];
+    const timeSlots = buildTimeSlots(5);
+
+    const offering = buildOffering({
+      id: 400,
+      roomId: null,
+      room: null,
+      mappingDefects: {
+        missingLecturerIds: [999],
+        missingRoomId: 42,
+      },
+    });
+
+    const { validation } = runPreGA([offering], timeSlots, rooms);
+
+    expect(validation.infeasible).toHaveLength(1);
+    const entry = validation.infeasible[0]!;
+    expect(entry.failedCheck.code).toBe('CROSS_SEMESTER_DEFECT');
+
+    const metadata = entry.failedCheck.metadata as {
+      field: 'lecturerIds' | 'roomId';
+      mismatches: Array<{ id: number }>;
+      fields: Array<{ field: 'lecturerIds' | 'roomId'; mismatches: Array<{ id: number }> }>;
+    };
+
+    // checkIntegrity pushes the lecturer group first, then room — the top-level
+    // `field` / `mismatches` mirrors groups[0] (lecturerIds).
+    expect(metadata.field).toBe('lecturerIds');
+    expect(metadata.mismatches).toEqual([{ id: 999 }]);
+
+    // Both groups are surfaced in `fields[]`, in lecturer-then-room order.
+    expect(metadata.fields).toHaveLength(2);
+    expect(metadata.fields[0]!.field).toBe('lecturerIds');
+    expect(metadata.fields[0]!.mismatches).toEqual([{ id: 999 }]);
+    expect(metadata.fields[1]!.field).toBe('roomId');
+    expect(metadata.fields[1]!.mismatches).toEqual([{ id: 42 }]);
+  });
+});

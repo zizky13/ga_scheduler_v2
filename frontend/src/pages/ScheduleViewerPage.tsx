@@ -12,7 +12,11 @@ import { Button } from '../components/Button';
 import { TimetableGrid, GRID_COL_OFFSET, GRID_ROW_OFFSET } from '../components/TimetableGrid';
 import { CourseBlock, getCategoryForCompetencies } from '../components/CourseBlock';
 import { ManualOverrideModal } from '../components/ManualOverrideModal';
-import type { OverrideTarget, OtherSession } from '../components/ManualOverrideModal';
+import type {
+  OverrideTarget,
+  OtherSession,
+  LecturerOption,
+} from '../components/ManualOverrideModal';
 import type { GridDensity } from '../components/TimetableGrid';
 import { useToastStore } from '../store/toastStore';
 import { useAuthStore } from '../store/authStore';
@@ -49,6 +53,7 @@ interface SessionWire {
   roomId: number;
   isFixedRoom: boolean;
   manualOverride: boolean;
+  lecturerIds: number[];
   timeSlots: TimeSlotInfo[];
 }
 
@@ -66,6 +71,7 @@ interface GroupedAssignmentWire {
 interface RunDetail {
   id: string;
   status: string;
+  semesterId: number;
   createdById: number;
   bestFitness: number;
   hardViolations: number;
@@ -90,6 +96,23 @@ interface RoomWire {
   capacity: number;
 }
 
+interface LecturerWire {
+  id: number;
+  name: string;
+  semesterId: number;
+  competencies: string[];
+}
+
+interface CourseOfferingWire {
+  id: number;
+  courseId: number;
+}
+
+interface CourseWire {
+  id: number;
+  requiredCompetencies: string[];
+}
+
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
 const VIEWABLE_STATUSES: RunStatus[] = ['COMPLETED', 'STAGNATED'];
 
@@ -100,6 +123,13 @@ const WEEKDAY_MAP: Record<string, string> = {
 
 function normalizeDay(day: string): string {
   return WEEKDAY_MAP[day] ?? day;
+}
+
+interface SessionLecturerDisplay {
+  ids: number[];
+  label: string;
+  tooltip: string;
+  legacy: boolean;
 }
 
 /* ── Helpers ── */
@@ -118,6 +148,44 @@ function formatDuration(ms: number | null): string {
   return `${minutes}m ${seconds}s`;
 }
 
+function resolveSessionLecturers(
+  group: GroupedAssignmentWire,
+  session: SessionWire,
+  lecturerNameById: Map<number, string> = new Map(),
+): SessionLecturerDisplay {
+  const offeringLecturerNames = group.offering.lecturers.map((l) => l.name);
+  const offeringLecturerNameById = new Map(group.offering.lecturers.map((l) => [l.id, l.name]));
+
+  if (session.lecturerIds.length === 0) {
+    const fallbackNames = offeringLecturerNames.join(', ');
+    return {
+      ids: group.offering.lecturers.map((l) => l.id),
+      label: 'Team teach',
+      tooltip: fallbackNames ? `Team teach (legacy): ${fallbackNames}` : 'Team teach (legacy)',
+      legacy: true,
+    };
+  }
+
+  const names = session.lecturerIds.map(
+    (id) => lecturerNameById.get(id) ?? offeringLecturerNameById.get(id) ?? `Lecturer #${id}`,
+  );
+  return {
+    ids: session.lecturerIds,
+    label: names.join(', '),
+    tooltip: names.join(', '),
+    legacy: false,
+  };
+}
+
+function sessionMatchesLecturer(
+  group: GroupedAssignmentWire,
+  session: SessionWire,
+  lecturerId: number,
+): boolean {
+  if (session.lecturerIds.length > 0) return session.lecturerIds.includes(lecturerId);
+  return group.offering.lecturers.some((l) => l.id === lecturerId);
+}
+
 /* ── Component ── */
 
 export function ScheduleViewerPage() {
@@ -131,6 +199,7 @@ export function ScheduleViewerPage() {
   const [runDetail, setRunDetail] = useState<RunDetail | null>(null);
   const [rooms, setRooms] = useState<RoomWire[]>([]);
   const [allTimeslots, setAllTimeslots] = useState<TimeslotFull[]>([]);
+  const [allLecturers, setAllLecturers] = useState<LecturerWire[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -147,6 +216,7 @@ export function ScheduleViewerPage() {
   // Override modal
   const [overrideTarget, setOverrideTarget] = useState<OverrideTarget | null>(null);
   const [overrideModalOpen, setOverrideModalOpen] = useState(false);
+  const [overrideRequiredCompetencies, setOverrideRequiredCompetencies] = useState<string[]>([]);
 
   /* ── Close export dropdown on outside click ── */
 
@@ -212,6 +282,29 @@ export function ScheduleViewerPage() {
       .catch(() => {});
   }, []);
 
+  /* ── Fetch lecturers scoped to the run's semester (Phase 14 #1) ── */
+
+  useEffect(() => {
+    const semesterId = runDetail?.semesterId;
+    if (!semesterId) {
+      setAllLecturers([]);
+      return;
+    }
+    let cancelled = false;
+    get<ListResponse<LecturerWire>>('/lecturers', {
+      page: 1,
+      pageSize: 500,
+      semesterId,
+    })
+      .then((res) => {
+        if (!cancelled) setAllLecturers(res.data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [runDetail?.semesterId]);
+
   /* ── Fetch run detail when selection changes ── */
 
   useEffect(() => {
@@ -248,6 +341,17 @@ export function ScheduleViewerPage() {
     for (const r of rooms) m.set(r.id, r);
     return m;
   }, [rooms]);
+
+  const lecturerNameById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const lecturer of allLecturers) m.set(lecturer.id, lecturer.name);
+    if (runDetail) {
+      for (const group of runDetail.assignments) {
+        for (const lecturer of group.offering.lecturers) m.set(lecturer.id, lecturer.name);
+      }
+    }
+    return m;
+  }, [allLecturers, runDetail]);
 
   /* ── Derive time labels from assignments ── */
 
@@ -297,7 +401,12 @@ export function ScheduleViewerPage() {
     if (runDetail) {
       for (const group of runDetail.assignments) {
         for (const lec of group.offering.lecturers) lecs.set(lec.id, lec.name);
-        for (const session of group.sessions) rIds.add(session.roomId);
+        for (const session of group.sessions) {
+          rIds.add(session.roomId);
+          for (const lecturerId of session.lecturerIds) {
+            lecs.set(lecturerId, lecturerNameById.get(lecturerId) ?? `Lecturer #${lecturerId}`);
+          }
+        }
       }
     }
     return {
@@ -308,13 +417,13 @@ export function ScheduleViewerPage() {
       }),
       uniqueLecturers: [...lecs.entries()].sort((a, b) => a[1].localeCompare(b[1])),
     };
-  }, [runDetail, roomMap]);
+  }, [runDetail, roomMap, lecturerNameById]);
 
   /* ── Filter logic ── */
 
   const isBlockFiltered = useCallback((group: GroupedAssignmentWire, session: SessionWire): boolean => {
     if (filterRoom && session.roomId !== Number(filterRoom)) return true;
-    if (filterLecturer && !group.offering.lecturers.some((l) => l.id === Number(filterLecturer))) return true;
+    if (filterLecturer && !sessionMatchesLecturer(group, session, Number(filterLecturer))) return true;
     if (filterDay && !session.timeSlots.some((s) => normalizeDay(s.day) === filterDay)) return true;
     if (filterCourse && !group.offering.courseCode.toLowerCase().includes(filterCourse.toLowerCase())
       && !group.offering.courseName.toLowerCase().includes(filterCourse.toLowerCase())) return true;
@@ -340,14 +449,15 @@ export function ScheduleViewerPage() {
     const firstSlot = sortedSlots[0];
     const lastSlot = sortedSlots[sortedSlots.length - 1];
     const room = roomMap.get(session.roomId);
+    const sessionLecturers = resolveSessionLecturers(group, session, lecturerNameById);
 
     setOverrideTarget({
       assignmentId: session.assignmentId,
       sessionIndex: session.sessionIndex,
       courseCode: group.offering.courseCode,
       courseName: group.offering.courseName,
-      lecturerIds: group.offering.lecturers.map((l) => l.id),
-      lecturerNames: group.offering.lecturers.map((l) => l.name).join(', '),
+      lecturerIds: sessionLecturers.ids,
+      lecturerNames: sessionLecturers.tooltip,
       currentRoomId: session.roomId,
       currentRoomName: room?.name ?? `Room ${session.roomId}`,
       currentDay: normalizeDay(firstSlot.day),
@@ -356,7 +466,26 @@ export function ScheduleViewerPage() {
       manualOverride: session.manualOverride,
       currentSlotIds: sortedSlots.map((s) => s.id),
     });
+    setOverrideRequiredCompetencies([]);
     setOverrideModalOpen(true);
+
+    // The runDetail wire doesn't carry courseId / requiredCompetencies on the
+    // grouped offering payload (see src/api/routes/schedule-runs.ts:386-395),
+    // so fetch offering → course lazily to scope the lecturer picker by the
+    // course's required competencies. Backend re-validates server-side either way.
+    (async () => {
+      try {
+        const offering = await get<CourseOfferingWire>(
+          `/course-offerings/${group.offeringId}`,
+        );
+        const course = await get<CourseWire>(`/courses/${offering.courseId}`);
+        setOverrideRequiredCompetencies(course.requiredCompetencies);
+      } catch {
+        // Non-fatal — picker degrades to "no competency filter" (every
+        // semester-scoped lecturer eligible). Server still validates.
+        setOverrideRequiredCompetencies([]);
+      }
+    })();
   }
 
   const otherSessions: OtherSession[] = useMemo(() => {
@@ -365,17 +494,36 @@ export function ScheduleViewerPage() {
     for (const group of runDetail.assignments) {
       for (const session of group.sessions) {
         if (session.assignmentId === overrideTarget.assignmentId) continue;
-        result.push({
+        const sortedSlots = [...session.timeSlots].sort((a, b) =>
+          a.startTime.localeCompare(b.startTime),
+        );
+        const first = sortedSlots[0];
+        const last = sortedSlots[sortedSlots.length - 1];
+        const timeRange = first && last ? `${first.startTime}–${last.endTime}` : undefined;
+        const entry: OtherSession = {
           assignmentId: session.assignmentId,
           roomId: session.roomId,
           timeSlotIds: session.timeSlots.map((s) => s.id),
-          lecturerIds: group.offering.lecturers.map((l) => l.id),
+          lecturerIds: resolveSessionLecturers(group, session, lecturerNameById).ids,
           courseCode: group.offering.courseCode,
-        });
+        };
+        if (timeRange !== undefined) entry.timeRange = timeRange;
+        result.push(entry);
       }
     }
     return result;
-  }, [runDetail, overrideTarget]);
+  }, [runDetail, overrideTarget, lecturerNameById]);
+
+  const lecturerOptions: LecturerOption[] = useMemo(
+    () =>
+      allLecturers.map((l) => ({
+        id: l.id,
+        name: l.name,
+        semesterId: l.semesterId,
+        competencies: l.competencies,
+      })),
+    [allLecturers],
+  );
 
   function handleOverrideSaved() {
     if (selectedRunId) {
@@ -396,7 +544,7 @@ export function ScheduleViewerPage() {
     for (const group of runDetail.assignments) {
       for (const session of group.sessions) {
         if (hasActiveFilters && isBlockFiltered(group, session)) continue;
-        const lecturers = group.offering.lecturers.map((l) => l.name).join('; ');
+        const lecturers = resolveSessionLecturers(group, session, lecturerNameById).tooltip;
         const room = roomMap.get(session.roomId);
         const roomName = room?.name ?? `Room ${session.roomId}`;
         const sortedSlots = [...session.timeSlots].sort((a, b) => a.startTime.localeCompare(b.startTime));
@@ -425,7 +573,7 @@ export function ScheduleViewerPage() {
     URL.revokeObjectURL(url);
     setExportOpen(false);
     addToast({ type: 'success', title: 'Exported', message: 'Schedule exported as CSV.' });
-  }, [runDetail, roomMap, hasActiveFilters, isBlockFiltered, addToast]);
+  }, [runDetail, roomMap, hasActiveFilters, isBlockFiltered, lecturerNameById, addToast]);
 
   /* ── Print ── */
 
@@ -601,14 +749,15 @@ export function ScheduleViewerPage() {
                 const firstSlot = sortedSlots[0];
                 const lastSlot = sortedSlots[sortedSlots.length - 1];
 
-                const dayIdx = filteredDays.indexOf(normalizeDay(firstSlot.day));
+                const normalizedDay = normalizeDay(firstSlot.day);
+                const dayIdx = filteredDays.findIndex((day) => day === normalizedDay);
                 if (dayIdx === -1) return null;
 
                 const rowIdx = startTimeToRow.get(firstSlot.startTime);
                 if (rowIdx === undefined) return null;
 
                 const room = roomMap.get(session.roomId);
-                const lecturerNames = group.offering.lecturers.map((l) => l.name).join(', ');
+                const sessionLecturers = resolveSessionLecturers(group, session, lecturerNameById);
                 const isParallel = group.sessions.length > 1;
                 const isFixed = session.isFixedRoom;
                 const category = isFixed ? 'fixed' : getCategoryForCompetencies([]);
@@ -619,7 +768,10 @@ export function ScheduleViewerPage() {
                     key={`${group.offeringId}-${session.sessionIndex}`}
                     courseCode={group.offering.courseCode}
                     courseName={group.offering.courseName}
-                    lecturers={lecturerNames}
+                    lecturers={sessionLecturers.tooltip}
+                    lecturerPillLabel={sessionLecturers.label}
+                    lecturerPillTitle={sessionLecturers.tooltip}
+                    legacyLecturers={sessionLecturers.legacy}
                     roomName={room?.name ?? `Room ${session.roomId}`}
                     roomCapacity={room?.capacity}
                     sessionLabel={isParallel ? `Sesi ${String.fromCharCode(65 + session.sessionIndex)}` : undefined}
@@ -686,6 +838,9 @@ export function ScheduleViewerPage() {
         otherSessions={otherSessions}
         rooms={rooms}
         timeslots={allTimeslots}
+        lecturers={lecturerOptions}
+        semesterId={runDetail?.semesterId ?? null}
+        requiredCompetencies={overrideRequiredCompetencies}
         onSaved={handleOverrideSaved}
       />
     </>

@@ -302,24 +302,29 @@ describe("mapCourseOfferingRow", () => {
     expect(off.parentOfferingId).toBe(500);
   });
 
-  it("throws when a referenced lecturer id is missing from the map", () => {
-    expect(() =>
-      mapCourseOfferingRow(
-        {
-          id: 503,
-          courseId: course.id,
-          roomId: room.id,
-          effectiveStudentCount: 25,
-          isFixed: false,
-          parentOfferingId: null,
-          lecturers: [{ lecturerId: 9999 }],
-          fixedSlots: [],
-        },
-        lecturerById,
-        roomById,
-        courseById,
-      ),
-    ).toThrow(/Lecturer 9999 referenced by offering 503 not found/);
+  it("Phase 14 #6: records missing lecturer ids in mappingDefects instead of throwing", () => {
+    const off = mapCourseOfferingRow(
+      {
+        id: 503,
+        courseId: course.id,
+        roomId: room.id,
+        effectiveStudentCount: 25,
+        isFixed: false,
+        parentOfferingId: null,
+        lecturers: [{ lecturerId: lecturerA.id }, { lecturerId: 9999 }],
+        fixedSlots: [],
+      },
+      lecturerById,
+      roomById,
+      courseById,
+    );
+    // The good lecturer is preserved; the orphan is dropped.
+    expect(off.lecturers).toEqual([lecturerA]);
+    // The orphan id surfaces via mappingDefects for Pre-GA to consume.
+    expect(off.mappingDefects).toBeDefined();
+    expect(off.mappingDefects!.missingLecturerIds).toEqual([9999]);
+    // Room path is clean here, so no missingRoomId is recorded.
+    expect(off.mappingDefects!.missingRoomId).toBeUndefined();
   });
 
   it("passes through null room/roomId when the offering has no assigned room (Phase 7)", () => {
@@ -342,24 +347,72 @@ describe("mapCourseOfferingRow", () => {
     expect(off.room).toBeNull();
   });
 
-  it("throws when a referenced room id is missing from the map", () => {
-    expect(() =>
-      mapCourseOfferingRow(
-        {
-          id: 504,
-          courseId: course.id,
-          roomId: 8888,
-          effectiveStudentCount: 25,
-          isFixed: false,
-          parentOfferingId: null,
-          lecturers: [],
-          fixedSlots: [],
-        },
-        lecturerById,
-        roomById,
-        courseById,
-      ),
-    ).toThrow(/Room 8888 referenced by offering 504 not found/);
+  it("Phase 14 #6: records a missing room id in mappingDefects instead of throwing", () => {
+    const off = mapCourseOfferingRow(
+      {
+        id: 504,
+        courseId: course.id,
+        roomId: 8888,
+        effectiveStudentCount: 25,
+        isFixed: false,
+        parentOfferingId: null,
+        lecturers: [],
+        fixedSlots: [],
+      },
+      lecturerById,
+      roomById,
+      courseById,
+    );
+    // roomId is preserved on the offering so Pre-GA can name the orphan,
+    // but the `room` relation is forced to null.
+    expect(off.roomId).toBe(8888);
+    expect(off.room).toBeNull();
+    expect(off.mappingDefects).toBeDefined();
+    expect(off.mappingDefects!.missingRoomId).toBe(8888);
+    expect(off.mappingDefects!.missingLecturerIds).toBeUndefined();
+  });
+
+  it("Phase 14 #6: records both missing lecturer and missing room in one offering", () => {
+    const off = mapCourseOfferingRow(
+      {
+        id: 507,
+        courseId: course.id,
+        roomId: 7777,
+        effectiveStudentCount: 25,
+        isFixed: false,
+        parentOfferingId: null,
+        lecturers: [{ lecturerId: 6666 }],
+        fixedSlots: [],
+      },
+      lecturerById,
+      roomById,
+      courseById,
+    );
+    expect(off.room).toBeNull();
+    expect(off.lecturers).toEqual([]);
+    expect(off.mappingDefects).toBeDefined();
+    expect(off.mappingDefects!.missingLecturerIds).toEqual([6666]);
+    expect(off.mappingDefects!.missingRoomId).toBe(7777);
+  });
+
+  it("Phase 14 #6: omits mappingDefects entirely when the offering is clean", () => {
+    const off = mapCourseOfferingRow(
+      {
+        id: 508,
+        courseId: course.id,
+        roomId: room.id,
+        effectiveStudentCount: 25,
+        isFixed: false,
+        parentOfferingId: null,
+        lecturers: [{ lecturerId: lecturerA.id }],
+        fixedSlots: [],
+      },
+      lecturerById,
+      roomById,
+      courseById,
+    );
+    expect(off.mappingDefects).toBeUndefined();
+    expect("mappingDefects" in off).toBe(false);
   });
 
   it("throws when a referenced course id is missing from the map", () => {

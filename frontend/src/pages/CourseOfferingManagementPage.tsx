@@ -69,6 +69,7 @@ interface RoomWire {
 
 interface LecturerWire {
   id: number
+  semesterId: number
   name: string
   maxSks: number
   competencies: string[]
@@ -119,6 +120,8 @@ interface FormErrors {
   roomId?: string
   effectiveStudentCount?: string
   lecturerIds?: string
+  parentOfferingId?: string
+  fixedTimeSlotIds?: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -390,10 +393,10 @@ export function CourseOfferingManagementPage() {
             page: 1,
             pageSize: 5000,
           }),
-          get<ListResponse<CourseWire>>('/courses', { page: 1, pageSize: 5000 }),
-          get<ListResponse<RoomWire>>('/rooms', { page: 1, pageSize: 500 }),
-          get<ListResponse<LecturerWire>>('/lecturers', { page: 1, pageSize: 500 }),
-          get<ListResponse<TimeSlotWire>>('/timeslots', { page: 1, pageSize: 500 }),
+          get<ListResponse<CourseWire>>('/courses', { ...semesterScope, page: 1, pageSize: 5000 }),
+          get<ListResponse<RoomWire>>('/rooms', { ...semesterScope, page: 1, pageSize: 5000 }),
+          get<ListResponse<LecturerWire>>('/lecturers', { ...semesterScope, page: 1, pageSize: 5000 }),
+          get<ListResponse<TimeSlotWire>>('/timeslots', { ...semesterScope, page: 1, pageSize: 5000 }),
           get<ListResponse<LockedRoomWire>>('/locked-rooms', {
             ...semesterScope,
             page: 1,
@@ -536,6 +539,30 @@ export function CourseOfferingManagementPage() {
       }))
   }, [form.courseId, offerings, editTarget])
 
+  // Phase 15 task #21 — shared-cohort info banner. Detects whether the chosen
+  // course already has another offering in the active semester that is NOT
+  // linked to `editTarget` via the parent-split tree. When true, the scheduler
+  // (`src/pre-ga/validator.ts` cohort aggregation) will merge them into a
+  // single cohort and split sessions across the union of lecturers — this
+  // banner just makes that behavior visible to the user. We exclude any
+  // offering that shares the parent-split tree with `editTarget` because the
+  // existing `parallelBanner` already covers that case.
+  const hasCohortSibling = useMemo(() => {
+    if (!activeSemesterId) return false
+    if (!form.courseId) return false
+    const editId = editTarget?.id ?? null
+    const editParentId = editTarget?.parentOfferingId ?? null
+    return allOfferings.some((o) => {
+      if (o.courseId !== form.courseId) return false
+      if (editId !== null && o.id === editId) return false
+      // Exclude parent-split relatives of editTarget so we don't double-banner.
+      if (editId !== null && o.parentOfferingId === editId) return false
+      if (editParentId !== null && o.id === editParentId) return false
+      if (editParentId !== null && o.parentOfferingId === editParentId) return false
+      return true
+    })
+  }, [activeSemesterId, form.courseId, allOfferings, editTarget])
+
   const courseOptions: SelectOption[] = useMemo(
     () => allCourses.map((c) => ({ value: String(c.id), label: `${c.code} — ${c.name}` })),
     [allCourses],
@@ -587,11 +614,15 @@ export function CourseOfferingManagementPage() {
 
   const lecturerOptions = useMemo(
     () =>
-      allLecturers.map((l) => ({
-        value: String(l.id),
-        label: l.competencies.length > 0 ? `${l.name} — ${l.competencies.join(', ')}` : l.name,
-      })),
-    [allLecturers],
+      // Phase 14 #3 — defensive filter against stale cache; Phase 14 #1 already
+      // scopes the fetch, this is belt-and-suspenders.
+      allLecturers
+        .filter((l) => l.semesterId === activeSemesterId)
+        .map((l) => ({
+          value: String(l.id),
+          label: l.competencies.length > 0 ? `${l.name} — ${l.competencies.join(', ')}` : l.name,
+        })),
+    [allLecturers, activeSemesterId],
   )
 
   /* ── Create / Edit ── */
@@ -724,11 +755,92 @@ export function CourseOfferingManagementPage() {
       fetchData(page, pageSize)
     } catch (err) {
       const e = err as ApiRequestError
-      addToast({
-        type: 'error',
-        title: editTarget ? 'Failed to update' : 'Failed to create',
-        message: e.message,
-      })
+      // Phase 14 #9: richer toast + per-field inline highlight for
+      // CROSS_SEMESTER_REFERENCE. Read metadata.fields (plural, source of
+      // truth) defensively, falling back to a synthetic single-entry array
+      // built from the singular metadata keys if absent.
+      if (e.code === 'CROSS_SEMESTER_REFERENCE') {
+        const metadata =
+          e.details && typeof e.details === 'object'
+            ? ((e.details as Record<string, unknown>).metadata as
+                | Record<string, unknown>
+                | undefined)
+            : undefined
+
+        type Mismatch = { id: number; actualSemesterId: number }
+        type FieldEntry = {
+          field: string
+          expectedSemesterId: number
+          mismatches: Mismatch[]
+        }
+
+        let fields: FieldEntry[] = []
+        if (metadata && Array.isArray(metadata.fields)) {
+          fields = metadata.fields as FieldEntry[]
+        } else if (metadata && typeof metadata.field === 'string') {
+          fields = [
+            {
+              field: metadata.field as string,
+              expectedSemesterId: Number(metadata.expectedSemesterId),
+              mismatches: Array.isArray(metadata.mismatches)
+                ? (metadata.mismatches as Mismatch[])
+                : [],
+            },
+          ]
+        }
+
+        const FIELD_LABELS: Record<string, string> = {
+          lecturerIds: 'Lecturer',
+          roomId: 'Room',
+          courseId: 'Course',
+          fixedTimeSlotIds: 'Fixed time slot',
+          parentOfferingId: 'Parent offering',
+        }
+
+        const formErrorKeys = new Set<keyof FormErrors>([
+          'courseId',
+          'roomId',
+          'effectiveStudentCount',
+          'lecturerIds',
+          'parentOfferingId',
+          'fixedTimeSlotIds',
+        ])
+
+        const first = fields[0]
+        let message: string
+        if (first && first.mismatches.length > 0) {
+          const label = FIELD_LABELS[first.field] ?? first.field
+          const m = first.mismatches[0]
+          message = `${label} #${m.id} belongs to semester ${m.actualSemesterId} but this offering is in semester ${first.expectedSemesterId}. Switch the active semester or pick a current-semester ${label.toLowerCase()}.`
+        } else {
+          message = e.message
+        }
+
+        const title =
+          fields.length > 1
+            ? `Cross-semester reference (${fields.length} fields)`
+            : 'Cross-semester reference'
+
+        addToast({ type: 'error', title, message })
+
+        const inlineErrors: Partial<FormErrors> = {}
+        for (const entry of fields) {
+          if (!formErrorKeys.has(entry.field as keyof FormErrors)) continue
+          const m = entry.mismatches[0]
+          inlineErrors[entry.field as keyof FormErrors] = m
+            ? `Belongs to semester ${m.actualSemesterId}`
+            : `Belongs to a different semester`
+        }
+        if (Object.keys(inlineErrors).length > 0) {
+          setFormErrors((prev) => ({ ...prev, ...inlineErrors }))
+        }
+      } else {
+        addToast({
+          type: 'error',
+          title: editTarget ? 'Failed to update' : 'Failed to create',
+          message: e.message,
+        })
+      }
     } finally {
       setSaving(false)
     }
@@ -1215,6 +1327,18 @@ export function CourseOfferingManagementPage() {
             required
           />
 
+          {/* Phase 15 task #21 — shared-cohort info banner */}
+          {hasCohortSibling && (
+            <div className={styles.parallelBanner}>
+              <Info size={14} className={styles.parallelBannerIcon} />
+              <span>
+                This course already has an offering in this semester. The scheduler will treat
+                both as <strong>ONE cohort</strong> and split the parallel sessions across all
+                assigned lecturers.
+              </span>
+            </div>
+          )}
+
           <NumberInput
             label="Effective Student Count"
             value={form.effectiveStudentCount}
@@ -1235,9 +1359,11 @@ export function CourseOfferingManagementPage() {
               placeholder="None (standalone)"
               options={parentOfferingOptions}
               value={form.parentOfferingId ? String(form.parentOfferingId) : ''}
-              onChange={(v) =>
+              onChange={(v) => {
                 setForm((prev) => ({ ...prev, parentOfferingId: v ? Number(v) : null }))
-              }
+                setFormErrors((prev) => ({ ...prev, parentOfferingId: undefined }))
+              }}
+              error={formErrors.parentOfferingId}
             />
           )}
         </FormSection>
@@ -1313,13 +1439,15 @@ export function CourseOfferingManagementPage() {
                       <FormField
                         label="Fixed Time Slots"
                         helperText="Select the timeslots for this fixed offering."
+                        error={formErrors.fixedTimeSlotIds}
                       >
                         <FixedSlotsGrid
                           timeslots={allTimeslots}
                           selected={form.fixedTimeSlotIds}
-                          onChange={(ids) =>
+                          onChange={(ids) => {
                             setForm((prev) => ({ ...prev, fixedTimeSlotIds: ids }))
-                          }
+                            setFormErrors((prev) => ({ ...prev, fixedTimeSlotIds: undefined }))
+                          }}
                         />
                       </FormField>
                     )}

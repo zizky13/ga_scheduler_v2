@@ -34,6 +34,9 @@ export interface CourseBlockProps {
   courseCode: string;
   courseName: string;
   lecturers: string;
+  lecturerPillLabel?: string;
+  lecturerPillTitle?: string;
+  legacyLecturers?: boolean;
   roomName: string;
   roomCapacity?: number;
   sessionLabel?: string;
@@ -55,6 +58,9 @@ export function CourseBlock({
   courseCode,
   courseName,
   lecturers,
+  lecturerPillLabel,
+  lecturerPillTitle,
+  legacyLecturers,
   roomName,
   roomCapacity,
   sessionLabel,
@@ -73,6 +79,8 @@ export function CourseBlock({
 }: CourseBlockProps) {
   const isSingleSlot = slotCount === 1;
   const isClickable = !!onClick;
+  const lecturerPillText = lecturerPillLabel ?? lecturers;
+  const lecturerPillTooltip = lecturerPillTitle ?? lecturers;
 
   const className = [
     styles.block,
@@ -127,15 +135,33 @@ export function CourseBlock({
       )}
 
       {isSingleSlot ? (
-        <span className={styles.codeInline}>
-          {courseCode}
-          <span className={styles.roomInline}>{roomName}</span>
-        </span>
+        <>
+          <span className={styles.codeInline}>
+            {courseCode}
+            <span className={styles.roomInline}>{roomName}</span>
+          </span>
+          <span className={styles.lecturerPillRow} aria-label={`Lecturer: ${lecturerPillTooltip}`}>
+            <span
+              className={`${styles.lecturerPill} ${legacyLecturers ? styles.lecturerPillLegacy : ''}`}
+              title={lecturerPillTooltip}
+            >
+              {lecturerPillText}
+            </span>
+          </span>
+        </>
       ) : (
         <>
           <span className={styles.code}>{courseCode}</span>
           <span className={styles.name}>{courseName}</span>
-          <span className={styles.meta}>{roomName} · {lecturers}</span>
+          <span className={styles.meta}>{roomName}</span>
+          <span className={styles.lecturerPillRow} aria-label={`Lecturer: ${lecturerPillTooltip}`}>
+            <span
+              className={`${styles.lecturerPill} ${legacyLecturers ? styles.lecturerPillLegacy : ''}`}
+              title={lecturerPillTooltip}
+            >
+              {lecturerPillText}
+            </span>
+          </span>
           {sessionLabel && <span className={styles.session}>{sessionLabel}</span>}
         </>
       )}

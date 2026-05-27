@@ -48,6 +48,29 @@ export interface CourseOffering {
   isFixed: boolean;            // pinned by faculty — must not move
   fixedTimeSlotIds?: number[]; // if isFixed, which slots are locked
   parentOfferingId?: number;   // for parallel split offerings
+  /**
+   * Phase 14 #6: cross-semester / orphan-reference defects detected by the
+   * row→domain mapper (`src/repo/mappers/courseOfferingMapper.ts`). The
+   * mapper records orphan ids here instead of throwing so a single bad
+   * offering rejects as a single Pre-GA `CROSS_SEMESTER_DEFECT` entry
+   * (api_design §5.2) rather than killing the worker for the entire run.
+   *
+   * `checkIntegrity` (`src/pre-ga/checks.ts`) reads this and emits the
+   * rejection — the field is intentionally absent when the offering is
+   * clean (omitted, not `{}`).
+   *
+   * `missingCourseId` exists for type-shape symmetry / future-proofing
+   * only — at runtime the mapper still throws on a missing course because
+   * `CourseOffering.course: Course` is non-optional and the offering
+   * would be structurally unrepresentable without it. The slot stays in
+   * the type so a future softening of that contract doesn't require a
+   * type migration.
+   */
+  mappingDefects?: {
+    missingLecturerIds?: number[];
+    missingRoomId?: number | null;
+    missingCourseId?: number | null;
+  };
 }
 
 /**
@@ -76,6 +99,14 @@ export interface CheckResult {
   passed: boolean;
   code: string;
   message: string;
+  /**
+   * Phase 14 #6: optional structured payload attached by checks that need to
+   * surface richer rejection context (e.g. `CROSS_SEMESTER_DEFECT` carries a
+   * `{ field, expectedSemesterId, mismatches, fields }` envelope mirroring
+   * Phase 14 #4's `CROSS_SEMESTER_REFERENCE` shape). The orchestrator passes
+   * this through to `PreGAInfeasibleEntry.metadata`.
+   */
+  metadata?: unknown;
 }
 
 export interface PreGAValidationResult {
@@ -115,6 +146,46 @@ export interface PreGACandidate {
   isFixedRoom: boolean; // <-- FIXED
   fixedTimeSlotIds?: number[];
   parentOfferingId?: number; // <-- FIXED
+  /**
+   * Phase 15 #1 (OQ-22 cohort aggregation): the full list of constituent
+   * offering ids that were merged into this cohort candidate. Length ≥ 1:
+   *
+   *   - Single-offering cohorts (the legacy case, every fixture pre-Phase-15):
+   *     `siblingOfferingIds === [offeringId]`, structurally identical to the
+   *     pre-Phase-15 candidate shape.
+   *   - Multi-offering cohorts: the primary offering's id is `offeringId`
+   *     (lowest id among the siblings); `siblingOfferingIds` lists every
+   *     constituent offering id in ascending order, including the primary.
+   *
+   * Downstream consumers (Phase 15 tasks #2+) use this to derive the cohort's
+   * lecturer pool, per-session distribution, and SSA bipartite-graph adjacency.
+   */
+  siblingOfferingIds: number[];
+  /**
+   * Phase 15 #2 (OQ-24 / OQ-25 per-session lecturer distribution): union of
+   * every sibling offering's `lecturerIds`, deduplicated and sorted ascending
+   * for determinism. Single-sibling cohorts: `lecturerPool === lecturerIds`
+   * (same set, same order). Multi-sibling cohorts: `lecturerPool` is a
+   * superset of `lecturerIds` (the cohort's full lecturer set across all
+   * sibling offerings; `lecturerIds` continues to hold only the primary's
+   * lecturers — Phase 15 task #11 will eventually pivot SSA off the legacy
+   * `lecturerIds` and onto the pool). Task #5's chromosome seeder distributes
+   * this pool across the cohort's `parallelSessionCount` sessions per OQ-24's
+   * round-robin default.
+   */
+  lecturerPool: number[];
+  /**
+   * Phase 15 #5 (OQ-24 / OQ-25 team-teach preservation): per-sibling lecturer
+   * arrays, parallel to `siblingOfferingIds` (`siblingLecturerGroups[i]` is the
+   * lecturer-id list owned by `siblingOfferingIds[i]`, each sorted ascending).
+   * The chromosome seeder distributes sessions across siblings round-robin
+   * (`sessions[i].lecturerIds = siblingLecturerGroups[i % length]`) so a
+   * sibling team-teaching with multiple lecturers keeps its full lecturer list
+   * on every session that sibling "owns". Single-sibling cohorts have
+   * `siblingLecturerGroups.length === 1` and `siblingLecturerGroups[0]`
+   * equivalent (as a set) to `lecturerIds`.
+   */
+  siblingLecturerGroups: number[][];
 }
 
 // ─── Layer 2: SSA Types ──────────────────────────────────────────
@@ -177,13 +248,24 @@ export interface SSAResult {
 
 /**
  * One parallel session within a gene.
- * For a 3-SKS course split into 2 parallel groups:
- *   sessions[0] = { roomId: 10, timeSlotIds: [5, 6, 7] }  // group A, Mon 08:00–11:00
- *   sessions[1] = { roomId: 11, timeSlotIds: [5, 6, 7] }  // group B, Mon 08:00–11:00
+ *
+ * Phase 15 #5 (OQ-25): `lecturerIds: number[]` lives on the session, not the
+ * gene/candidate. Multi-sibling cohorts use this to distribute lecturers
+ * across their parallel sessions (the chromosome seeder rotates through
+ * `candidate.siblingLecturerGroups`). Team-teaching within a single session
+ * is preserved — a sibling that team-teaches with multiple lecturers carries
+ * the full list on every session it "owns". Single-sibling cohorts stamp
+ * `candidate.lecturerIds` on every session (backward compatibility with
+ * legacy team-taught offerings and pre-Phase-15 fixtures).
+ *
+ * For a 3-SKS course split into 2 parallel groups across siblings X and Y:
+ *   sessions[0] = { roomId: 10, timeSlotIds: [5, 6, 7], lecturerIds: [X.id] }
+ *   sessions[1] = { roomId: 11, timeSlotIds: [5, 6, 7], lecturerIds: [Y.id] }
  */
 export interface GeneSession {
   roomId: number;
   timeSlotIds: number[]; // contiguous back-to-back slots, length === sessionDuration
+  lecturerIds: number[]; // OQ-25: per-session, length ≥ 1 (team-teach preserved)
 }
 
 export interface FixedRoomGene {
@@ -219,6 +301,7 @@ export interface EvaluatedChromosome {
   preferencePenalty: number;
   loadPenalty: number;
   capacityShortfallPenalty: number;
+  lecturerDistributionEntropy: number;
   competencyMismatch: number;
 }
 
@@ -266,6 +349,15 @@ export interface PreGAInfeasibleEntry {
   offeringId: number;
   code: string;
   message: string;
+  /**
+   * Phase 14 #6: optional structured payload that survives the orchestrator's
+   * `CheckResult` → `PreGAInfeasibleEntry` translation. For
+   * `CROSS_SEMESTER_DEFECT` this carries `{ field, expectedSemesterId?,
+   * mismatches, fields }` — see api_design §5.2 / Phase 14 #4 for the shape.
+   * Adding this field is non-breaking: it is `?: unknown` so the wire
+   * contract for clients that ignore it is unchanged.
+   */
+  metadata?: unknown;
 }
 
 export interface SchedulerResponse {

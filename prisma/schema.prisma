@@ -182,9 +182,10 @@ model Lecturer {
   updatedAt    DateTime @updatedAt
   createdById  Int? // who entered this record (audit)
 
-  semester       Semester                 @relation(fields: [semesterId], references: [id], onDelete: Cascade)
-  preferredSlots LecturerPreferredSlot[]
-  offerings      CourseOfferingLecturer[]
+  semester            Semester                     @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  preferredSlots      LecturerPreferredSlot[]
+  offerings           CourseOfferingLecturer[]
+  assignmentLecturers ScheduleAssignmentLecturer[]
 
   @@index([semesterId])
   @@index([isStructural])
@@ -334,25 +335,25 @@ model ScheduleRun {
   preGASummaryJson String? // {feasible: number, infeasible: [...]}; matches SchedulerResponse.preGASummary
 
   // Live progress (mirrors GAResult from src/types.ts)
-  currentGeneration  Int     @default(0)
-  generationsRun     Int     @default(0)
-  bestFitness        Float   @default(0)
-  hardViolations     Int     @default(0)
-  softPenalty        Int     @default(0)
+  currentGeneration        Int     @default(0)
+  generationsRun           Int     @default(0)
+  bestFitness              Float   @default(0)
+  hardViolations           Int     @default(0)
+  softPenalty              Int     @default(0)
   // Audit-friendly breakdown of the hard-violation total — see techspec §4.3
   // and `EvaluatedChromosome.competencyMismatch` in src/types.ts. Persists
   // the per-run aggregate so the audit log can attribute hard violations to
   // [HC-COMPETENCY] specifically rather than a single opaque integer.
-  competencyMismatch Int     @default(0)
+  competencyMismatch       Int     @default(0)
   // Per-run aggregate of `EvaluatedChromosome.loadPenalty` (Phase 8) — sum of
   // SKS over each lecturer's `maxSks` cap. Surfaced via run-detail + telemetry.
-  loadPenalty        Int     @default(0)
+  loadPenalty              Int     @default(0)
   // Per-run aggregate of `EvaluatedChromosome.capacityShortfallPenalty`
   // (Phase 11 task #6) — Σ over null-room offerings of
   // max(0, effectiveStudentCount − Σ session.room.capacity). Surfaced via
   // run-detail + telemetry alongside loadPenalty.
-  capacityShortfallPenalty Int @default(0)
-  stagnatedEarly     Boolean @default(false)
+  capacityShortfallPenalty Int     @default(0)
+  stagnatedEarly           Boolean @default(false)
 
   // Raw history retained for techspec §8.2 compatibility; also normalized below.
   historyJson    String @default("[]")
@@ -370,10 +371,11 @@ model ScheduleRun {
   // Idempotency for run creation (see §7).
   idempotencyKey String? @unique
 
-  semester    Semester             @relation(fields: [semesterId], references: [id], onDelete: Restrict)
-  createdBy   User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
-  assignments ScheduleAssignment[]
-  fitness     FitnessHistory[]
+  semester            Semester                     @relation(fields: [semesterId], references: [id], onDelete: Restrict)
+  createdBy           User                         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  assignments         ScheduleAssignment[]
+  assignmentLecturers ScheduleAssignmentLecturer[]
+  fitness             FitnessHistory[]
 
   @@index([semesterId])
   @@index([createdById])
@@ -400,13 +402,30 @@ model ScheduleAssignment {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  run      ScheduleRun              @relation(fields: [runId], references: [id], onDelete: Cascade)
-  offering CourseOffering           @relation(fields: [offeringId], references: [id], onDelete: Restrict)
-  slots    ScheduleAssignmentSlot[]
+  run       ScheduleRun                  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  offering  CourseOffering               @relation(fields: [offeringId], references: [id], onDelete: Restrict)
+  slots     ScheduleAssignmentSlot[]
+  lecturers ScheduleAssignmentLecturer[]
 
   @@unique([runId, offeringId, sessionIndex])
   @@index([runId])
   @@map("schedule_assignments")
+}
+
+model ScheduleAssignmentLecturer {
+  runId        String
+  assignmentId Int
+  lecturerId   Int
+  assignedAt   DateTime @default(now())
+
+  run        ScheduleRun        @relation(fields: [runId], references: [id], onDelete: Cascade)
+  assignment ScheduleAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  lecturer   Lecturer           @relation(fields: [lecturerId], references: [id], onDelete: Restrict)
+
+  @@id([assignmentId, lecturerId])
+  @@index([runId])
+  @@index([lecturerId])
+  @@map("schedule_assignment_lecturers")
 }
 
 model ScheduleAssignmentSlot {
@@ -423,28 +442,28 @@ model ScheduleAssignmentSlot {
 // Normalized fitness history — one row per generation.
 // Matches GAResult.history and GAResult.avgHistory in src/types.ts.
 model FitnessHistory {
-  id                 Int      @id @default(autoincrement())
-  runId              String
-  generation         Int
-  bestFitness        Float
-  avgFitness         Float
-  hardViolations     Int
-  softPenalty        Int
+  id                       Int      @id @default(autoincrement())
+  runId                    String
+  generation               Int
+  bestFitness              Float
+  avgFitness               Float
+  hardViolations           Int
+  softPenalty              Int
   // Per-generation breakdown of `hardViolations` attributable to [HC-COMPETENCY]
   // (techspec §4.3). Lets the chart UI overlay competency violations on top of
   // the global hardViolations curve for traceability.
-  competencyMismatch Int
+  competencyMismatch       Int
   // Per-generation `loadPenalty` (Phase 8) — sum of SKS over each lecturer's
   // `maxSks` cap. Mirrors `competencyMismatch` placement so the chart UI can
   // overlay load penalty on top of the soft-penalty curve. Has @default(0)
   // because the column is added to an already-populated table; siblings
   // (`competencyMismatch`) were created with the table so didn't need one.
-  loadPenalty        Int      @default(0)
+  loadPenalty              Int      @default(0)
   // Per-generation `capacityShortfallPenalty` (Phase 11 task #6) — Σ over null-
   // room offerings of max(0, effectiveStudentCount − Σ session.room.capacity).
   // Added @default(0) for the same backfill reason as loadPenalty above.
-  capacityShortfallPenalty Int @default(0)
-  recordedAt         DateTime @default(now())
+  capacityShortfallPenalty Int      @default(0)
+  recordedAt               DateTime @default(now())
 
   run ScheduleRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 

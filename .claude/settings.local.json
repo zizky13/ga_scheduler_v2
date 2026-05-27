@@ -59,7 +59,14 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/api/v1/health)",
       "Bash(curl -s -o /tmp/resp.json -w \"HTTP %{http_code}\\\\n\" http://localhost:3000/api/v1/schedule-runs)",
       "Bash(redis-cli ping *)",
-      "WebFetch(domain:)"
+      "WebFetch(domain:)",
+      "WebSearch",
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\(JSON.stringify\\(p.scripts, null, 2\\)\\)\")",
+      "Bash(grep -n \"^##\\\\|^###\\\\|^####\\\\|ScheduleAssignment\\\\|model ScheduleAssignment\\\\|^| \\\\`\" \"/Users/zikarnurizky/Desktop/01_Project/Tugas Akhir/ga_scheduler_v2/docs/api_and_database_design.md\")",
+      "Bash(awk 'BEGIN{c=0} /^```/{c++} END{print \"fence count:\", c, \"\\(should be even\\)\"}' docs/techspec_upj_scheduler_v2.md docs/api_and_database_design.md)",
+      "Bash(grep -c '^```' docs/techspec_upj_scheduler_v2.md docs/api_and_database_design.md)",
+      "Bash(grep -c '^```mermaid' docs/api_and_database_design.md)",
+      "Bash(grep -n '^```' docs/erd.md)"
     ]
   }
 }

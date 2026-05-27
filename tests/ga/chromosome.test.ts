@@ -23,6 +23,9 @@ function baseCandidate(overrides: Partial<PreGACandidate> = {}): PreGACandidate 
     possibleTimeSlotIds: [1, 2, 3, 4, 5],
     possibleRoomIds: [1, 2, 3, 4, 5],
     isFixedRoom: false,
+    siblingOfferingIds: [1],
+    lecturerPool: [100],
+    siblingLecturerGroups: [[100]],
     ...overrides,
   };
 }
@@ -104,5 +107,123 @@ describe('createGeneFromCandidate — roomId seed', () => {
     expect(() => createGeneFromCandidate(c)).toThrow(
       /null roomId and empty possibleRoomIds/
     );
+  });
+});
+
+// Phase 15 task #25 — seeder lecturer distribution
+//
+// The chromosome seeder owns the initial per-session lecturer assignment
+// (`session.lecturerIds`). Two branches:
+//   - Single-sibling cohort: every session stamps `candidate.lecturerIds`
+//     verbatim (legacy team-teach preserved; lecturer mutation is gated to
+//     multi-sibling cohorts, so the seed value is the steady-state value).
+//   - Multi-sibling cohort: sessions walk `siblingLecturerGroups` round-
+//     robin (`sessions[i].lecturerIds = siblingLecturerGroups[i % groups]`),
+//     so each sibling "owns" their share of parallel sessions and team-
+//     teach within a sibling is preserved on every session that sibling owns.
+describe('createGeneFromCandidate — Phase 15 lecturer distribution', () => {
+  it('stamps candidate.lecturerIds on every session for a single-sibling cohort', () => {
+    const gene = createGeneFromCandidate(
+      baseCandidate({
+        offeringId: 1,
+        lecturerIds: [100, 200],
+        parallelSessionCount: 3,
+        siblingOfferingIds: [1],
+        lecturerPool: [100, 200],
+        siblingLecturerGroups: [[100, 200]],
+      }),
+    );
+    expect(gene.sessions).toHaveLength(3);
+    for (const s of gene.sessions) {
+      expect(s.lecturerIds).toEqual([100, 200]);
+    }
+  });
+
+  it('round-robins siblingLecturerGroups across sessions for a multi-sibling cohort', () => {
+    // 2 siblings (X=[10], Y=[20]), 4 parallel sessions → sessions get
+    // [X], [Y], [X], [Y] in order.
+    const gene = createGeneFromCandidate(
+      baseCandidate({
+        offeringId: 100,
+        roomId: null,
+        possibleRoomIds: [1, 2, 3, 4],
+        lecturerIds: [10],
+        parallelSessionCount: 4,
+        siblingOfferingIds: [100, 200],
+        lecturerPool: [10, 20],
+        siblingLecturerGroups: [[10], [20]],
+      }),
+    );
+    expect(gene.sessions).toHaveLength(4);
+    expect(gene.sessions[0]!.lecturerIds).toEqual([10]);
+    expect(gene.sessions[1]!.lecturerIds).toEqual([20]);
+    expect(gene.sessions[2]!.lecturerIds).toEqual([10]);
+    expect(gene.sessions[3]!.lecturerIds).toEqual([20]);
+  });
+
+  it('preserves team-teach when a sibling has multiple lecturers (OQ-25)', () => {
+    // Sibling 0 team-teaches with [10, 11]; sibling 1 has [20] alone.
+    // 4 sessions round-robin: [10,11], [20], [10,11], [20].
+    const gene = createGeneFromCandidate(
+      baseCandidate({
+        offeringId: 100,
+        roomId: null,
+        possibleRoomIds: [1, 2, 3, 4],
+        lecturerIds: [10, 11],
+        parallelSessionCount: 4,
+        siblingOfferingIds: [100, 200],
+        lecturerPool: [10, 11, 20],
+        siblingLecturerGroups: [[10, 11], [20]],
+      }),
+    );
+    expect(gene.sessions).toHaveLength(4);
+    expect(gene.sessions[0]!.lecturerIds).toEqual([10, 11]);
+    expect(gene.sessions[1]!.lecturerIds).toEqual([20]);
+    expect(gene.sessions[2]!.lecturerIds).toEqual([10, 11]);
+    expect(gene.sessions[3]!.lecturerIds).toEqual([20]);
+  });
+
+  it('wraps round-robin when parallelSessionCount exceeds siblings.length', () => {
+    // 3 siblings, 4 sessions → round-robin gives sibling[0] two sessions
+    // (indices 0 and 3) and siblings 1, 2 one each.
+    const gene = createGeneFromCandidate(
+      baseCandidate({
+        offeringId: 100,
+        roomId: null,
+        possibleRoomIds: [1, 2, 3, 4],
+        lecturerIds: [10],
+        parallelSessionCount: 4,
+        siblingOfferingIds: [100, 200, 300],
+        lecturerPool: [10, 20, 30],
+        siblingLecturerGroups: [[10], [20], [30]],
+      }),
+    );
+    expect(gene.sessions).toHaveLength(4);
+    expect(gene.sessions[0]!.lecturerIds).toEqual([10]);
+    expect(gene.sessions[1]!.lecturerIds).toEqual([20]);
+    expect(gene.sessions[2]!.lecturerIds).toEqual([30]);
+    expect(gene.sessions[3]!.lecturerIds).toEqual([10]);
+  });
+
+  it('returns independent lecturerIds arrays per session (no aliasing)', () => {
+    // Round-robin re-uses the same sibling group across multiple sessions, so
+    // the seeder must clone the array on each session — otherwise a downstream
+    // mutator (e.g. mutateLecturer) would inadvertently mutate every session
+    // that shares the alias. Mutate the first session's lecturerIds and verify
+    // that the third session (same round-robin bucket) is unaffected.
+    const gene = createGeneFromCandidate(
+      baseCandidate({
+        offeringId: 100,
+        roomId: null,
+        possibleRoomIds: [1, 2, 3, 4],
+        lecturerIds: [10],
+        parallelSessionCount: 4,
+        siblingOfferingIds: [100, 200],
+        lecturerPool: [10, 20],
+        siblingLecturerGroups: [[10], [20]],
+      }),
+    );
+    gene.sessions[0]!.lecturerIds.push(999);
+    expect(gene.sessions[2]!.lecturerIds).toEqual([10]); // not [10, 999]
   });
 });

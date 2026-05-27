@@ -7,7 +7,7 @@
  * findContiguousSlots locates back-to-back slot blocks on the same day.
  */
 
-import type { Chromosome, Gene, PreGACandidate, TimeSlot } from '../types.js';
+import type { Chromosome, Gene, GeneSession, PreGACandidate, TimeSlot } from '../types.js';
 
 // ─── Slot Lookup Cache ───────────────────────────────────────────
 
@@ -198,20 +198,48 @@ export function createGeneFromCandidate(
     return pool[Math.floor(Math.random() * pool.length)]!;
   };
 
-  let sessions: { roomId: number; timeSlotIds: number[] }[];
+  // Phase 15 #5 (OQ-24 / OQ-25) — per-session lecturer distribution:
+  //   - Single-sibling cohorts (siblingOfferingIds.length === 1, i.e. the
+  //     pre-Phase-15 shape) stamp `candidate.lecturerIds` on every session.
+  //     Team-teach within a single offering is preserved verbatim — every
+  //     parallel session carries the full lecturer list, matching legacy
+  //     fitness / repair semantics that read `candidate.lecturerIds`.
+  //   - Multi-sibling cohorts (siblingOfferingIds.length > 1) walk
+  //     `siblingLecturerGroups` round-robin. Session i is "owned" by
+  //     siblings[i % siblings.length] and inherits that sibling's full
+  //     lecturer group, which preserves team-teach inside the sibling
+  //     (OQ-25) while load-balancing one sibling per session across the
+  //     cohort (OQ-24).
+  // The GA may freely mutate per-session lecturerIds away from this seed
+  // (Phase 15 #6); this only defines the initial distribution.
+  const isMultiSiblingCohort = candidate.siblingOfferingIds.length > 1;
+  const pickLecturersForSession = (sessionIndex: number): number[] => {
+    if (!isMultiSiblingCohort) {
+      return [...candidate.lecturerIds];
+    }
+    const groups = candidate.siblingLecturerGroups;
+    return [...groups[sessionIndex % groups.length]!];
+  };
+
+  let sessions: GeneSession[];
 
   if (lookup) {
     const blocks = findContiguousSlots(candidate.possibleTimeSlotIds, sessionDuration, lookup);
 
     if (blocks.length > 0) {
       const picked = pickDistinctBlocks(blocks, parallelSessionCount);
-      sessions = picked.map(block => ({ roomId: pickRoomForSession(), timeSlotIds: block }));
+      sessions = picked.map((block, i) => ({
+        roomId: pickRoomForSession(),
+        timeSlotIds: block,
+        lecturerIds: pickLecturersForSession(i),
+      }));
     } else {
       // Fallback: no contiguous blocks available (edge case)
       const shuffled = fisherYatesShuffle(candidate.possibleTimeSlotIds);
       sessions = Array.from({ length: parallelSessionCount }, (_, i) => ({
         roomId: pickRoomForSession(),
         timeSlotIds: shuffled.slice(i * sessionDuration, (i + 1) * sessionDuration),
+        lecturerIds: pickLecturersForSession(i),
       }));
     }
   } else {
@@ -220,6 +248,7 @@ export function createGeneFromCandidate(
     sessions = Array.from({ length: parallelSessionCount }, (_, i) => ({
       roomId: pickRoomForSession(),
       timeSlotIds: shuffled.slice(i * sessionDuration, (i + 1) * sessionDuration),
+      lecturerIds: pickLecturersForSession(i),
     }));
   }
 

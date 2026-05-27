@@ -61,6 +61,9 @@ describe('progressChannel', () => {
           competencyMismatch: 0,
           structuralPenalty: 1,
           preferencePenalty: 2,
+          loadPenalty: 0,
+          capacityShortfallPenalty: 0,
+          lecturerDistributionEntropy: 1,
         },
       };
 

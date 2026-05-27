@@ -35,6 +35,7 @@ export interface GenerationSnapshot {
   preferencePenalty: number;
   loadPenalty: number;
   capacityShortfallPenalty: number;
+  lecturerDistributionEntropy: number;
 }
 
 /**
@@ -160,7 +161,11 @@ export async function runGA(
     if (best.fitness > overallBestFitness) {
       overallBest = best.chromosome.map(g => ({
         ...g,
-        sessions: g.sessions.map(s => ({ roomId: s.roomId, timeSlotIds: [...s.timeSlotIds] })),
+        sessions: g.sessions.map(s => ({
+          roomId: s.roomId,
+          timeSlotIds: [...s.timeSlotIds],
+          lecturerIds: [...s.lecturerIds],
+        })),
       })) as Gene[];
       overallBestFitness = best.fitness;
       overallHardViolations = best.hardViolations;
@@ -190,6 +195,7 @@ export async function runGA(
         preferencePenalty: best.preferencePenalty,
         loadPenalty: best.loadPenalty,
         capacityShortfallPenalty: best.capacityShortfallPenalty,
+        lecturerDistributionEntropy: best.lecturerDistributionEntropy,
       });
     }
 

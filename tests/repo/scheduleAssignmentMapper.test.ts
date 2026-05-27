@@ -32,6 +32,7 @@ describe('mapScheduleAssignmentRow', () => {
       overriddenAt: null,
       notes: null,
       slots: [{ timeSlotId: 11 }, { timeSlotId: 12 }, { timeSlotId: 13 }],
+      lecturers: [{ lecturerId: 500 }, { lecturerId: 600 }],
     };
     const record = mapScheduleAssignmentRow(row);
     expect(record).toEqual({
@@ -46,6 +47,7 @@ describe('mapScheduleAssignmentRow', () => {
       overriddenAt: null,
       notes: null,
       timeSlotIds: [11, 12, 13],
+      lecturerIds: [500, 600],
     });
   });
 
@@ -63,12 +65,33 @@ describe('mapScheduleAssignmentRow', () => {
       overriddenAt,
       notes: 'Kaprodi swap',
       slots: [{ timeSlotId: 5 }],
+      lecturers: [{ lecturerId: 77 }],
     };
     const record = mapScheduleAssignmentRow(row);
     expect(record.manualOverride).toBe(true);
     expect(record.overriddenById).toBe(99);
     expect(record.overriddenAt).toBe(overriddenAt);
     expect(record.notes).toBe('Kaprodi swap');
+    expect(record.lecturerIds).toEqual([77]);
+  });
+
+  it('surfaces [] lecturerIds for legacy rows with no ScheduleAssignmentLecturer joins', () => {
+    const row: ScheduleAssignmentRow = {
+      id: 3,
+      runId: 'legacy-run',
+      offeringId: 8,
+      sessionIndex: 0,
+      roomId: 4,
+      isFixedRoom: false,
+      manualOverride: false,
+      overriddenById: null,
+      overriddenAt: null,
+      notes: null,
+      slots: [{ timeSlotId: 5 }],
+      lecturers: [],
+    };
+
+    expect(mapScheduleAssignmentRow(row).lecturerIds).toEqual([]);
   });
 });
 
@@ -79,14 +102,14 @@ describe('chromosomeToScheduleAssignmentWrites', () => {
         kind: 'FLEXIBLE',
         offeringId: 10,
         sessions: [
-          { roomId: 1, timeSlotIds: [1, 2, 3] },
-          { roomId: 2, timeSlotIds: [4, 5, 6] },
+          { roomId: 1, timeSlotIds: [1, 2, 3], lecturerIds: [500] },
+          { roomId: 2, timeSlotIds: [4, 5, 6], lecturerIds: [600, 700] },
         ],
       },
       {
         kind: 'FIXED',
         offeringId: 20,
-        sessions: [{ roomId: 3, timeSlotIds: [7, 8, 9] }],
+        sessions: [{ roomId: 3, timeSlotIds: [7, 8, 9], lecturerIds: [800] }],
       },
     ];
     const writes = chromosomeToScheduleAssignmentWrites('run-1', chromosome);
@@ -99,9 +122,14 @@ describe('chromosomeToScheduleAssignmentWrites', () => {
       roomId: 1,
       isFixedRoom: false,
       slots: { create: [{ timeSlotId: 1 }, { timeSlotId: 2 }, { timeSlotId: 3 }] },
+      lecturers: { create: [{ runId: 'run-1', lecturerId: 500 }] },
     });
     expect(writes[1]!.sessionIndex).toBe(1);
     expect(writes[1]!.roomId).toBe(2);
+    expect(writes[1]!.lecturers.create).toEqual([
+      { runId: 'run-1', lecturerId: 600 },
+      { runId: 'run-1', lecturerId: 700 },
+    ]);
     expect(writes[2]).toEqual({
       runId: 'run-1',
       offeringId: 20,
@@ -109,6 +137,7 @@ describe('chromosomeToScheduleAssignmentWrites', () => {
       roomId: 3,
       isFixedRoom: true,
       slots: { create: [{ timeSlotId: 7 }, { timeSlotId: 8 }, { timeSlotId: 9 }] },
+      lecturers: { create: [{ runId: 'run-1', lecturerId: 800 }] },
     });
   });
 
@@ -124,14 +153,14 @@ describe('scheduleAssignmentRecordsToChromosome (round-trip)', () => {
         kind: 'FLEXIBLE',
         offeringId: 10,
         sessions: [
-          { roomId: 1, timeSlotIds: [1, 2, 3] },
-          { roomId: 2, timeSlotIds: [4, 5, 6] },
+          { roomId: 1, timeSlotIds: [1, 2, 3], lecturerIds: [500] },
+          { roomId: 2, timeSlotIds: [4, 5, 6], lecturerIds: [600, 700] },
         ],
       },
       {
         kind: 'FIXED',
         offeringId: 20,
-        sessions: [{ roomId: 3, timeSlotIds: [7, 8, 9] }],
+        sessions: [{ roomId: 3, timeSlotIds: [7, 8, 9], lecturerIds: [800] }],
       },
     ];
     const writes = chromosomeToScheduleAssignmentWrites('run-1', original);
@@ -148,6 +177,7 @@ describe('scheduleAssignmentRecordsToChromosome (round-trip)', () => {
       overriddenAt: null,
       notes: null,
       timeSlotIds: w.slots.create.map((s) => s.timeSlotId),
+      lecturerIds: w.lecturers.create.map((l) => l.lecturerId),
     }));
 
     const rebuilt = scheduleAssignmentRecordsToChromosome(records);
@@ -161,12 +191,14 @@ describe('scheduleAssignmentRecordsToChromosome (round-trip)', () => {
         roomId: 1, isFixedRoom: false, manualOverride: false,
         overriddenById: null, overriddenAt: null, notes: null,
         timeSlotIds: [1, 2, 3],
+        lecturerIds: [500],
       },
       {
         id: 2, runId: 'r', offeringId: 10, sessionIndex: 2, // gap!
         roomId: 2, isFixedRoom: false, manualOverride: false,
         overriddenById: null, overriddenAt: null, notes: null,
         timeSlotIds: [4, 5, 6],
+        lecturerIds: [600],
       },
     ];
     expect(() => scheduleAssignmentRecordsToChromosome(records)).toThrow(
@@ -181,16 +213,77 @@ describe('scheduleAssignmentRecordsToChromosome (round-trip)', () => {
         roomId: 1, isFixedRoom: false, manualOverride: false,
         overriddenById: null, overriddenAt: null, notes: null,
         timeSlotIds: [1, 2],
+        lecturerIds: [500],
       },
       {
         id: 2, runId: 'r', offeringId: 10, sessionIndex: 1,
         roomId: 1, isFixedRoom: true, manualOverride: false,
         overriddenById: null, overriddenAt: null, notes: null,
         timeSlotIds: [3, 4],
+        lecturerIds: [500],
       },
     ];
     expect(() => scheduleAssignmentRecordsToChromosome(records)).toThrow(
       /Inconsistent isFixedRoom/,
     );
+  });
+});
+
+// Phase 15 task #27 — persistence round-trip for the canonical two-lecturer
+// team-teach session. Pins the contract the Phase 15 cohort model relies on:
+// when a session's `lecturerIds` is `[X, Y]`, (a) the write payload emits
+// one `ScheduleAssignmentLecturer` per lecturer in order, and (b) feeding
+// those rows back through the read mapper reconstructs the same gene shape.
+// Per the `feedback_mapper_tests.md` memory: fixture values stay rule-
+// agnostic (no domain rules baked into ids), and the assertions stay
+// focused on the mapper's actual behaviour rather than type-required field
+// presence already enforced by the compiler.
+describe('ScheduleAssignment mapper — Phase 15 #27 round-trip', () => {
+  it('round-trips a two-lecturer [X, Y] team-teach session through the join table', () => {
+    const X = 500;
+    const Y = 600;
+
+    const original: Chromosome = [
+      {
+        kind: 'FLEXIBLE',
+        offeringId: 42,
+        sessions: [
+          { roomId: 7, timeSlotIds: [1, 2, 3], lecturerIds: [X, Y] },
+        ],
+      },
+    ];
+
+    // Forward direction — chromosome → write payload. The mapper must emit
+    // one `lecturers.create` row per lecturer with the run id propagated and
+    // the original lecturer order preserved (mirrors the existing
+    // `CourseOfferingLecturer` mapper pattern).
+    const writes = chromosomeToScheduleAssignmentWrites('run-27', original);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]!.lecturers.create).toEqual([
+      { runId: 'run-27', lecturerId: X },
+      { runId: 'run-27', lecturerId: Y },
+    ]);
+
+    // Reverse direction — simulate what Prisma returns after the writes
+    // land, then feed it back through `scheduleAssignmentRecordsToChromosome`
+    // and confirm the round-trip preserves the lecturer list verbatim.
+    const records: ScheduleAssignmentRecord[] = writes.map((w, i) => ({
+      id: i + 1,
+      runId: w.runId,
+      offeringId: w.offeringId,
+      sessionIndex: w.sessionIndex,
+      roomId: w.roomId,
+      isFixedRoom: w.isFixedRoom,
+      manualOverride: false,
+      overriddenById: null,
+      overriddenAt: null,
+      notes: null,
+      timeSlotIds: w.slots.create.map(s => s.timeSlotId),
+      lecturerIds: w.lecturers.create.map(l => l.lecturerId),
+    }));
+
+    const rebuilt = scheduleAssignmentRecordsToChromosome(records);
+    expect(rebuilt).toEqual(original);
+    expect(rebuilt[0]!.sessions[0]!.lecturerIds).toEqual([X, Y]);
   });
 });

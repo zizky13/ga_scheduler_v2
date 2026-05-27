@@ -135,6 +135,7 @@ export interface ScheduleRunAssignmentDetail {
   roomId: number;
   isFixedRoom: boolean;
   manualOverride: boolean;
+  lecturerIds: number[];
   slots: Array<{
     id: number;
     day: string;
@@ -187,12 +188,14 @@ export interface AssignmentWithRun {
   overriddenAt: Date | null;
   notes: string | null;
   timeSlotIds: number[];
+  lecturerIds: number[];
   run: { createdById: number; status: RunStatus };
 }
 
 export interface OverrideAssignmentInput {
   roomId?: number;
   timeSlotIds?: number[];
+  lecturerIds?: number[];
   notes?: string;
   overriddenById: number;
 }
@@ -335,6 +338,10 @@ export function createScheduleRunRepository(
               },
             },
           },
+          lecturers: {
+            select: { lecturerId: true },
+            orderBy: { lecturerId: 'asc' },
+          },
         },
       });
 
@@ -345,6 +352,7 @@ export function createScheduleRunRepository(
         roomId: r.roomId,
         isFixedRoom: r.isFixedRoom,
         manualOverride: r.manualOverride,
+        lecturerIds: r.lecturers.map((l) => l.lecturerId),
         slots: r.slots.map((s) => ({
           id: s.timeSlot.id,
           day: s.timeSlot.day,
@@ -378,6 +386,7 @@ export function createScheduleRunRepository(
         where: { id },
         include: {
           slots: { select: { timeSlotId: true } },
+          lecturers: { select: { lecturerId: true }, orderBy: { lecturerId: 'asc' } },
           run: { select: { createdById: true, status: true } },
         },
       });
@@ -394,6 +403,7 @@ export function createScheduleRunRepository(
         overriddenAt: row.overriddenAt,
         notes: row.notes,
         timeSlotIds: row.slots.map((s) => s.timeSlotId),
+        lecturerIds: row.lecturers.map((l) => l.lecturerId),
         run: { createdById: row.run.createdById, status: row.run.status },
       };
     },
@@ -413,6 +423,7 @@ export function createScheduleRunRepository(
           data,
           include: {
             slots: { select: { timeSlotId: true } },
+            lecturers: { select: { lecturerId: true }, orderBy: { lecturerId: 'asc' } },
             run: { select: { createdById: true, status: true } },
           },
         });
@@ -429,13 +440,30 @@ export function createScheduleRunRepository(
           });
         }
 
+        if (input.lecturerIds !== undefined) {
+          await tx.scheduleAssignmentLecturer.deleteMany({
+            where: { assignmentId: id },
+          });
+          await tx.scheduleAssignmentLecturer.createMany({
+            data: input.lecturerIds.map((lecturerId) => ({
+              runId: updated.runId,
+              assignmentId: id,
+              lecturerId,
+            })),
+          });
+        }
+
         const finalSlots = input.timeSlotIds
           ? input.timeSlotIds.map((timeSlotId) => ({ timeSlotId }))
           : updated.slots;
+        const finalLecturers = input.lecturerIds
+          ? input.lecturerIds.map((lecturerId) => ({ lecturerId }))
+          : updated.lecturers;
 
         return {
           ...updated,
           slots: finalSlots,
+          lecturers: finalLecturers,
         };
       });
 
@@ -451,6 +479,7 @@ export function createScheduleRunRepository(
         overriddenAt: result.overriddenAt,
         notes: result.notes,
         timeSlotIds: result.slots.map((s) => s.timeSlotId),
+        lecturerIds: result.lecturers.map((l) => l.lecturerId),
         run: { createdById: result.run.createdById, status: result.run.status },
       };
     },

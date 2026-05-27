@@ -147,33 +147,45 @@ function buildStagnationCandidates(): {
       courseId: 1,
       roomId: 1,
       lecturerIds: [1],
+      effectiveStudentCount: 30,
       parallelSessionCount: 1,
       sessionDuration: 1,
       possibleTimeSlotIds: [1],
       isFixedRoom: true,
       fixedTimeSlotIds: [1],
+      siblingOfferingIds: [1],
+      lecturerPool: [1],
+      siblingLecturerGroups: [[1]],
     },
     {
       offeringId: 2,
       courseId: 2,
       roomId: 1,
       lecturerIds: [2],
+      effectiveStudentCount: 30,
       parallelSessionCount: 1,
       sessionDuration: 1,
       possibleTimeSlotIds: [1],
       isFixedRoom: true,
       fixedTimeSlotIds: [1],
+      siblingOfferingIds: [2],
+      lecturerPool: [2],
+      siblingLecturerGroups: [[2]],
     },
     {
       offeringId: 3,
       courseId: 3,
       roomId: 1,
       lecturerIds: [3],
+      effectiveStudentCount: 30,
       parallelSessionCount: 1,
       sessionDuration: 1,
       possibleTimeSlotIds: [1],
       isFixedRoom: true,
       fixedTimeSlotIds: [1],
+      siblingOfferingIds: [3],
+      lecturerPool: [3],
+      siblingLecturerGroups: [[3]],
     },
   ];
   const lecturerStructuralMap = new Map<number, boolean>([
@@ -230,7 +242,27 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
     // Easy dataset has plenty of supply; convergence should not require the
     // stagnation safety net.
     expect(result.stagnatedEarly).toBe(false);
-    // Sanity: every assigned slot is among the candidate's allowed slots.
+
+    // Phase 15 task #23 — backward-compatibility guard. The easy dataset has
+    // five courses each with exactly one offering, so cohort aggregation must
+    // collapse to a single sibling and the legacy "every session shares
+    // candidate.lecturerIds" stamp must hold (no per-session distribution).
+    for (const cand of candidates) {
+      expect(cand.siblingOfferingIds).toHaveLength(1);
+      expect(cand.siblingOfferingIds[0]).toBe(cand.offeringId);
+      // Single-sibling cohort: lecturerPool equals sorted lecturerIds.
+      expect(cand.lecturerPool).toEqual(
+        [...cand.lecturerIds].sort((a, b) => a - b),
+      );
+      // Single-sibling cohort: groups is a one-row matrix of sorted lecturerIds.
+      expect(cand.siblingLecturerGroups).toEqual([
+        [...cand.lecturerIds].sort((a, b) => a - b),
+      ]);
+    }
+
+    // Sanity: every assigned slot is among the candidate's allowed slots,
+    // AND every session of a single-offering gene carries the legacy
+    // candidate.lecturerIds stamp verbatim (no per-session distribution).
     const candidateById = new Map(candidates.map(c => [c.offeringId, c]));
     for (const gene of result.bestChromosome) {
       const cand = candidateById.get(gene.offeringId)!;
@@ -241,6 +273,14 @@ describe('Layer 3 integration — easy-dataset convergence', () => {
         for (const slot of session.timeSlotIds) {
           expect(cand.possibleTimeSlotIds).toContain(slot);
         }
+        // Phase 15 task #23 — single-sibling cohorts skip the multi-sibling
+        // round-robin and stamp candidate.lecturerIds on every session. The
+        // GA's lecturer-mutation operator is gated to multi-sibling cohorts
+        // (`mutateLecturer` in src/ga/mutation.ts), so the seed stamp must
+        // survive every generation of the legacy easy-dataset run.
+        expect([...session.lecturerIds].sort((a, b) => a - b)).toEqual(
+          [...cand.lecturerIds].sort((a, b) => a - b),
+        );
       }
     }
   });
@@ -909,5 +949,549 @@ describe('Pipeline integration — Phase 11 null-room offering with capacity ove
     const firstSlots = gene.sessions[0]!.timeSlotIds.slice().sort();
     const secondSlots = gene.sessions[1]!.timeSlotIds.slice().sort();
     expect(firstSlots).not.toEqual(secondSlots);
+  });
+});
+
+// Phase 14 #14
+describe('Pipeline integration — Phase 14 cross-semester defect end-to-end', () => {
+  // Apply a post-mapper defect to an offering: the orphan id has already been
+  // stripped from `lecturers[]` by `courseOfferingMapper.ts` and recorded in
+  // `mappingDefects`. `checkIntegrity` reads that envelope at the top of the
+  // function (`src/pre-ga/checks.ts:42-83`) BEFORE the empty-lecturers branch,
+  // so this faithfully reproduces the orchestrator-level state without
+  // touching production code.
+  function withMappingDefect(
+    offering: CourseOffering,
+    defects: NonNullable<CourseOffering['mappingDefects']>,
+  ): CourseOffering {
+    const dropLecturers = (defects.missingLecturerIds?.length ?? 0) > 0;
+    const dropRoom = defects.missingRoomId !== undefined && defects.missingRoomId !== null;
+    return {
+      ...offering,
+      mappingDefects: defects,
+      lecturers: dropLecturers ? [] : offering.lecturers,
+      roomId: dropRoom ? null : offering.roomId,
+      room: dropRoom ? null : offering.room,
+    };
+  }
+
+  const baseConfig: GAConfig = {
+    populationSize: 30,
+    generations: 50,
+    mutationRate: 0.1,
+    elitismCount: 2,
+    tournamentSize: 3,
+    crossoverType: 'singlePoint',
+    noiseRate: 0.15,
+    hardPenaltyWeight: 100,
+    softPenaltyWeight: 1,
+  };
+
+  it('rejects the single defective offering and reaches SUCCESS on the four survivors', async () => {
+    const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+    const defectiveId = offerings[2]!.id;
+    const offeringsWithDefect = offerings.map((o, idx) =>
+      idx === 2
+        ? withMappingDefect(o, { missingLecturerIds: [9999] })
+        : o,
+    );
+
+    const { response, context } = await runPipeline({
+      offerings: offeringsWithDefect,
+      timeSlots,
+      rooms,
+      lecturers,
+      config: baseConfig,
+    });
+
+    // Exactly one structured rejection — the defective offering.
+    expect(context.validation.infeasible).toHaveLength(1);
+    const rejection = context.validation.infeasible[0]!;
+    expect(rejection.offering.id).toBe(defectiveId);
+    expect(rejection.failedCheck.code).toBe('CROSS_SEMESTER_DEFECT');
+
+    // Metadata envelope (src/pre-ga/checks.ts:76-82). `expectedSemesterId` may
+    // be undefined since the mapper has no semester context — assert presence
+    // of `field`, `mismatches`, and `fields` only.
+    const metadata = rejection.failedCheck.metadata as {
+      field: 'lecturerIds' | 'roomId';
+      expectedSemesterId?: number;
+      mismatches: Array<{ id: number; actualSemesterId?: number }>;
+      fields: Array<{
+        field: 'lecturerIds' | 'roomId';
+        mismatches: Array<{ id: number }>;
+      }>;
+    };
+    expect(metadata).toBeDefined();
+    expect(metadata.field).toBe('lecturerIds');
+    expect(metadata.mismatches).toEqual([{ id: 9999 }]);
+    expect(metadata.fields).toHaveLength(1);
+    expect(metadata.fields[0]!.field).toBe('lecturerIds');
+
+    // The other four offerings survived Pre-GA and each became a candidate.
+    expect(context.validation.feasible).toHaveLength(4);
+    expect(context.candidates).toHaveLength(4);
+    expect(context.candidates.find(c => c.offeringId === defectiveId)).toBeUndefined();
+
+    // The GA reached a terminal non-failure state on the survivors. Mirroring
+    // the Phase 10/11 tests, accept SUCCESS or STAGNATED — the orchestrator
+    // returns 'SUCCESS' even when `gaResult.stagnatedEarly === true`.
+    expect(response.status === 'SUCCESS' || response.status === 'STAGNATED').toBe(true);
+    expect(response.gaResult).toBeDefined();
+    expect(response.gaResult!.bestChromosome).toHaveLength(4);
+
+    // The rejection propagates onto the wire envelope, metadata intact.
+    expect(response.preGASummary.feasible).toBe(4);
+    expect(response.preGASummary.infeasible).toHaveLength(1);
+    const wireEntry = response.preGASummary.infeasible[0]!;
+    expect(wireEntry.offeringId).toBe(defectiveId);
+    expect(wireEntry.code).toBe('CROSS_SEMESTER_DEFECT');
+    expect(wireEntry.metadata).toBeDefined();
+    expect((wireEntry.metadata as { field: string }).field).toBe('lecturerIds');
+  });
+
+  it('rejects multiple per-offering defects without cascading to survivors', async () => {
+    const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+    const lecturerDefectId = offerings[1]!.id;
+    const roomDefectId = offerings[3]!.id;
+    const offeringsWithDefects = offerings.map((o, idx) => {
+      if (idx === 1) return withMappingDefect(o, { missingLecturerIds: [9001] });
+      if (idx === 3) return withMappingDefect(o, { missingRoomId: 9002 });
+      return o;
+    });
+
+    const { response, context } = await runPipeline({
+      offerings: offeringsWithDefects,
+      timeSlots,
+      rooms,
+      lecturers,
+      config: baseConfig,
+    });
+
+    expect(context.validation.infeasible).toHaveLength(2);
+    const byOffering = new Map(
+      context.validation.infeasible.map(entry => [entry.offering.id, entry.failedCheck]),
+    );
+    expect(byOffering.get(lecturerDefectId)?.code).toBe('CROSS_SEMESTER_DEFECT');
+    expect(byOffering.get(roomDefectId)?.code).toBe('CROSS_SEMESTER_DEFECT');
+
+    const lecturerMetadata = byOffering.get(lecturerDefectId)!.metadata as { field: string };
+    const roomMetadata = byOffering.get(roomDefectId)!.metadata as { field: string };
+    expect(lecturerMetadata.field).toBe('lecturerIds');
+    expect(roomMetadata.field).toBe('roomId');
+
+    // Three survivors reach GA completion.
+    expect(context.validation.feasible).toHaveLength(3);
+    expect(context.candidates).toHaveLength(3);
+    expect(response.status === 'SUCCESS' || response.status === 'STAGNATED').toBe(true);
+    expect(response.gaResult).toBeDefined();
+    expect(response.gaResult!.bestChromosome).toHaveLength(3);
+
+    expect(response.preGASummary.feasible).toBe(3);
+    expect(response.preGASummary.infeasible).toHaveLength(2);
+    for (const entry of response.preGASummary.infeasible) {
+      expect(entry.code).toBe('CROSS_SEMESTER_DEFECT');
+      expect(entry.metadata).toBeDefined();
+    }
+  });
+
+  it('returns NO_FEASIBLE_CANDIDATES when every offering carries a defect', async () => {
+    const { rooms, timeSlots, lecturers, offerings } = buildEasyDataset();
+    // Five offerings, five distinct orphan ids. Alternate field types so the
+    // assertion covers both branches of the defect envelope.
+    const offeringsAllDefective = offerings.map((o, idx) =>
+      idx % 2 === 0
+        ? withMappingDefect(o, { missingLecturerIds: [10000 + idx] })
+        : withMappingDefect(o, { missingRoomId: 20000 + idx }),
+    );
+
+    const { response, context } = await runPipeline({
+      offerings: offeringsAllDefective,
+      timeSlots,
+      rooms,
+      lecturers,
+      config: baseConfig,
+    });
+
+    expect(context.validation.infeasible).toHaveLength(5);
+    expect(context.validation.feasible).toHaveLength(0);
+    expect(context.candidates).toHaveLength(0);
+    for (const entry of context.validation.infeasible) {
+      expect(entry.failedCheck.code).toBe('CROSS_SEMESTER_DEFECT');
+      expect(entry.failedCheck.metadata).toBeDefined();
+    }
+
+    // Empty candidate list short-circuits the orchestrator to the
+    // NO_FEASIBLE_CANDIDATES branch (src/orchestrator.ts:106-122) — no
+    // ssaResult, no gaResult.
+    expect(response.status).toBe('NO_FEASIBLE_CANDIDATES');
+    expect(response.gaResult).toBeUndefined();
+    expect(response.ssaResult).toBeUndefined();
+    expect(response.preGASummary.feasible).toBe(0);
+    expect(response.preGASummary.infeasible).toHaveLength(5);
+    for (const entry of response.preGASummary.infeasible) {
+      expect(entry.code).toBe('CROSS_SEMESTER_DEFECT');
+      expect(entry.metadata).toBeDefined();
+    }
+  });
+});
+
+// ─── Phase 15 — Shared-cohort lecturer distribution ─────────────
+//
+// The user-reported scenario from backlog Phase 15 task #22: two offerings
+// of the same course (IF301) in the same semester, each taught by a different
+// lecturer. 97 students into 30-cap rooms → ⌈97/30⌉ = 4 parallel sessions.
+// Under the new cohort model (OQ-22 default — siblings keyed on courseId),
+// Pre-GA aggregates the two offerings into ONE candidate; the GA produces
+// ONE gene with 4 sessions; the 4 sessions hold lecturerIds distributed
+// across {X, Y} so each lecturer teaches their share of the cohort instead
+// of each offering scheduling its own 4 sessions (the pre-Phase-15 bug).
+describe('Pipeline integration — Phase 15 shared-cohort lecturer distribution', () => {
+  it("produces ONE cohort gene with 4 sessions split across the cohort's lecturer pool", async () => {
+    // Four 30-cap rooms — every qualifying room is the same capacity so the
+    // null-room overflow formula resolves to ⌈97/30⌉ = 4 parallel sessions.
+    const rooms: Room[] = [
+      { id: 1, name: 'R-201', capacity: 30, facilities: [] },
+      { id: 2, name: 'R-202', capacity: 30, facilities: [] },
+      { id: 3, name: 'R-203', capacity: 30, facilities: [] },
+      { id: 4, name: 'R-204', capacity: 30, facilities: [] },
+    ];
+
+    // sks=1 keeps each session a single contiguous slot; 5 days × 3 slots
+    // gives the GA enough room/slot variety to converge on a valid placement.
+    const timeSlots: TimeSlot[] = [];
+    {
+      let nextId = 1;
+      for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+        for (const t of [
+          { start: '08:00', end: '08:50' },
+          { start: '09:00', end: '09:50' },
+          { start: '10:00', end: '10:50' },
+        ]) {
+          timeSlots.push({ id: nextId++, day, startTime: t.start, endTime: t.end });
+        }
+      }
+    }
+
+    // Lecturers X (id 10) and Y (id 20). maxSks=2 makes the soft loadPenalty
+    // actively pull toward a 2/2 split — any imbalanced distribution pushes
+    // one lecturer over cap. lecturerPool is sorted ascending so the pool is
+    // deterministically [10, 20] for the assertion.
+    const lecturerX: Lecturer = {
+      id: 10,
+      name: 'Mr. X',
+      isStructural: false,
+      maxSks: 2,
+      preferredTimeSlotIds: [],
+      competencies: ['core'],
+    };
+    const lecturerY: Lecturer = {
+      id: 20,
+      name: 'Mr. Y',
+      isStructural: false,
+      maxSks: 2,
+      preferredTimeSlotIds: [],
+      competencies: ['core'],
+    };
+    const lecturers = [lecturerX, lecturerY];
+
+    const course = {
+      id: 1,
+      code: 'IF301',
+      name: 'Algoritma',
+      sks: 1,
+      requiredFacilities: [],
+      requiredCompetencies: ['core'],
+    };
+
+    // Two offerings, same (courseId), different lecturers — the trigger for
+    // Pre-GA cohort aggregation. roomId/room null → null-room overflow path,
+    // which fans the cohort across qualifying rooms.
+    const offerings: CourseOffering[] = [
+      {
+        id: 100,
+        courseId: course.id,
+        course,
+        roomId: null,
+        room: null,
+        lecturers: [lecturerX],
+        effectiveStudentCount: 97,
+        isFixed: false,
+      },
+      {
+        id: 200,
+        courseId: course.id,
+        course,
+        roomId: null,
+        room: null,
+        lecturers: [lecturerY],
+        effectiveStudentCount: 97,
+        isFixed: false,
+      },
+    ];
+
+    const config: GAConfig = {
+      populationSize: 40,
+      generations: 80,
+      mutationRate: 0.1,
+      elitismCount: 2,
+      tournamentSize: 3,
+      crossoverType: 'singlePoint',
+      noiseRate: 0.15,
+      hardPenaltyWeight: 100,
+      softPenaltyWeight: 1,
+    };
+
+    const { response, context } = await runPipeline({
+      offerings,
+      timeSlots,
+      rooms,
+      lecturers,
+      config,
+    });
+
+    // ─── Cohort aggregation invariants ─────────────────────────────
+    expect(context.validation.infeasible).toEqual([]);
+    expect(context.candidates).toHaveLength(1);
+
+    const cand = context.candidates[0]!;
+    expect(cand.courseId).toBe(course.id);
+    expect(cand.siblingOfferingIds).toEqual([100, 200]);
+    expect(cand.lecturerPool).toEqual([lecturerX.id, lecturerY.id]); // [10, 20]
+    expect(cand.parallelSessionCount).toBe(4); // ⌈97 / 30⌉
+    expect(cand.sessionDuration).toBe(1);
+    expect(cand.effectiveStudentCount).toBe(97); // OQ-23 default: max(siblings)
+    expect(cand.siblingLecturerGroups).toEqual([[lecturerX.id], [lecturerY.id]]);
+
+    // ─── GA result invariants ──────────────────────────────────────
+    expect(['SUCCESS', 'STAGNATED']).toContain(response.status);
+
+    const gaResult = response.gaResult!;
+    expect(gaResult).toBeDefined();
+    // The cohort merge means the chromosome has ONE gene for the course,
+    // not two — same-course offerings collapse into a single locus.
+    expect(gaResult.bestChromosome).toHaveLength(1);
+
+    const gene = gaResult.bestChromosome[0]!;
+    expect(gene.offeringId).toBe(100); // primary sibling (lowest id)
+    expect(gene.kind).toBe('FLEXIBLE');
+    expect(gene.sessions).toHaveLength(4);
+
+    // 4 sessions × 1 lecturer-assignment each = 4 lecturer-assignments total.
+    // Each session carries a single lecturer (sibling round-robin seed; lecturer
+    // mutation re-picks single-cardinality from the pool).
+    let totalLecturerAssignments = 0;
+    const lecturerCounts = new Map<number, number>([
+      [lecturerX.id, 0],
+      [lecturerY.id, 0],
+    ]);
+    for (const session of gene.sessions) {
+      expect(session.lecturerIds.length).toBeGreaterThanOrEqual(1);
+      totalLecturerAssignments += session.lecturerIds.length;
+      for (const lid of session.lecturerIds) {
+        expect([lecturerX.id, lecturerY.id]).toContain(lid);
+        lecturerCounts.set(lid, (lecturerCounts.get(lid) ?? 0) + 1);
+      }
+    }
+    expect(totalLecturerAssignments).toBe(4);
+
+    // Both lecturers appear at least once — loadPenalty (maxSks=2) penalises
+    // any chromosome that gives a single lecturer all 4 sessions, so the GA
+    // converges on a split distribution. Tight 2/2 is the seeder default and
+    // the lowest-penalty distribution.
+    expect(lecturerCounts.get(lecturerX.id)).toBeGreaterThanOrEqual(1);
+    expect(lecturerCounts.get(lecturerY.id)).toBeGreaterThanOrEqual(1);
+  });
+
+  // Phase 15 task #24 — composition guard for the Phase 11 null-room overflow
+  // path and the Phase 15 cohort grouping. 110 students into 30-cap rooms
+  // forces ⌈110/30⌉ = 4 parallel sessions; three offerings of the same course
+  // collapse into ONE cohort whose lecturerPool is the deduplicated union of
+  // [X, Y, Z]. The 4-session bucket distributes across 3 lecturers via the
+  // seeder's sibling round-robin (sibling[i % 3] owns session i → 2 sessions
+  // for the first sibling, 1 each for the other two).
+  it('composes Phase 11 null-room overflow with Phase 15 cohort grouping (3-sibling cohort, 4 sessions)', async () => {
+    const rooms: Room[] = [
+      { id: 1, name: 'R-201', capacity: 30, facilities: [] },
+      { id: 2, name: 'R-202', capacity: 30, facilities: [] },
+      { id: 3, name: 'R-203', capacity: 30, facilities: [] },
+      { id: 4, name: 'R-204', capacity: 30, facilities: [] },
+    ];
+
+    const timeSlots: TimeSlot[] = [];
+    {
+      let nextId = 1;
+      for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+        for (const t of [
+          { start: '08:00', end: '08:50' },
+          { start: '09:00', end: '09:50' },
+          { start: '10:00', end: '10:50' },
+        ]) {
+          timeSlots.push({ id: nextId++, day, startTime: t.start, endTime: t.end });
+        }
+      }
+    }
+
+    const lecturerX: Lecturer = {
+      id: 10,
+      name: 'Mr. X',
+      isStructural: false,
+      maxSks: 2,
+      preferredTimeSlotIds: [],
+      competencies: ['core'],
+    };
+    const lecturerY: Lecturer = {
+      id: 20,
+      name: 'Mr. Y',
+      isStructural: false,
+      maxSks: 2,
+      preferredTimeSlotIds: [],
+      competencies: ['core'],
+    };
+    const lecturerZ: Lecturer = {
+      id: 30,
+      name: 'Mr. Z',
+      isStructural: false,
+      maxSks: 2,
+      preferredTimeSlotIds: [],
+      competencies: ['core'],
+    };
+    const lecturers = [lecturerX, lecturerY, lecturerZ];
+
+    const course = {
+      id: 1,
+      code: 'IF301',
+      name: 'Algoritma',
+      sks: 1,
+      requiredFacilities: [],
+      requiredCompetencies: ['core'],
+    };
+
+    const offerings: CourseOffering[] = [
+      {
+        id: 100,
+        courseId: course.id,
+        course,
+        roomId: null,
+        room: null,
+        lecturers: [lecturerX],
+        effectiveStudentCount: 110,
+        isFixed: false,
+      },
+      {
+        id: 200,
+        courseId: course.id,
+        course,
+        roomId: null,
+        room: null,
+        lecturers: [lecturerY],
+        effectiveStudentCount: 110,
+        isFixed: false,
+      },
+      {
+        id: 300,
+        courseId: course.id,
+        course,
+        roomId: null,
+        room: null,
+        lecturers: [lecturerZ],
+        effectiveStudentCount: 110,
+        isFixed: false,
+      },
+    ];
+
+    const config: GAConfig = {
+      populationSize: 40,
+      generations: 80,
+      mutationRate: 0.1,
+      elitismCount: 2,
+      tournamentSize: 3,
+      crossoverType: 'singlePoint',
+      noiseRate: 0.15,
+      hardPenaltyWeight: 100,
+      softPenaltyWeight: 1,
+    };
+
+    const { response, context } = await runPipeline({
+      offerings,
+      timeSlots,
+      rooms,
+      lecturers,
+      config,
+    });
+
+    // ─── Cohort aggregation invariants ─────────────────────────────
+    expect(context.validation.infeasible).toEqual([]);
+    expect(context.candidates).toHaveLength(1);
+
+    const cand = context.candidates[0]!;
+    expect(cand.courseId).toBe(course.id);
+    expect(cand.siblingOfferingIds).toEqual([100, 200, 300]);
+    expect(cand.lecturerPool).toEqual([lecturerX.id, lecturerY.id, lecturerZ.id]);
+    expect(cand.parallelSessionCount).toBe(4); // ⌈110 / 30⌉
+    expect(cand.effectiveStudentCount).toBe(110); // OQ-23 default: max(siblings)
+    expect(cand.siblingLecturerGroups).toEqual([
+      [lecturerX.id],
+      [lecturerY.id],
+      [lecturerZ.id],
+    ]);
+
+    // Phase 11 overflow invariant — null-room cohort emits possibleRoomIds.
+    expect(cand.roomId).toBeNull();
+    expect(cand.possibleRoomIds).toBeDefined();
+    expect(cand.possibleRoomIds!.length).toBeGreaterThan(0);
+
+    // ─── GA result invariants ──────────────────────────────────────
+    expect(['SUCCESS', 'STAGNATED']).toContain(response.status);
+
+    const gaResult = response.gaResult!;
+    expect(gaResult).toBeDefined();
+    // Three offerings collapse into ONE chromosome locus.
+    expect(gaResult.bestChromosome).toHaveLength(1);
+
+    const gene = gaResult.bestChromosome[0]!;
+    expect(gene.offeringId).toBe(100); // lowest sibling id is the primary
+    expect(gene.kind).toBe('FLEXIBLE');
+    expect(gene.sessions).toHaveLength(4);
+
+    // Phase 11 invariant: every session's roomId is drawn from possibleRoomIds.
+    const roomPool = new Set(cand.possibleRoomIds!);
+    for (const session of gene.sessions) {
+      expect(roomPool.has(session.roomId)).toBe(true);
+    }
+
+    // 4 sessions × 1 lecturer-assignment each = 4 total.
+    let totalLecturerAssignments = 0;
+    const lecturerCounts = new Map<number, number>([
+      [lecturerX.id, 0],
+      [lecturerY.id, 0],
+      [lecturerZ.id, 0],
+    ]);
+    for (const session of gene.sessions) {
+      expect(session.lecturerIds.length).toBeGreaterThanOrEqual(1);
+      totalLecturerAssignments += session.lecturerIds.length;
+      for (const lid of session.lecturerIds) {
+        expect([lecturerX.id, lecturerY.id, lecturerZ.id]).toContain(lid);
+        lecturerCounts.set(lid, (lecturerCounts.get(lid) ?? 0) + 1);
+      }
+    }
+    expect(totalLecturerAssignments).toBe(4);
+
+    // All three lecturers participate in the cohort — sibling round-robin
+    // seeds 2/1/1 and the soft loadPenalty (maxSks=2 per lecturer) keeps the
+    // distribution close to balanced. Strict equality on the per-lecturer
+    // count would be brittle against mutation drift; the contract is just
+    // "the lecturer pool is exercised, not concentrated on one teacher".
+    let lecturersWithAtLeastOneSession = 0;
+    for (const count of lecturerCounts.values()) {
+      if (count >= 1) lecturersWithAtLeastOneSession++;
+    }
+    expect(lecturersWithAtLeastOneSession).toBeGreaterThanOrEqual(2);
+    // No lecturer should be loaded with all 4 sessions — that would violate
+    // maxSks=2 and pull a soft penalty of 2; the GA prefers any other
+    // distribution.
+    for (const count of lecturerCounts.values()) {
+      expect(count).toBeLessThanOrEqual(3);
+    }
   });
 });

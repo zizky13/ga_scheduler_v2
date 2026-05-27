@@ -19,6 +19,26 @@ import { tagEntities } from './entityTagger.js';
 export const MAX_PARALLEL_SESSIONS_HARD_CAP = 5;
 
 /**
+ * Phase 15 #3 / OQ-23 — cohort-shape validation policy dispatcher.
+ *
+ * Resolution of OQ-23 controls how the cohort-aggregation pass handles
+ * sibling offerings that disagree on `effectiveStudentCount`:
+ *   - `'max'` (default, OQ-23=(b)): silently resolve via `Math.max(siblings)`.
+ *     The cohort builder above already does this — the rejection branch
+ *     gated by this flag is dead code under the default.
+ *   - `'reject'` (OQ-23=(d)): treat any disagreement as infeasible and emit
+ *     `EFFECTIVE_STUDENT_COUNT_MISMATCH` against the primary sibling so the
+ *     admin can reconcile the inputs before re-running.
+ *
+ * The branch is fully wired so flipping this constant (or replacing it with
+ * a runtime config knob) activates the rejection without further changes.
+ * The companion `COHORT_LECTURER_POOL_EMPTY` check below is unconditionally
+ * active — it is defense-in-depth against a `checkLecturer` regression and
+ * should be unreachable post-Phase-14.
+ */
+const STUDENT_COUNT_DISAGREEMENT_POLICY: 'max' | 'reject' = 'max';
+
+/**
  * Run the complete Pre-GA validation pipeline.
  * Pure function — takes data in, returns results, no side effects.
  *
@@ -174,42 +194,189 @@ export function runPreGA(
     feasible.push(...stillFeasible);
   }
 
-  // Build PreGACandidate[] for feasible offerings
-  const rawCandidates: PreGACandidate[] = feasible.map(offering => {
-    // Phase 11 task #2: parallelSessionCount derivation has two regimes.
-    //   - Pre-assigned room (offering.room !== null): legacy formula
-    //     `⌈students / room.capacity⌉` — the offering's split is across
-    //     timeslots within the chosen room (OQ-16).
-    //   - Null room (offering.room === null): split is across ROOMS. The
-    //     count is precomputed above as `nullRoomParallelByOffering` using
-    //     the largest qualifying room's capacity; falls back to 1 when
-    //     `allRooms` was omitted (CLI / unit-test path that skips room
-    //     filtering altogether — matches the Phase 10 #6a default).
-    const parallelSessionCount = offering.room
-      ? Math.ceil(offering.effectiveStudentCount / offering.room.capacity)
-      : (nullRoomParallelByOffering.get(offering.id) ?? 1);
+  // ─── Phase 15 #1 — Cohort aggregation pass (OQ-22 / OQ-23) ─────────
+  // Group `feasible` offerings by cohort key. The backlog default key is
+  // `${semesterId}:${courseId}`, but `CourseOffering` in-memory does not
+  // carry `semesterId` (see `src/types.ts:CourseOffering`); upstream
+  // (`scheduleRepo.loadScheduleInputs`) already filters by semester at the
+  // Prisma boundary, so every `runPreGA` call operates on a single
+  // semester's worth of offerings. The cohort key therefore reduces to
+  // `courseId` alone — semantically equivalent to the backlog default
+  // because the semester filter is implicit.
+  //
+  // note (Phase 15 #1 / OQ-22): cohort key = courseId (semester is implicit).
+  //
+  // For each cohort, the "primary" sibling is the one with the lowest id
+  // (deterministic and stable across runs; chosen over `parentOfferingId`
+  // because OQ-27 keeps that field as pure metadata). The primary's id
+  // becomes the emitted candidate's `offeringId`, which is what every
+  // downstream consumer (entityTagger lockedRoomMap lookup, SSA, GA,
+  // persistence) keys on. Single-offering cohorts collapse trivially —
+  // primary === sibling[0] — and the candidate is structurally identical
+  // to the pre-Phase-15 shape, plus the new `siblingOfferingIds: [id]`.
+  const cohortsByCourseId = new Map<number, CourseOffering[]>();
+  for (const offering of feasible) {
+    const arr = cohortsByCourseId.get(offering.courseId) ?? [];
+    arr.push(offering);
+    cohortsByCourseId.set(offering.courseId, arr);
+  }
+  for (const [, siblings] of cohortsByCourseId) {
+    siblings.sort((a, b) => a.id - b.id);
+  }
 
-    // For fixed offerings, possibleTimeSlotIds = fixedTimeSlotIds only
-    // For non-fixed, possibleTimeSlotIds = ALL available time slots
-    const possibleTimeSlotIds = offering.isFixed && offering.fixedTimeSlotIds
-      ? [...offering.fixedTimeSlotIds]
+  // Build PreGACandidate[] — one per cohort, not one per offering.
+  const rawCandidates: PreGACandidate[] = [];
+  for (const [, siblings] of cohortsByCourseId) {
+    const primary = siblings[0]!; // lowest-id sibling, post-sort
+    const siblingOfferingIds = siblings.map(s => s.id); // already ascending
+
+    // OQ-23 default: cohort.effectiveStudentCount = max(siblings).
+    // Single-offering cohorts: max-of-one === the one value (back-compat).
+    const cohortStudentCount = Math.max(
+      ...siblings.map(s => s.effectiveStudentCount),
+    );
+
+    // Phase 11 task #2 + Phase 15 #1: parallelSessionCount derivation has
+    // two regimes, now driven by the cohort's unified `cohortStudentCount`
+    // rather than any single sibling's count:
+    //   - Pre-assigned room (primary.room !== null): legacy formula
+    //     `⌈cohortStudentCount / room.capacity⌉` — split across timeslots
+    //     within the chosen room (OQ-16). Single-sibling cohorts match
+    //     today's output exactly (max-of-one === sibling's own count).
+    //   - Null room (primary.room === null): split is across ROOMS. We
+    //     recompute against `cohortStudentCount` and the largest qualifying
+    //     room's capacity (all siblings share the same course → same
+    //     requiredFacilities → same qualifying-rooms set, so deriving from
+    //     the primary's pool is safe). For single-sibling cohorts the
+    //     result matches the precomputed `nullRoomParallelByOffering` entry;
+    //     we use that value directly to avoid recomputation in the common
+    //     case and stay byte-identical to today. For multi-sibling cohorts
+    //     we recompute from the cohort's `max(siblings)` count.
+    //
+    //     Falls back to 1 when `allRooms` was omitted (CLI / unit-test
+    //     path that skips room filtering altogether).
+    let parallelSessionCount: number;
+    if (primary.room) {
+      parallelSessionCount = Math.ceil(
+        cohortStudentCount / primary.room.capacity,
+      );
+    } else if (siblings.length === 1) {
+      parallelSessionCount = nullRoomParallelByOffering.get(primary.id) ?? 1;
+    } else {
+      const qualifying = possibleRoomIdsByOffering.get(primary.id);
+      const maxQualifyingCapacity = qualifying && qualifying.length > 0
+        ? Math.max(...qualifying.map(id => roomById.get(id)!.capacity))
+        : 0;
+      parallelSessionCount = maxQualifyingCapacity > 0 && cohortStudentCount > maxQualifyingCapacity
+        ? Math.ceil(cohortStudentCount / maxQualifyingCapacity)
+        : 1;
+    }
+
+    // For fixed offerings, possibleTimeSlotIds = fixedTimeSlotIds only.
+    // For non-fixed, possibleTimeSlotIds = ALL available time slots.
+    // TODO Phase 15 #3: sibling offerings may disagree on `isFixed` and
+    // `fixedTimeSlotIds`; for now we take the primary's values. Conflict
+    // detection across siblings is task #3's concern.
+    const possibleTimeSlotIds = primary.isFixed && primary.fixedTimeSlotIds
+      ? [...primary.fixedTimeSlotIds]
       : allTimeSlots.map(ts => ts.id);
 
+    // TODO Phase 15 #3: when siblings disagree on `roomId` (one has a
+    // pre-assigned room, another is null-room), the cohort silently
+    // adopts the primary's roomId. Mixed-lock siblings need explicit
+    // conflict detection.
+    //
+    // `lecturerIds` retains its primary-only semantics for backward
+    // compatibility — SSA's bipartiteGraph.ts continues to read it until
+    // task #11 pivots it to `lecturerPool`. Single-sibling cohorts:
+    // `lecturerPool` equals the sorted primary lecturer ids. Multi-sibling
+    // cohorts: `lecturerPool` is the union (dedup + ascending sort) for
+    // determinism — task #5's seeder uses this to distribute lecturers
+    // across the cohort's `parallelSessionCount` sessions (OQ-24).
+    // Phase 15 #2
+    const lecturerPool = Array.from(
+      new Set(siblings.flatMap(s => s.lecturers.map(l => l.id))),
+    ).sort((a, b) => a - b);
+
+    // Phase 15 #5: per-sibling lecturer arrays preserve team-teach when the
+    // cohort holds multiple siblings — `lecturerPool` deduplicates across the
+    // cohort and loses sibling boundaries, so the seeder cannot infer "this
+    // sibling team-teaches with these two lecturers" from the pool alone.
+    // Parallel to `siblingOfferingIds` (same index → same sibling), each entry
+    // is sorted ascending for determinism.
+    const siblingLecturerGroups = siblings.map(s =>
+      s.lecturers.map(l => l.id).sort((a, b) => a - b),
+    );
+
+    // ─── Phase 15 #3 — Cohort-shape validation ─────────────────────
+    // Two defensive rejection paths. Both surface on the cohort's
+    // primary sibling so the orchestrator's `preGASummary.infeasible[]`
+    // names the cohort exactly once (no per-sibling inflation).
+    //
+    // `COHORT_LECTURER_POOL_EMPTY` — active. Should be unreachable
+    // post-Phase-14 because every sibling already passed `checkLecturer`
+    // (rejects empty lecturers as `LECTURER_NONE` before the cohort
+    // pass runs). Kept as defense-in-depth so a future `checkLecturer`
+    // regression turns a downstream `lecturerPool[0]` crash into a
+    // clear Pre-GA rejection.
+    //
+    // `EFFECTIVE_STUDENT_COUNT_MISMATCH` — gated by the module-top
+    // `STUDENT_COUNT_DISAGREEMENT_POLICY` constant (OQ-23 dispatcher).
+    // Under the default `'max'`, the cohort silently resolves to
+    // `Math.max(siblings)` and this branch is dead. Flipping the policy
+    // to `'reject'` activates the rejection without further wiring.
+    if (lecturerPool.length === 0) {
+      infeasible.push({
+        offering: primary,
+        failedCheck: {
+          passed: false,
+          code: 'COHORT_LECTURER_POOL_EMPTY',
+          message:
+            `Cohort (courseId=${primary.courseId}, siblings=[${siblingOfferingIds.join(', ')}]) ` +
+            `produced an empty lecturer pool after dedup. This should be unreachable ` +
+            `post-Phase-14 (every feasible offering passes checkLecturer); ` +
+            `treating as infeasible defensively.`,
+        },
+      });
+      continue;
+    }
+
+    if (STUDENT_COUNT_DISAGREEMENT_POLICY === 'reject') {
+      const counts = siblings.map(s => s.effectiveStudentCount);
+      if (counts.some(c => c !== counts[0])) {
+        infeasible.push({
+          offering: primary,
+          failedCheck: {
+            passed: false,
+            code: 'EFFECTIVE_STUDENT_COUNT_MISMATCH',
+            message:
+              `Cohort (courseId=${primary.courseId}, siblings=[${siblingOfferingIds.join(', ')}]) ` +
+              `has disagreeing effectiveStudentCount values: [${counts.join(', ')}]. ` +
+              `OQ-23 resolved to 'reject' — admin must reconcile sibling inputs.`,
+          },
+        });
+        continue;
+      }
+    }
+
     const candidate: PreGACandidate = {
-      offeringId: offering.id,
-      courseId: offering.courseId,
-      roomId: offering.roomId ?? null,
-      lecturerIds: offering.lecturers.map(l => l.id),
-      effectiveStudentCount: offering.effectiveStudentCount,
+      offeringId: primary.id,
+      courseId: primary.courseId,
+      roomId: primary.roomId ?? null,
+      lecturerIds: primary.lecturers.map(l => l.id),
+      effectiveStudentCount: cohortStudentCount,
       parallelSessionCount,
-      sessionDuration: offering.course.sks,
+      sessionDuration: primary.course.sks,
       possibleTimeSlotIds,
       isFixedRoom: false, // will be stamped by tagEntities below
+      siblingOfferingIds,
+      lecturerPool,
+      siblingLecturerGroups,
     };
-    const possibleRoomIds = possibleRoomIdsByOffering.get(offering.id);
+    const possibleRoomIds = possibleRoomIdsByOffering.get(primary.id);
     if (possibleRoomIds) candidate.possibleRoomIds = possibleRoomIds;
-    return candidate;
-  });
+    rawCandidates.push(candidate);
+  }
 
   // Resolve the lockedRoomMap. Phase 10 #6c: when the caller (worker /
   // orchestrator) supplied one, use it verbatim — it was built from the
