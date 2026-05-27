@@ -29,22 +29,18 @@ interface ConflictIndex {
 
 function buildConflictIndex(
   chromosome: Chromosome,
-  candidates: PreGACandidate[],
   excludeOfferingId?: number
 ): ConflictIndex {
-  const candidateMap = new Map(candidates.map(c => [c.offeringId, c]));
   const roomTimeUsed = new Map<string, number>();
   const lecturerTimeUsed = new Map<string, number>();
 
   for (const gene of chromosome) {
     if (gene.offeringId === excludeOfferingId) continue;
-    const candidate = candidateMap.get(gene.offeringId);
-    if (!candidate) continue;
 
     for (const session of gene.sessions) {
       for (const slotId of session.timeSlotIds) {
         roomTimeUsed.set(`room:${session.roomId}:slot:${slotId}`, gene.offeringId);
-        for (const lecturerId of candidate.lecturerIds) {
+        for (const lecturerId of session.lecturerIds) {
           lecturerTimeUsed.set(`lec:${lecturerId}:slot:${slotId}`, gene.offeringId);
         }
       }
@@ -57,28 +53,90 @@ function buildConflictIndex(
 function slotConflicts(
   slotId: number,
   roomId: number,
-  candidate: PreGACandidate,
+  lecturerIds: number[],
   index: ConflictIndex
 ): boolean {
   if (index.roomTimeUsed.has(`room:${roomId}:slot:${slotId}`)) return true;
-  for (const lecturerId of candidate.lecturerIds) {
+  for (const lecturerId of lecturerIds) {
     if (index.lecturerTimeUsed.has(`lec:${lecturerId}:slot:${slotId}`)) return true;
   }
   return false;
 }
 
-function blockConflicts(
+function roomOrGeneSlotConflicts(
   block: number[],
   roomId: number,
-  candidate: PreGACandidate,
   index: ConflictIndex,
   usedSlotsInGene: Set<number>
 ): boolean {
   for (const slotId of block) {
     if (usedSlotsInGene.has(slotId)) return true;
-    if (slotConflicts(slotId, roomId, candidate, index)) return true;
+    if (index.roomTimeUsed.has(`room:${roomId}:slot:${slotId}`)) return true;
   }
   return false;
+}
+
+function lecturerConflicts(
+  block: number[],
+  lecturerIds: number[],
+  index: ConflictIndex
+): boolean {
+  for (const slotId of block) {
+    for (const lecturerId of lecturerIds) {
+      if (index.lecturerTimeUsed.has(`lec:${lecturerId}:slot:${slotId}`)) return true;
+    }
+  }
+  return false;
+}
+
+function sameLecturerSet(a: number[], b: number[]): boolean {
+  if (a.length !== b.length) return false;
+  const aa = [...a].sort((x, y) => x - y);
+  const bb = [...b].sort((x, y) => x - y);
+  return aa.every((value, index) => value === bb[index]);
+}
+
+function lecturerAlternatives(
+  candidate: PreGACandidate,
+  currentLecturerIds: number[]
+): number[][] {
+  const pool = candidate.lecturerPool;
+  if (pool.length === 0) return [];
+
+  const size = Math.min(Math.max(1, currentLecturerIds.length), pool.length);
+  if (size === 1) {
+    return fisherYatesShuffle(pool).map(lecturerId => [lecturerId]);
+  }
+
+  const shuffled = fisherYatesShuffle(pool);
+  const seen = new Set<string>();
+  const alternatives: number[][] = [];
+  for (let start = 0; start < shuffled.length; start++) {
+    const candidateIds = Array.from(
+      { length: size },
+      (_, offset) => shuffled[(start + offset) % shuffled.length]!
+    ).sort((a, b) => a - b);
+    const key = candidateIds.join(',');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    alternatives.push(candidateIds);
+  }
+  return alternatives;
+}
+
+function pickLecturerSwapForBlock(
+  block: number[],
+  candidate: PreGACandidate,
+  currentLecturerIds: number[],
+  index: ConflictIndex
+): number[] | null {
+  for (const lecturerIds of lecturerAlternatives(candidate, currentLecturerIds)) {
+    if (sameLecturerSet(lecturerIds, currentLecturerIds)) continue;
+    if (!lecturerConflicts(block, lecturerIds, index)) {
+      return lecturerIds;
+    }
+  }
+  return null;
 }
 
 /**
@@ -100,11 +158,35 @@ function repairSessionAsBlock(
   const { sessionDuration } = candidate;
 
   // Fast path: current block is contiguous and conflict-free → keep it.
-  const currentClean = !session.timeSlotIds.some(
-    s => usedSlotsInGene.has(s) || slotConflicts(s, session.roomId, candidate, index)
+  const currentRoomOrGeneSlotConflict = roomOrGeneSlotConflicts(
+    session.timeSlotIds,
+    session.roomId,
+    index,
+    usedSlotsInGene
   );
+  const currentLecturerConflict = lecturerConflicts(session.timeSlotIds, session.lecturerIds, index);
+  const currentClean = !currentRoomOrGeneSlotConflict && !currentLecturerConflict;
   if (currentClean && session.timeSlotIds.length === sessionDuration) {
     return session;
+  }
+
+  // Phase 15 #9: if the only current conflict is lecturer-time, first try to
+  // keep the room/time assignment and swap the session lecturer from the
+  // candidate's cohort pool. Room / slot repair is the fallback.
+  if (
+    session.timeSlotIds.length === sessionDuration &&
+    currentLecturerConflict &&
+    !currentRoomOrGeneSlotConflict
+  ) {
+    const lecturerIds = pickLecturerSwapForBlock(
+      session.timeSlotIds,
+      candidate,
+      session.lecturerIds,
+      index
+    );
+    if (lecturerIds) {
+      return { roomId: session.roomId, timeSlotIds: [...session.timeSlotIds], lecturerIds };
+    }
   }
 
   const blocks = findContiguousSlots(candidate.possibleTimeSlotIds, sessionDuration, lookup);
@@ -116,9 +198,12 @@ function repairSessionAsBlock(
 
   // 1. Try a clean block on the current room.
   for (const block of shuffledBlocks) {
-    if (!blockConflicts(block, session.roomId, candidate, index, usedSlotsInGene)) {
+    if (roomOrGeneSlotConflicts(block, session.roomId, index, usedSlotsInGene)) continue;
+    if (!lecturerConflicts(block, session.lecturerIds, index)) {
       return { roomId: session.roomId, timeSlotIds: block, lecturerIds: [...session.lecturerIds] };
     }
+    const lecturerIds = pickLecturerSwapForBlock(block, candidate, session.lecturerIds, index);
+    if (lecturerIds) return { roomId: session.roomId, timeSlotIds: block, lecturerIds };
   }
 
   // 2. FLEXIBLE: try a clean block on any other allowed room.
@@ -127,16 +212,23 @@ function repairSessionAsBlock(
     for (const altRoom of shuffledRooms) {
       if (altRoom === session.roomId) continue;
       for (const block of shuffledBlocks) {
-        if (!blockConflicts(block, altRoom, candidate, index, usedSlotsInGene)) {
+        if (roomOrGeneSlotConflicts(block, altRoom, index, usedSlotsInGene)) continue;
+        if (!lecturerConflicts(block, session.lecturerIds, index)) {
           return { roomId: altRoom, timeSlotIds: block, lecturerIds: [...session.lecturerIds] };
         }
+        const lecturerIds = pickLecturerSwapForBlock(block, candidate, session.lecturerIds, index);
+        if (lecturerIds) return { roomId: altRoom, timeSlotIds: block, lecturerIds };
       }
     }
   }
 
   // 3. No clean placement found. Pick any contiguous block on the current room.
   // GA fitness will penalise the residual collision; contiguity is preserved.
-  return { roomId: session.roomId, timeSlotIds: shuffledBlocks[0]!, lecturerIds: [...session.lecturerIds] };
+  const fallbackBlock = shuffledBlocks[0]!;
+  const fallbackLecturerIds =
+    pickLecturerSwapForBlock(fallbackBlock, candidate, session.lecturerIds, index) ??
+    [...session.lecturerIds];
+  return { roomId: session.roomId, timeSlotIds: fallbackBlock, lecturerIds: fallbackLecturerIds };
 }
 
 /**
@@ -154,8 +246,24 @@ function repairSessionGreedy(
   const newSlots: number[] = [];
   const usedSlots = new Set<number>();
 
+  const currentRoomConflict = session.timeSlotIds.some(
+    slotId => index.roomTimeUsed.has(`room:${roomId}:slot:${slotId}`)
+  );
+  const currentLecturerConflict = lecturerConflicts(session.timeSlotIds, session.lecturerIds, index);
+  if (currentLecturerConflict && !currentRoomConflict && session.timeSlotIds.length === needed) {
+    const lecturerIds = pickLecturerSwapForBlock(
+      session.timeSlotIds,
+      candidate,
+      session.lecturerIds,
+      index
+    );
+    if (lecturerIds) {
+      return { roomId, timeSlotIds: [...session.timeSlotIds], lecturerIds };
+    }
+  }
+
   for (const slotId of session.timeSlotIds) {
-    if (!slotConflicts(slotId, roomId, candidate, index) && !usedSlots.has(slotId)) {
+    if (!slotConflicts(slotId, roomId, session.lecturerIds, index) && !usedSlots.has(slotId)) {
       newSlots.push(slotId);
       usedSlots.add(slotId);
     }
@@ -166,7 +274,7 @@ function repairSessionGreedy(
     for (const slotId of shuffledSlots) {
       if (newSlots.length >= needed) break;
       if (usedSlots.has(slotId)) continue;
-      if (!slotConflicts(slotId, roomId, candidate, index)) {
+      if (!slotConflicts(slotId, roomId, session.lecturerIds, index)) {
         newSlots.push(slotId);
         usedSlots.add(slotId);
       }
@@ -296,7 +404,7 @@ export function repairChromosome(
     const candidate = candidateMap.get(gene.offeringId);
     if (!candidate) continue;
 
-    const index = buildConflictIndex(repaired, candidates, gene.offeringId);
+    const index = buildConflictIndex(repaired, gene.offeringId);
 
     if (lookup) {
       // Full contiguous-block repair (Task 23).
