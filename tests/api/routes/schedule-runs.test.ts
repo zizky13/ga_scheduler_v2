@@ -477,6 +477,7 @@ describe('GET /schedule-runs/:id', () => {
       roomId: 3,
       sessionIndex: 0,
       isFixedRoom: true,
+      lecturerIds: [5],
       slots: [{ id: 1, day: 'MONDAY', startTime: '08:00', endTime: '08:50' }],
       offering: {
         id: 6,
@@ -508,10 +509,62 @@ describe('GET /schedule-runs/:id', () => {
             sessionIndex: 0,
             roomId: 3,
             isFixedRoom: true,
+            lecturerIds: [5],
           }),
         ],
       }),
     );
+  });
+
+  it('200 — Phase 15 assignments include per-session lecturerIds and legacy rows surface []', async () => {
+    seedUser();
+    seedRun({
+      id: 'run-phase15',
+      createdById: 7,
+      status: 'COMPLETED',
+    });
+    fixture.insertScheduleAssignment({
+      id: 11,
+      runId: 'run-phase15',
+      offeringId: 6,
+      roomId: 3,
+      sessionIndex: 0,
+      lecturerIds: [5],
+      slots: [{ id: 1, day: 'MONDAY', startTime: '08:00', endTime: '08:50' }],
+      offering: {
+        id: 6,
+        courseCode: 'IF301',
+        courseName: 'Rekayasa Perangkat Lunak',
+        lecturers: [
+          { id: 5, name: 'Eko Prasetyo, M.Sc.' },
+          { id: 9, name: 'Legacy Team Lecturer' },
+        ],
+      },
+    });
+    fixture.insertScheduleAssignment({
+      id: 12,
+      runId: 'run-phase15',
+      offeringId: 7,
+      roomId: 4,
+      sessionIndex: 0,
+      slots: [{ id: 2, day: 'TUESDAY', startTime: '09:00', endTime: '09:50' }],
+      offering: {
+        id: 7,
+        courseCode: 'IF302',
+        courseName: 'Basis Data',
+        lecturers: [{ id: 9, name: 'Legacy Team Lecturer' }],
+      },
+    });
+
+    const res = await request(app)
+      .get('/api/v1/schedule-runs/run-phase15')
+      .set('Authorization', userBearer());
+
+    expect(res.status).toBe(200);
+    const phase15 = res.body.assignments.find((a: { offeringId: number }) => a.offeringId === 6);
+    const legacy = res.body.assignments.find((a: { offeringId: number }) => a.offeringId === 7);
+    expect(phase15.sessions[0].lecturerIds).toEqual([5]);
+    expect(legacy.sessions[0].lecturerIds).toEqual([]);
   });
 
   it('404 — `user` requesting another owner\'s run does NOT leak existence', async () => {

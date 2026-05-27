@@ -49,6 +49,7 @@ interface SessionWire {
   roomId: number;
   isFixedRoom: boolean;
   manualOverride: boolean;
+  lecturerIds: number[];
   timeSlots: TimeSlotInfo[];
 }
 
@@ -601,7 +602,8 @@ export function ScheduleViewerPage() {
                 const firstSlot = sortedSlots[0];
                 const lastSlot = sortedSlots[sortedSlots.length - 1];
 
-                const dayIdx = filteredDays.indexOf(normalizeDay(firstSlot.day));
+                const normalizedDay = normalizeDay(firstSlot.day);
+                const dayIdx = filteredDays.findIndex((day) => day === normalizedDay);
                 if (dayIdx === -1) return null;
 
                 const rowIdx = startTimeToRow.get(firstSlot.startTime);

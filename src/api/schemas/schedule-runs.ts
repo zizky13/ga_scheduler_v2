@@ -67,3 +67,59 @@ export const overrideAssignmentBodySchema = z
   });
 
 export type OverrideAssignmentBody = z.infer<typeof overrideAssignmentBodySchema>;
+
+const isoDateTimeNullableSchema = z.string().datetime().nullable();
+
+export const scheduleRunDetailResponseSchema = z.object({
+  id: z.string(),
+  status: runStatusEnum,
+  semesterId: numericIdSchema,
+  createdById: numericIdSchema,
+  bestFitness: z.number(),
+  hardViolations: z.number().int(),
+  softPenalty: z.number().int(),
+  competencyMismatch: z.number().int(),
+  loadPenalty: z.number().int(),
+  capacityShortfallPenalty: z.number().int(),
+  generationsRun: z.number().int(),
+  currentGeneration: z.number().int(),
+  stagnatedEarly: z.boolean(),
+  durationMs: z.number().int().nullable(),
+  errorCode: z.string().nullable(),
+  errorMessage: z.string().nullable(),
+  startedAt: isoDateTimeNullableSchema,
+  completedAt: isoDateTimeNullableSchema,
+  createdAt: z.string().datetime(),
+  config: z.unknown(),
+  preGASummary: z.unknown(),
+  ssaResult: z.unknown(),
+  history: z.unknown(),
+  avgHistory: z.unknown(),
+  idempotencyKey: z.string().nullable(),
+  assignments: z.array(z.object({
+    offeringId: numericIdSchema,
+    offering: z.object({
+      id: numericIdSchema,
+      courseCode: z.string(),
+      courseName: z.string(),
+      lecturers: z.array(z.object({
+        id: numericIdSchema,
+        name: z.string(),
+      })),
+    }),
+    sessions: z.array(z.object({
+      assignmentId: numericIdSchema,
+      sessionIndex: z.number().int().nonnegative(),
+      roomId: numericIdSchema,
+      isFixedRoom: z.boolean(),
+      manualOverride: z.boolean(),
+      lecturerIds: z.array(numericIdSchema),
+      timeSlots: z.array(z.object({
+        id: numericIdSchema,
+        day: z.string(),
+        startTime: z.string(),
+        endTime: z.string(),
+      })),
+    })),
+  })),
+}).openapi('ScheduleRunDetailResponse');

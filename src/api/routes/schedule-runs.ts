@@ -372,6 +372,7 @@ interface SessionWire {
   roomId: number;
   isFixedRoom: boolean;
   manualOverride: boolean;
+  lecturerIds: number[];
   timeSlots: Array<{
     id: number;
     day: string;
@@ -411,6 +412,7 @@ function groupAssignmentsByOffering(
       roomId: a.roomId,
       isFixedRoom: a.isFixedRoom,
       manualOverride: a.manualOverride,
+      lecturerIds: a.lecturerIds,
       timeSlots: a.slots,
     });
   }

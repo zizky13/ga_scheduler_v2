@@ -113,6 +113,29 @@ describe('buildOpenApiDocument()', () => {
     expect(op?.security).toEqual(expect.arrayContaining([{ bearerAuth: [] }]));
   });
 
+  it('documents per-session lecturerIds on schedule-run detail responses', () => {
+    const doc = buildOpenApiDocument();
+    const detailSchema = doc.components?.schemas?.ScheduleRunDetailResponse as {
+      properties?: {
+        assignments?: {
+          items?: {
+            properties?: {
+              sessions?: {
+                items?: {
+                  properties?: Record<string, unknown>;
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+
+    const sessionProps =
+      detailSchema.properties?.assignments?.items?.properties?.sessions?.items?.properties;
+    expect(sessionProps?.lecturerIds).toBeDefined();
+  });
+
   it('omits security on /auth/login (publicly callable)', () => {
     const doc = buildOpenApiDocument();
     const op = doc.paths?.['/auth/login']?.post;

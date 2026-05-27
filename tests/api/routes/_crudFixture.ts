@@ -1273,6 +1273,7 @@ export function buildCrudFixture(): CrudFixture {
       roomId: a.roomId,
       isFixedRoom: a.isFixedRoom ?? false,
       manualOverride: a.manualOverride ?? false,
+      lecturerIds: a.lecturerIds ?? [],
       slots: a.slots ?? [],
       offering: a.offering ?? {
         id: a.offeringId,

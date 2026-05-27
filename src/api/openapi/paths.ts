@@ -81,6 +81,7 @@ import {
   createScheduleRunBodySchema,
   listScheduleRunsQuerySchema,
   overrideAssignmentBodySchema,
+  scheduleRunDetailResponseSchema,
   scheduleRunAssignmentParamsSchema,
   scheduleRunIdParamsSchema,
   scheduleRunStreamParamsSchema,
@@ -111,6 +112,13 @@ function ok(description: string) {
   return {
     description,
     content: { 'application/json': { schema: z.unknown() } },
+  };
+}
+
+function okJson(description: string, schema: z.ZodTypeAny) {
+  return {
+    description,
+    content: { 'application/json': { schema } },
   };
 }
 
@@ -717,7 +725,7 @@ export function registerPaths(registry: OpenAPIRegistry): void {
     security: bearerSecurity,
     request: { params: scheduleRunIdParamsSchema },
     responses: {
-      200: ok('Run payload.'),
+      200: okJson('Run payload.', scheduleRunDetailResponseSchema),
       ...pickErrorResponses(401, 403, 404),
     },
   });

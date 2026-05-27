@@ -135,6 +135,7 @@ export interface ScheduleRunAssignmentDetail {
   roomId: number;
   isFixedRoom: boolean;
   manualOverride: boolean;
+  lecturerIds: number[];
   slots: Array<{
     id: number;
     day: string;
@@ -335,6 +336,10 @@ export function createScheduleRunRepository(
               },
             },
           },
+          lecturers: {
+            select: { lecturerId: true },
+            orderBy: { lecturerId: 'asc' },
+          },
         },
       });
 
@@ -345,6 +350,7 @@ export function createScheduleRunRepository(
         roomId: r.roomId,
         isFixedRoom: r.isFixedRoom,
         manualOverride: r.manualOverride,
+        lecturerIds: r.lecturers.map((l) => l.lecturerId),
         slots: r.slots.map((s) => ({
           id: s.timeSlot.id,
           day: s.timeSlot.day,
