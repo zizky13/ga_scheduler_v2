@@ -117,7 +117,7 @@ function repairSessionAsBlock(
   // 1. Try a clean block on the current room.
   for (const block of shuffledBlocks) {
     if (!blockConflicts(block, session.roomId, candidate, index, usedSlotsInGene)) {
-      return { roomId: session.roomId, timeSlotIds: block };
+      return { roomId: session.roomId, timeSlotIds: block, lecturerIds: [...session.lecturerIds] };
     }
   }
 
@@ -128,7 +128,7 @@ function repairSessionAsBlock(
       if (altRoom === session.roomId) continue;
       for (const block of shuffledBlocks) {
         if (!blockConflicts(block, altRoom, candidate, index, usedSlotsInGene)) {
-          return { roomId: altRoom, timeSlotIds: block };
+          return { roomId: altRoom, timeSlotIds: block, lecturerIds: [...session.lecturerIds] };
         }
       }
     }
@@ -136,7 +136,7 @@ function repairSessionAsBlock(
 
   // 3. No clean placement found. Pick any contiguous block on the current room.
   // GA fitness will penalise the residual collision; contiguity is preserved.
-  return { roomId: session.roomId, timeSlotIds: shuffledBlocks[0]! };
+  return { roomId: session.roomId, timeSlotIds: shuffledBlocks[0]!, lecturerIds: [...session.lecturerIds] };
 }
 
 /**
@@ -183,7 +183,7 @@ function repairSessionGreedy(
     }
   }
 
-  return { roomId, timeSlotIds: newSlots };
+  return { roomId, timeSlotIds: newSlots, lecturerIds: [...session.lecturerIds] };
 }
 
 /**
@@ -285,7 +285,11 @@ export function repairChromosome(
 
   const repaired: Gene[] = chromosome.map(g => ({
     ...g,
-    sessions: g.sessions.map(s => ({ roomId: s.roomId, timeSlotIds: [...s.timeSlotIds] })),
+    sessions: g.sessions.map(s => ({
+      roomId: s.roomId,
+      timeSlotIds: [...s.timeSlotIds],
+      lecturerIds: [...s.lecturerIds],
+    })),
   }));
 
   for (const gene of repaired) {
@@ -304,7 +308,7 @@ export function repairChromosome(
         const repairedSession =
           gene.kind === 'FIXED'
             ? repairSessionAsBlock(
-                { roomId: session.roomId, timeSlotIds: session.timeSlotIds },
+                { roomId: session.roomId, timeSlotIds: session.timeSlotIds, lecturerIds: session.lecturerIds },
                 candidate,
                 'FIXED',
                 index,

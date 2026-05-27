@@ -160,7 +160,11 @@ export async function runGA(
     if (best.fitness > overallBestFitness) {
       overallBest = best.chromosome.map(g => ({
         ...g,
-        sessions: g.sessions.map(s => ({ roomId: s.roomId, timeSlotIds: [...s.timeSlotIds] })),
+        sessions: g.sessions.map(s => ({
+          roomId: s.roomId,
+          timeSlotIds: [...s.timeSlotIds],
+          lecturerIds: [...s.lecturerIds],
+        })),
       })) as Gene[];
       overallBestFitness = best.fitness;
       overallHardViolations = best.hardViolations;

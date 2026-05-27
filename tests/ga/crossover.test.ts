@@ -34,12 +34,12 @@ function buildParent(slotOffset: number): Chromosome {
   const fixed = (offeringId: number, roomId: number, slots: number[]): FixedRoomGene => ({
     kind: 'FIXED',
     offeringId,
-    sessions: [{ roomId, timeSlotIds: slots }],
+    sessions: [{ roomId, timeSlotIds: slots, lecturerIds: [] }],
   });
   const flexible = (offeringId: number, roomId: number, slots: number[]): FlexibleGene => ({
     kind: 'FLEXIBLE',
     offeringId,
-    sessions: [{ roomId, timeSlotIds: slots }],
+    sessions: [{ roomId, timeSlotIds: slots, lecturerIds: [] }],
   });
   return [
     fixed(101, 1, [10 + slotOffset, 11 + slotOffset]),

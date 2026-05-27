@@ -23,6 +23,9 @@ function baseCandidate(overrides: Partial<PreGACandidate> = {}): PreGACandidate 
     possibleTimeSlotIds: [1, 2, 3, 4, 5],
     possibleRoomIds: [1, 2, 3, 4, 5],
     isFixedRoom: false,
+    siblingOfferingIds: [1],
+    lecturerPool: [100],
+    siblingLecturerGroups: [[100]],
     ...overrides,
   };
 }

@@ -20,7 +20,11 @@ import type { Chromosome, Gene, GeneSession } from '../types.js';
 
 /** Deep-clone a sessions array to avoid cross-gene aliasing. */
 function cloneSessions(sessions: GeneSession[]): GeneSession[] {
-  return sessions.map(s => ({ roomId: s.roomId, timeSlotIds: [...s.timeSlotIds] }));
+  return sessions.map(s => ({
+    roomId: s.roomId,
+    timeSlotIds: [...s.timeSlotIds],
+    lecturerIds: [...s.lecturerIds],
+  }));
 }
 
 /** Deep-clone a gene (copies sessions[] so mutations don't alias). */

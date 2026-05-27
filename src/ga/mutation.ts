@@ -28,6 +28,24 @@ function pickBlocks(blocks: number[][], count: number): number[][] {
 }
 
 /**
+ * Phase 15 #5 — pick the lecturer list for session index `i` in a freshly-
+ * built sessions array. Mirrors the chromosome-seeder distribution so the
+ * mutation operator preserves the same per-session lecturer semantics:
+ * single-sibling cohorts stamp `candidate.lecturerIds` on every session;
+ * multi-sibling cohorts walk `siblingLecturerGroups` round-robin. Phase 15 #6
+ * will introduce a `mutateLecturer` operator that explores alternate
+ * distributions; until then mutation only touches room/slot dimensions and
+ * the lecturer dimension stays at its seed value.
+ */
+function pickLecturersForSession(candidate: PreGACandidate, sessionIndex: number): number[] {
+  if (candidate.siblingOfferingIds.length <= 1) {
+    return [...candidate.lecturerIds];
+  }
+  const groups = candidate.siblingLecturerGroups;
+  return [...groups[sessionIndex % groups.length]!];
+}
+
+/**
  * Fallback: build sessions with a plain shuffle-and-slice (pre-Task-18 logic).
  * `pickRoom` is invoked once per session — callers pick either a shared
  * seed roomId (single-session / pre-assigned shapes) or an independent
@@ -45,6 +63,7 @@ function buildSessionsFallback(
       i * candidate.sessionDuration,
       (i + 1) * candidate.sessionDuration
     ),
+    lecturerIds: pickLecturersForSession(candidate, i),
   }));
 }
 
@@ -80,6 +99,7 @@ export function mutateChromosome(
         newSessions = gene.sessions.map((session, i) => ({
           roomId: session.roomId, // immutable — original room kept
           timeSlotIds: picked[i]!,
+          lecturerIds: [...session.lecturerIds],
         }));
       } else {
         // Fallback: shuffle-and-slice (preserving room)
@@ -87,6 +107,7 @@ export function mutateChromosome(
         newSessions = gene.sessions.map((session, i) => ({
           roomId: session.roomId,
           timeSlotIds: shuffledSlots.slice(i * sessionDuration, (i + 1) * sessionDuration),
+          lecturerIds: [...session.lecturerIds],
         }));
       }
 
@@ -131,9 +152,10 @@ export function mutateChromosome(
 
     if (blocks && blocks.length > 0) {
       const picked = pickBlocks(blocks, parallelSessionCount);
-      newSessions = picked.map(block => ({
+      newSessions = picked.map((block, i) => ({
         roomId: pickRoomForSession(),
         timeSlotIds: block,
+        lecturerIds: pickLecturersForSession(candidate, i),
       }));
     } else {
       newSessions = buildSessionsFallback(candidate, pickRoomForSession, parallelSessionCount);

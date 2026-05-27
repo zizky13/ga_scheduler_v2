@@ -298,6 +298,16 @@ export function runPreGA(
       new Set(siblings.flatMap(s => s.lecturers.map(l => l.id))),
     ).sort((a, b) => a - b);
 
+    // Phase 15 #5: per-sibling lecturer arrays preserve team-teach when the
+    // cohort holds multiple siblings — `lecturerPool` deduplicates across the
+    // cohort and loses sibling boundaries, so the seeder cannot infer "this
+    // sibling team-teaches with these two lecturers" from the pool alone.
+    // Parallel to `siblingOfferingIds` (same index → same sibling), each entry
+    // is sorted ascending for determinism.
+    const siblingLecturerGroups = siblings.map(s =>
+      s.lecturers.map(l => l.id).sort((a, b) => a - b),
+    );
+
     // ─── Phase 15 #3 — Cohort-shape validation ─────────────────────
     // Two defensive rejection paths. Both surface on the cohort's
     // primary sibling so the orchestrator's `preGASummary.infeasible[]`
@@ -361,6 +371,7 @@ export function runPreGA(
       isFixedRoom: false, // will be stamped by tagEntities below
       siblingOfferingIds,
       lecturerPool,
+      siblingLecturerGroups,
     };
     const possibleRoomIds = possibleRoomIdsByOffering.get(primary.id);
     if (possibleRoomIds) candidate.possibleRoomIds = possibleRoomIds;

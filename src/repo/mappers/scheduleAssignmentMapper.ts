@@ -163,9 +163,15 @@ export function scheduleAssignmentRecordsToChromosome(
       }
     }
 
+    // Phase 15 #5: per-session lecturerIds is reconstructed empty for now —
+    // OQ-30 backward compatibility. Phase 15 #14/#15 add the
+    // `ScheduleAssignmentLecturer` join table and pivot the mapper to read
+    // lecturerIds from it; until then, persisted runs surface
+    // `lecturerIds: []` (the frontend renders "Team teach (legacy)").
     const geneSessions = sessions.map((s) => ({
       roomId: s.roomId,
       timeSlotIds: [...s.timeSlotIds],
+      lecturerIds: [] as number[],
     }));
 
     const gene: Gene = isFixedRoom

@@ -119,19 +119,25 @@ describe('chromosomeToScheduleAssignmentWrites', () => {
 
 describe('scheduleAssignmentRecordsToChromosome (round-trip)', () => {
   it('reconstructs the original chromosome from persisted records', () => {
+    // Phase 15 #5 + feedback_mapper_tests.md memory: per-session lecturerIds
+    // is required on GeneSession but the persistence layer doesn't yet store
+    // it (task 14 adds the `ScheduleAssignmentLecturer` join table). The
+    // mapper rebuilds sessions with `lecturerIds: []` for legacy back-compat
+    // (OQ-30); the fixture matches that empty default so round-trip equality
+    // stays meaningful.
     const original: Chromosome = [
       {
         kind: 'FLEXIBLE',
         offeringId: 10,
         sessions: [
-          { roomId: 1, timeSlotIds: [1, 2, 3] },
-          { roomId: 2, timeSlotIds: [4, 5, 6] },
+          { roomId: 1, timeSlotIds: [1, 2, 3], lecturerIds: [] },
+          { roomId: 2, timeSlotIds: [4, 5, 6], lecturerIds: [] },
         ],
       },
       {
         kind: 'FIXED',
         offeringId: 20,
-        sessions: [{ roomId: 3, timeSlotIds: [7, 8, 9] }],
+        sessions: [{ roomId: 3, timeSlotIds: [7, 8, 9], lecturerIds: [] }],
       },
     ];
     const writes = chromosomeToScheduleAssignmentWrites('run-1', original);
