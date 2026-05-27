@@ -281,3 +281,107 @@ describe('runAC3 (techspec §10.1)', () => {
     expect(Array.from(graph.adjacency.get(1)!).sort()).toEqual([3]);
   });
 });
+
+// Phase 15 task #26 — AC-3 cohort awareness explicit coverage
+//
+// AC-3 must NOT propagate shared-lecturer constraints between sibling sessions
+// of the same cohort — the GA decides which lecturer teaches which session
+// post-SSA, so a shared lecturerPool isn't a CSP-time conflict for siblings.
+// Cross-cohort overlap remains a real conflict and must still propagate.
+// These tests strengthen task #13's coverage with symmetric directional cases
+// (prune-from-A-into-B AND prune-from-B-into-A) and a multi-pool overlap case.
+describe('runAC3 — Phase 15 #26 cohort-awareness symmetry', () => {
+  it('sibling non-propagation is symmetric: neither sibling prunes the other (A→B)', () => {
+    // Sibling A has the wider domain; without sibling B forcing it, B's [1]
+    // must NOT cause AC-3 to remove slot 1 from A's [1, 2].
+    const graph = buildGraph([
+      { sessionId: 100, offeringId: 1, sessionIndex: 0, roomId: null, lecturerIds: [500], domain: [1, 2] },
+      { sessionId: 101, offeringId: 1, sessionIndex: 1, roomId: null, lecturerIds: [500], domain: [1] },
+    ]);
+
+    const result = runAC3(graph);
+
+    expect(result.consistent).toBe(true);
+    expect(Array.from(graph.adjacency.get(100)!).sort()).toEqual([1, 2]);
+    expect(Array.from(graph.adjacency.get(101)!).sort()).toEqual([1]);
+  });
+
+  it('sibling non-propagation is symmetric: neither sibling prunes the other (B→A)', () => {
+    // Mirror of the previous: swap which sibling has the narrow domain.
+    const graph = buildGraph([
+      { sessionId: 100, offeringId: 1, sessionIndex: 0, roomId: null, lecturerIds: [500], domain: [2] },
+      { sessionId: 101, offeringId: 1, sessionIndex: 1, roomId: null, lecturerIds: [500], domain: [1, 2] },
+    ]);
+
+    const result = runAC3(graph);
+
+    expect(result.consistent).toBe(true);
+    expect(Array.from(graph.adjacency.get(100)!).sort()).toEqual([2]);
+    expect(Array.from(graph.adjacency.get(101)!).sort()).toEqual([1, 2]);
+  });
+
+  it('cross-cohort propagation is symmetric: pruning fires in either direction (A→B)', () => {
+    // Two SessionNodes from DIFFERENT offerings sharing a lecturer. A forced
+    // to [1] must remove slot 1 from B's [1, 2] → B = [2].
+    const graph = buildGraph([
+      { sessionId: 200, offeringId: 2, sessionIndex: 0, roomId: null, lecturerIds: [500], domain: [1] },
+      { sessionId: 300, offeringId: 3, sessionIndex: 0, roomId: null, lecturerIds: [500], domain: [1, 2] },
+    ]);
+
+    const result = runAC3(graph);
+
+    expect(result.consistent).toBe(true);
+    expect(Array.from(graph.adjacency.get(200)!).sort()).toEqual([1]);
+    expect(Array.from(graph.adjacency.get(300)!).sort()).toEqual([2]);
+  });
+
+  it('cross-cohort propagation is symmetric: pruning fires in either direction (B→A)', () => {
+    // Mirror — narrow domain on the other side.
+    const graph = buildGraph([
+      { sessionId: 200, offeringId: 2, sessionIndex: 0, roomId: null, lecturerIds: [500], domain: [1, 2] },
+      { sessionId: 300, offeringId: 3, sessionIndex: 0, roomId: null, lecturerIds: [500], domain: [2] },
+    ]);
+
+    const result = runAC3(graph);
+
+    expect(result.consistent).toBe(true);
+    expect(Array.from(graph.adjacency.get(200)!).sort()).toEqual([1]);
+    expect(Array.from(graph.adjacency.get(300)!).sort()).toEqual([2]);
+  });
+
+  it('cross-cohort lecturerPool overlap (not just lecturerIds) still propagates', () => {
+    // Cohort A's pool is [500, 600], cohort B's pool is [500, 700]. They
+    // share lecturer 500 in their pools — under bipartiteGraph's task #11
+    // change, BOTH cohorts surface their full pool as SessionNode.lecturerIds,
+    // so AC-3 sees a shared lecturer (500) and must propagate across the
+    // cohort boundary even though neither cohort's primary `lecturerIds`
+    // includes the other's primary lecturer.
+    const graph = buildBipartiteGraph([
+      candidate({
+        offeringId: 20,
+        possibleTimeSlotIds: [1, 2],
+        lecturerIds: [500],
+        lecturerPool: [500, 600],
+        siblingOfferingIds: [20, 21],
+        siblingLecturerGroups: [[500], [600]],
+      }),
+      candidate({
+        offeringId: 30,
+        possibleTimeSlotIds: [1],
+        lecturerIds: [700],
+        // Pool overlaps via lecturer 500 even though primary is 700.
+        lecturerPool: [500, 700],
+        siblingOfferingIds: [30, 31],
+        siblingLecturerGroups: [[700], [500]],
+      }),
+    ]);
+
+    const result = runAC3(graph);
+
+    expect(result.consistent).toBe(true);
+    const cohortA = graph.sessions.find(s => s.offeringId === 20)!;
+    const cohortB = graph.sessions.find(s => s.offeringId === 30)!;
+    expect(Array.from(graph.adjacency.get(cohortA.sessionId)!).sort()).toEqual([2]);
+    expect(Array.from(graph.adjacency.get(cohortB.sessionId)!).sort()).toEqual([1]);
+  });
+});

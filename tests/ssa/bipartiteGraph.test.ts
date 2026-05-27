@@ -229,3 +229,90 @@ describe('buildBipartiteGraph — multi-slot block matching nodes', () => {
     expect(Array.from(adj).sort((a, b) => a - b)).toEqual([1, 2, 3]);
   });
 });
+
+// Phase 15 task #26 — SSA bipartite graph cohort awareness
+//
+// The bipartite-graph builder stamps `SessionNode.lecturerIds` with the
+// cohort's full `lecturerPool` for multi-sibling cohorts (NOT each sibling's
+// per-session subset). The SSA proves feasibility under "SOME distribution of
+// lecturerPool across sessions"; the GA later picks the specific distribution.
+// These tests are the explicit contract for that boundary.
+describe('buildBipartiteGraph — Phase 15 #26 cohort SessionNode lecturer stamp', () => {
+  it('stamps the full lecturerPool on every sibling session (not the per-session subset)', () => {
+    const slots = buildDay('Monday', 4, 1);
+    const cand = candidate({
+      offeringId: 100,
+      sessionDuration: 1,
+      parallelSessionCount: 4,
+      possibleTimeSlotIds: [1, 2, 3, 4],
+      lecturerIds: [10],
+      lecturerPool: [10, 20],
+      siblingOfferingIds: [100, 200],
+      // The GA's seeder would round-robin THESE per-sibling groups across
+      // sessions, but the SSA must NOT mirror that — every session keeps
+      // the full pool so AC-3 has the full feasibility surface to work with.
+      siblingLecturerGroups: [[10], [20]],
+    });
+
+    const graph = buildBipartiteGraph([cand], slots);
+
+    expect(graph.sessions).toHaveLength(4);
+    for (const session of graph.sessions) {
+      // Negative assertion — explicitly NOT the per-session sibling group.
+      expect(session.lecturerIds).not.toEqual([10]);
+      expect(session.lecturerIds).not.toEqual([20]);
+      // Positive assertion — the full cohort pool.
+      expect(session.lecturerIds).toEqual([10, 20]);
+    }
+  });
+
+  it('stamps the full lecturerPool even when individual siblings team-teach', () => {
+    // Two siblings: sibling 0 team-teaches with [10, 11], sibling 1 has [20].
+    // lecturerPool unions to [10, 11, 20] (dedup + ascending sort). Every
+    // SessionNode must surface the full union; AC-3 propagation will then
+    // see e.g. [10, 11, 20] vs another cohort's [10, 11, 20] and only prune
+    // when a concrete (room, slot) collision exists.
+    const slots = buildDay('Monday', 4, 1);
+    const cand = candidate({
+      offeringId: 100,
+      sessionDuration: 1,
+      parallelSessionCount: 4,
+      possibleTimeSlotIds: [1, 2, 3, 4],
+      lecturerIds: [10, 11],
+      lecturerPool: [10, 11, 20],
+      siblingOfferingIds: [100, 200],
+      siblingLecturerGroups: [[10, 11], [20]],
+    });
+
+    const graph = buildBipartiteGraph([cand], slots);
+
+    expect(graph.sessions).toHaveLength(4);
+    for (const session of graph.sessions) {
+      expect(session.lecturerIds).toEqual([10, 11, 20]);
+    }
+  });
+
+  it('keeps the legacy lecturerIds stamp for single-sibling candidates (back-compat)', () => {
+    // For a single-offering "cohort", the pre-Phase-15 contract is: SessionNode
+    // lecturerIds equals candidate.lecturerIds. The pool happens to be the
+    // same set, so this also passes the "stamp the pool" rule trivially.
+    const slots = buildDay('Monday', 3, 1);
+    const cand = candidate({
+      offeringId: 30,
+      sessionDuration: 1,
+      parallelSessionCount: 2,
+      possibleTimeSlotIds: [1, 2, 3],
+      lecturerIds: [100, 200], // team-teach on a single offering
+      lecturerPool: [100, 200],
+      siblingOfferingIds: [30],
+      siblingLecturerGroups: [[100, 200]],
+    });
+
+    const graph = buildBipartiteGraph([cand], slots);
+
+    expect(graph.sessions).toHaveLength(2);
+    for (const session of graph.sessions) {
+      expect(session.lecturerIds).toEqual([100, 200]);
+    }
+  });
+});
