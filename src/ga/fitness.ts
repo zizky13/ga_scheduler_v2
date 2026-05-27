@@ -12,10 +12,19 @@
  *   - Structural lecturer overload (> 2 sessions/week)
  *   - Lecturer preference violations (assigned slots ∉ preferred slots)
  *
- * Gene shape: sessions[]{roomId, timeSlotIds} (Task 16).
+ * Gene shape: sessions[]{roomId, timeSlotIds, lecturerIds} (Phase 15 #5).
  * Hard-fitness counts collisions per (roomId, slotId) and (lecturerId, slotId)
  * across every session of every gene, so it captures both cross-gene clashes
  * and intra-gene parallel-session clashes (Task 20).
+ *
+ * Phase 15 #8: the lecturer dimension is read per session (`session.lecturer
+ * Ids`) instead of per candidate (`candidate.lecturerIds`). For multi-sibling
+ * cohorts this is the load-bearing change — sibling sessions now hold their
+ * own lecturer subset of the cohort's pool, and a sibling pair at the same
+ * timeslot sharing a lecturer naturally surfaces as one hard violation.
+ * Single-sibling cohorts behave identically to the pre-Phase-15 path: the
+ * chromosome seeder stamps `candidate.lecturerIds` on every session, so
+ * per-session reading and per-candidate reading converge.
  */
 
 import type { Chromosome, EvaluatedChromosome, PreGACandidate, Room } from '../types.js';
@@ -35,7 +44,10 @@ export type CompetencyEligibilityMap = Map<number, Set<number>>;
 
 /**
  * Evaluate hard constraint violations.
- * Iterates over gene.sessions — each session owns its roomId and timeSlotIds.
+ * Iterates over gene.sessions — each session owns its roomId, timeSlotIds,
+ * and (Phase 15 #5) per-session lecturerIds. The candidate is no longer
+ * consulted for lecturer collisions; the GA evolves per-session lecturer
+ * assignment and fitness must reflect that distribution.
  */
 export function evaluateHardFitness(
   chromosome: Chromosome,
@@ -58,7 +70,7 @@ export function evaluateHardFitness(
         roomTimeMap.set(roomKey, roomCount);
         if (roomCount > 1) violations++;
 
-        for (const lecturerId of candidate.lecturerIds) {
+        for (const lecturerId of session.lecturerIds) {
           const lecKey = `lec:${lecturerId}:slot:${slotId}`;
           const lecCount = (lecturerTimeMap.get(lecKey) ?? 0) + 1;
           lecturerTimeMap.set(lecKey, lecCount);
@@ -73,8 +85,13 @@ export function evaluateHardFitness(
 
 /**
  * Competency mismatch — hard violation count.
- * For each gene, every assigned lecturer not in the eligibility set contributes
- * one violation per scheduled slot across all sessions.
+ *
+ * Phase 15 #8: reads per-session `session.lecturerIds`. For each session, a
+ * non-eligible lecturer contributes one violation per slot of that session
+ * (NOT the gene's total slot count — sibling sessions may carry different
+ * lecturers under the multi-sibling cohort model, so the per-session
+ * accounting is the only way to charge violations to the right sessions).
+ *
  * If no eligibility map is supplied, treat all assignments as eligible (no-op).
  */
 export function evaluateCompetencyMismatch(
@@ -92,11 +109,11 @@ export function evaluateCompetencyMismatch(
     const eligible = eligibilityMap.get(gene.offeringId);
     if (!eligible) continue; // no entry = open assignment
 
-    const totalSlots = gene.sessions.reduce((sum, s) => sum + s.timeSlotIds.length, 0);
-
-    for (const lecturerId of candidate.lecturerIds) {
-      if (!eligible.has(lecturerId)) {
-        violations += totalSlots;
+    for (const session of gene.sessions) {
+      for (const lecturerId of session.lecturerIds) {
+        if (!eligible.has(lecturerId)) {
+          violations += session.timeSlotIds.length;
+        }
       }
     }
   }
@@ -104,7 +121,14 @@ export function evaluateCompetencyMismatch(
   return violations;
 }
 
-/** Structural lecturer penalty — > 2 sessions/week incurs a penalty. */
+/**
+ * Structural lecturer penalty — > 2 sessions/week incurs a penalty.
+ *
+ * Phase 15 #8: counts per-session lecturer slots instead of charging every
+ * candidate.lecturer with the gene's total slot count. A multi-sibling
+ * cohort where Mr. X teaches sessions[0,2] and Mr. Y teaches sessions[1,3]
+ * now charges each lecturer only for the sessions they actually own.
+ */
 export function calculateStructuralPenalty(
   chromosome: Chromosome,
   candidates: PreGACandidate[],
@@ -117,12 +141,13 @@ export function calculateStructuralPenalty(
     const candidate = candidateMap.get(gene.offeringId);
     if (!candidate) continue;
 
-    const totalSlots = gene.sessions.reduce((sum, s) => sum + s.timeSlotIds.length, 0);
-
-    for (const lecturerId of candidate.lecturerIds) {
-      if (lecturerStructuralMap.get(lecturerId)) {
-        const count = (lecturerSessionCount.get(lecturerId) ?? 0) + totalSlots;
-        lecturerSessionCount.set(lecturerId, count);
+    for (const session of gene.sessions) {
+      const slotsInSession = session.timeSlotIds.length;
+      for (const lecturerId of session.lecturerIds) {
+        if (lecturerStructuralMap.get(lecturerId)) {
+          const count = (lecturerSessionCount.get(lecturerId) ?? 0) + slotsInSession;
+          lecturerSessionCount.set(lecturerId, count);
+        }
       }
     }
   }
@@ -141,9 +166,15 @@ export function calculateStructuralPenalty(
 
 /**
  * Lecturer load penalty — Σ max(0, assignedSks − maxSks) per lecturer.
- * Team-taught offering: each assigned lecturer is credited the full
- * `candidate.sessionDuration` (= course.sks) — matches the frontend's
- * `currentSksByLecturerId` derivation (Phase 8 task #10).
+ *
+ * Phase 15 #8: credits each `session.lecturerIds` lecturer with the
+ * session's slot count (= `candidate.sessionDuration` since the seeder /
+ * mutation invariant guarantees `session.timeSlotIds.length === sessionDur
+ * ation`). Multi-sibling cohorts naturally produce balanced load — each
+ * lecturer absorbs only the sessions they own, not the cohort's full
+ * teaching load. Single-sibling team-teach offerings (every session has
+ * the same lecturer set) credit each lecturer per parallel session, which
+ * accurately reflects the physical teaching commitment.
  */
 export function calculateLoadPenalty(
   chromosome: Chromosome,
@@ -156,9 +187,11 @@ export function calculateLoadPenalty(
   for (const gene of chromosome) {
     const candidate = candidateMap.get(gene.offeringId);
     if (!candidate) continue;
-    const sks = candidate.sessionDuration;
-    for (const lecturerId of candidate.lecturerIds) {
-      assignedSks.set(lecturerId, (assignedSks.get(lecturerId) ?? 0) + sks);
+    for (const session of gene.sessions) {
+      const sks = session.timeSlotIds.length;
+      for (const lecturerId of session.lecturerIds) {
+        assignedSks.set(lecturerId, (assignedSks.get(lecturerId) ?? 0) + sks);
+      }
     }
   }
 
@@ -214,7 +247,14 @@ export function calculateCapacityShortfallPenalty(
   return penalty;
 }
 
-/** Lecturer preference penalty — each non-preferred slot incurs +1. */
+/**
+ * Lecturer preference penalty — each non-preferred slot incurs +1.
+ *
+ * Phase 15 #8: walks per-session `session.lecturerIds`. A lecturer assigned
+ * to one session of a multi-sibling cohort is charged only for their
+ * session's slots, not every parallel session's slots. Charges each lecturer
+ * separately when team-teaching within a session (OQ-25 preserved).
+ */
 export function calculatePreferencePenalty(
   chromosome: Chromosome,
   candidates: PreGACandidate[],
@@ -227,11 +267,11 @@ export function calculatePreferencePenalty(
     const candidate = candidateMap.get(gene.offeringId);
     if (!candidate) continue;
 
-    for (const lecturerId of candidate.lecturerIds) {
-      const preferred = lecturerPreferenceMap.get(lecturerId);
-      if (!preferred || preferred.size === 0) continue;
+    for (const session of gene.sessions) {
+      for (const lecturerId of session.lecturerIds) {
+        const preferred = lecturerPreferenceMap.get(lecturerId);
+        if (!preferred || preferred.size === 0) continue;
 
-      for (const session of gene.sessions) {
         for (const slotId of session.timeSlotIds) {
           if (!preferred.has(slotId)) {
             penalty++;
