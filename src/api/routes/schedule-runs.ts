@@ -427,21 +427,91 @@ interface ScheduleRunDetailWire extends ScheduleRunSummaryWire {
   config: unknown;
   preGASummary: unknown;
   ssaResult: unknown;
+  /**
+   * Phase 16 #13 — offerings whose SSA bipartite adjacency degraded to the
+   * per-slot fallback (sourced from `SSAResult.degradedOfferings`). Empty on
+   * legacy rows persisted before Phase 16 #9 wired the SSA field. Frontend
+   * Fragmented Sessions panel (#15) renders this alongside
+   * `fragmentationRequired`; the two lists may overlap.
+   */
+  degradedOfferings: number[];
+  /**
+   * Phase 16 #13 — offerings whose Pre-GA `longestContiguousRun < sessionDuration`
+   * (derived from `preGASummary.warnings[]` filtered to FRAGMENTATION_REQUIRED).
+   * Empty on legacy rows persisted before Phase 16 #1/#2.
+   */
+  fragmentationRequired: number[];
   history: unknown;
   avgHistory: unknown;
   idempotencyKey: string | null;
   assignments: GroupedAssignmentWire[];
 }
 
+/**
+ * Phase 16 #13 — defensive extractor for `SSAResult.degradedOfferings`.
+ * Returns `[]` for legacy rows whose `ssaResultJson` predates the field, or
+ * malformed payloads (the audit-tolerant `parseJsonField` may have already
+ * returned the raw string). Filters to numeric entries to guard against an
+ * upstream wire-shape drift.
+ */
+function extractDegradedOfferings(parsedSsa: unknown): number[] {
+  if (
+    typeof parsedSsa === 'object' &&
+    parsedSsa !== null &&
+    'degradedOfferings' in parsedSsa
+  ) {
+    const value = (parsedSsa as { degradedOfferings: unknown }).degradedOfferings;
+    if (Array.isArray(value)) {
+      return value.filter((x): x is number => typeof x === 'number');
+    }
+  }
+  return [];
+}
+
+/**
+ * Phase 16 #13 — defensive extractor for `preGASummary.warnings[]` filtered to
+ * `FRAGMENTATION_REQUIRED` entries. Returns the offering ids in source order.
+ * `[]` for legacy rows whose `preGASummaryJson` predates Phase 16 #2 (no
+ * `warnings[]` channel) or for rows where no candidate was fragmentation-flagged.
+ */
+function extractFragmentationRequired(parsedSummary: unknown): number[] {
+  if (
+    typeof parsedSummary === 'object' &&
+    parsedSummary !== null &&
+    'warnings' in parsedSummary
+  ) {
+    const warnings = (parsedSummary as { warnings: unknown }).warnings;
+    if (Array.isArray(warnings)) {
+      const ids: number[] = [];
+      for (const w of warnings) {
+        if (
+          typeof w === 'object' &&
+          w !== null &&
+          (w as { code?: unknown }).code === 'FRAGMENTATION_REQUIRED' &&
+          typeof (w as { offeringId?: unknown }).offeringId === 'number'
+        ) {
+          ids.push((w as { offeringId: number }).offeringId);
+        }
+      }
+      return ids;
+    }
+  }
+  return [];
+}
+
 function toDetailWire(
   r: ScheduleRunDetailRecord,
   assignments: ScheduleRunAssignmentDetail[],
 ): ScheduleRunDetailWire {
+  const parsedSsa = parseJsonField(r.ssaResultJson);
+  const parsedSummary = parseJsonField(r.preGASummaryJson);
   return {
     ...toSummaryWire(r),
     config: parseJsonField(r.configJson),
-    preGASummary: parseJsonField(r.preGASummaryJson),
-    ssaResult: parseJsonField(r.ssaResultJson),
+    preGASummary: parsedSummary,
+    ssaResult: parsedSsa,
+    degradedOfferings: extractDegradedOfferings(parsedSsa),
+    fragmentationRequired: extractFragmentationRequired(parsedSummary),
     history: parseJsonField(r.historyJson),
     avgHistory: parseJsonField(r.avgHistoryJson),
     idempotencyKey: r.idempotencyKey,

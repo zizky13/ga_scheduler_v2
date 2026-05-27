@@ -82,6 +82,7 @@ export const scheduleRunDetailResponseSchema = z.object({
   competencyMismatch: z.number().int(),
   loadPenalty: z.number().int(),
   capacityShortfallPenalty: z.number().int(),
+  fragmentationPenalty: z.number().int(),
   generationsRun: z.number().int(),
   currentGeneration: z.number().int(),
   stagnatedEarly: z.boolean(),
@@ -94,6 +95,12 @@ export const scheduleRunDetailResponseSchema = z.object({
   config: z.unknown(),
   preGASummary: z.unknown(),
   ssaResult: z.unknown(),
+  // Phase 16 #13 — offerings whose SSA bipartite adjacency degraded to the
+  // per-slot fallback (sourced from SSAResult.degradedOfferings).
+  degradedOfferings: z.array(numericIdSchema),
+  // Phase 16 #13 — offerings whose Pre-GA longestContiguousRun < sessionDuration
+  // (derived from preGASummary.warnings[] filtered to FRAGMENTATION_REQUIRED).
+  fragmentationRequired: z.array(numericIdSchema),
   history: z.unknown(),
   avgHistory: z.unknown(),
   idempotencyKey: z.string().nullable(),
