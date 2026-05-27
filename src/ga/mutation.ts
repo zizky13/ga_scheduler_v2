@@ -6,8 +6,12 @@
  *   sessions[].timeSlotIds may change.
  *
  * Task 18: When a SlotLookup is supplied, mutated timeSlotIds are drawn from
- * valid contiguous blocks via findContiguousSlots. Falls back to shuffle-and-
- * slice when no contiguous blocks are available.
+ * valid contiguous blocks via findContiguousSlots.
+ *
+ * Phase 16 #5: when no full contiguous block exists, mutation shares the
+ * same-day-anchored fallback used by chromosome seeding instead of falling
+ * back to a global shuffle-and-slice. The degraded session may cross in-day
+ * breaks, but it must never cross days (OQ-33).
  *
  * Phase 15 #6: a third per-session lecturer dimension is mutable when the
  * gene's parent candidate is a multi-sibling cohort
@@ -22,6 +26,7 @@ import type { Chromosome, Gene, GeneSession, PreGACandidate } from '../types.js'
 import {
   fisherYatesShuffle,
   findContiguousSlots,
+  pickSameDaySessionSlots,
   type SlotLookup,
 } from './chromosome.js';
 
@@ -69,7 +74,9 @@ function carryLecturersForSession(
 }
 
 /**
- * Fallback: build sessions with a plain shuffle-and-slice (pre-Task-18 logic).
+ * Fallback: build sessions with the shared same-day selector when slot
+ * metadata is available; otherwise keep the plain shuffle-and-slice path used
+ * by legacy tests / callers that do not have a SlotLookup.
  * `pickRoom` is invoked once per session — callers pick either a shared
  * seed roomId (single-session / pre-assigned shapes) or an independent
  * per-session draw (Phase 11 null-room overflow). Phase 15 #6: lecturer
@@ -81,8 +88,22 @@ function buildSessionsFallback(
   candidate: PreGACandidate,
   priorSessions: GeneSession[],
   pickRoom: () => number,
-  count: number
+  count: number,
+  lookup?: SlotLookup,
 ): GeneSession[] {
+  if (lookup) {
+    return Array.from({ length: count }, (_, i) => ({
+      roomId: pickRoom(),
+      timeSlotIds: pickSameDaySessionSlots(
+        candidate.possibleTimeSlotIds,
+        candidate.sessionDuration,
+        lookup,
+        candidate.fragmentationRequired,
+      ),
+      lecturerIds: carryLecturersForSession(candidate, priorSessions, i),
+    }));
+  }
+
   const shuffledSlots = fisherYatesShuffle(candidate.possibleTimeSlotIds);
   return Array.from({ length: count }, (_, i) => ({
     roomId: pickRoom(),
@@ -186,11 +207,23 @@ export function mutateChromosome(
           lecturerIds: [...session.lecturerIds],
         }));
       } else {
-        // Fallback: shuffle-and-slice (preserving room)
-        const shuffledSlots = fisherYatesShuffle(candidate.possibleTimeSlotIds);
+        // note (Phase 16 #5 / OQ-33): if no full contiguous block exists,
+        // keep mutation same-day anchored instead of resurrecting the old
+        // global shuffle-and-slice fallback. The room remains mask-immutable
+        // for FIXED genes; only the degraded same-day slot sequence changes.
         newSessions = gene.sessions.map((session, i) => ({
           roomId: session.roomId,
-          timeSlotIds: shuffledSlots.slice(i * sessionDuration, (i + 1) * sessionDuration),
+          timeSlotIds: lookup
+            ? pickSameDaySessionSlots(
+                candidate.possibleTimeSlotIds,
+                sessionDuration,
+                lookup,
+                candidate.fragmentationRequired,
+              )
+            : fisherYatesShuffle(candidate.possibleTimeSlotIds).slice(
+                i * sessionDuration,
+                (i + 1) * sessionDuration,
+              ),
           lecturerIds: [...session.lecturerIds],
         }));
       }
@@ -247,7 +280,13 @@ export function mutateChromosome(
         lecturerIds: carryLecturersForSession(candidate, gene.sessions, i),
       }));
     } else {
-      newSessions = buildSessionsFallback(candidate, gene.sessions, pickRoomForSession, parallelSessionCount);
+      newSessions = buildSessionsFallback(
+        candidate,
+        gene.sessions,
+        pickRoomForSession,
+        parallelSessionCount,
+        lookup,
+      );
     }
 
     // Phase 15 #6 — same composition for FLEXIBLE genes; multi-sibling cohorts

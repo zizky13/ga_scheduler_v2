@@ -27,6 +27,19 @@ const TIME_SLOTS: TimeSlot[] = [
 
 const SLOT_LOOKUP = buildSlotLookup(TIME_SLOTS);
 
+const PHASE16_FRAGMENTED_SLOTS: TimeSlot[] = [
+  { id: 101, day: 'Mon', startTime: '08:00', endTime: '08:50' },
+  { id: 102, day: 'Mon', startTime: '08:50', endTime: '09:40' },
+  { id: 103, day: 'Mon', startTime: '09:40', endTime: '10:30' },
+  { id: 104, day: 'Mon', startTime: '10:40', endTime: '11:30' },
+  { id: 105, day: 'Mon', startTime: '11:30', endTime: '12:20' },
+  { id: 201, day: 'Tue', startTime: '08:00', endTime: '08:50' },
+  { id: 202, day: 'Tue', startTime: '09:00', endTime: '09:50' },
+  { id: 203, day: 'Tue', startTime: '10:00', endTime: '10:50' },
+];
+
+const PHASE16_LOOKUP = buildSlotLookup(PHASE16_FRAGMENTED_SLOTS);
+
 function singleSiblingCandidate(): PreGACandidate {
   return {
     offeringId: 100,
@@ -100,6 +113,30 @@ function buildFlexible(candidate: PreGACandidate): FlexibleGene {
           lecturerIds: [...candidate.siblingLecturerGroups[i % candidate.siblingLecturerGroups.length]!],
         })),
   };
+}
+
+function fragmentedFiveSksCandidate(): PreGACandidate {
+  return {
+    offeringId: 1605,
+    courseId: 16,
+    roomId: null,
+    lecturerIds: [77],
+    effectiveStudentCount: 30,
+    parallelSessionCount: 1,
+    sessionDuration: 5,
+    possibleTimeSlotIds: PHASE16_FRAGMENTED_SLOTS.map((slot) => slot.id),
+    possibleRoomIds: [31, 32],
+    isFixedRoom: false,
+    siblingOfferingIds: [1605],
+    lecturerPool: [77],
+    siblingLecturerGroups: [[77]],
+    longestContiguousRun: 3,
+    fragmentationRequired: true,
+  };
+}
+
+function slotDays(slotIds: number[]): string[] {
+  return slotIds.map((id) => PHASE16_LOOKUP.get(id)!.day);
 }
 
 describe('mutateChromosome — Phase 15 #6 lecturer dimension', () => {
@@ -218,5 +255,50 @@ describe('mutateChromosome — Phase 15 #6 lecturer dimension', () => {
     const mutated = mutateChromosome(chrom, [candidate], 0, SLOT_LOOKUP);
     // mutationRate=0 means no gene mutates — gene reference is returned as-is.
     expect(mutated[0]).toBe(chrom[0]);
+  });
+});
+
+describe('mutateChromosome — Phase 16 #5 same-day fragmented fallback', () => {
+  it('uses the shared same-day selector when no contiguous block fits a FLEXIBLE session', () => {
+    const candidate = fragmentedFiveSksCandidate();
+    const chrom: Chromosome = [{
+      kind: 'FLEXIBLE',
+      offeringId: candidate.offeringId,
+      sessions: [{
+        roomId: 31,
+        timeSlotIds: [101, 201, 102, 202, 103],
+        lecturerIds: [77],
+      }],
+    }];
+
+    const mutated = mutateChromosome(chrom, [candidate], 1, PHASE16_LOOKUP);
+    const session = mutated[0]!.sessions[0]!;
+
+    expect(session.timeSlotIds).toHaveLength(5);
+    expect(new Set(slotDays(session.timeSlotIds))).toEqual(new Set(['Mon']));
+  });
+
+  it('uses the same-day selector while preserving FIXED room masking', () => {
+    const candidate: PreGACandidate = {
+      ...fragmentedFiveSksCandidate(),
+      roomId: 31,
+      isFixedRoom: true,
+    };
+    const chrom: Chromosome = [{
+      kind: 'FIXED',
+      offeringId: candidate.offeringId,
+      sessions: [{
+        roomId: 31,
+        timeSlotIds: [101, 201, 102, 202, 103],
+        lecturerIds: [77],
+      }],
+    }];
+
+    const mutated = mutateChromosome(chrom, [candidate], 1, PHASE16_LOOKUP);
+    const session = mutated[0]!.sessions[0]!;
+
+    expect(session.roomId).toBe(31);
+    expect(session.timeSlotIds).toHaveLength(5);
+    expect(new Set(slotDays(session.timeSlotIds))).toEqual(new Set(['Mon']));
   });
 });

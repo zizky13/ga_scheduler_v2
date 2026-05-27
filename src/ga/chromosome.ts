@@ -153,16 +153,21 @@ function pickDistinctBlocks(blocks: number[][], count: number): number[][] {
  *      the most slots), take its slots in run-order. Still same-day —
  *      never crosses days, ever (OQ-33 default).
  *
- * Returns up to `duration` slot ids; may return fewer when no day has
- * enough total slots. Callers should treat short returns as a degraded
- * session and rely on `fragmentationPenalty` to surface it. Day-selection
- * ties are broken uniformly at random so the GA seed retains some
- * diversity even when the timetable's topology is symmetric.
+ * `fragmentationRequired` is accepted so chromosome, mutation, and repair can
+ * call one shared helper from the same candidate contract; the selector stays
+ * same-day regardless of the flag because OQ-33 forbids cross-day fallback.
+ *
+ * Returns up to `duration` slot ids; may return fewer when no day has enough
+ * total slots. Callers should treat short returns as a degraded session and
+ * rely on `fragmentationPenalty` to surface it. Day-selection ties are broken
+ * uniformly at random so the GA seed retains some diversity even when the
+ * timetable's topology is symmetric.
  */
 export function pickSameDaySessionSlots(
   possibleTimeSlotIds: number[],
   duration: number,
   lookup: SlotLookup,
+  _fragmentationRequired = false,
 ): number[] {
   if (duration <= 0) return [];
 
@@ -368,6 +373,7 @@ export function createGeneFromCandidate(
           candidate.possibleTimeSlotIds,
           sessionDuration,
           lookup,
+          candidate.fragmentationRequired,
         ),
         lecturerIds: pickLecturersForSession(i),
       }));
