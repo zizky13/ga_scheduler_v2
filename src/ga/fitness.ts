@@ -248,6 +248,48 @@ export function calculateCapacityShortfallPenalty(
 }
 
 /**
+ * Phase 15 #10 — distribution audit telemetry for multi-offering cohorts.
+ *
+ * Shannon entropy over the per-lecturer session-assignment counts across
+ * candidates with `siblingOfferingIds.length > 1`. This is intentionally
+ * observational: it is NOT part of `softPenalty`, so it cannot change GA
+ * selection pressure. Higher values mean the multi-sibling cohort sessions
+ * are spread more evenly across the available lecturer pool; 0 means either
+ * no multi-sibling cohorts exist or all counted sessions landed on one
+ * lecturer. Team-teach sessions count once per assigned lecturer.
+ */
+export function calculateLecturerDistributionEntropy(
+  chromosome: Chromosome,
+  candidates: PreGACandidate[],
+): number {
+  const candidateMap = new Map(candidates.map(c => [c.offeringId, c]));
+  const sessionCounts = new Map<number, number>();
+  let totalAssignments = 0;
+
+  for (const gene of chromosome) {
+    const candidate = candidateMap.get(gene.offeringId);
+    if (!candidate) continue;
+    if ((candidate.siblingOfferingIds?.length ?? 1) <= 1) continue;
+
+    for (const session of gene.sessions) {
+      for (const lecturerId of session.lecturerIds) {
+        sessionCounts.set(lecturerId, (sessionCounts.get(lecturerId) ?? 0) + 1);
+        totalAssignments++;
+      }
+    }
+  }
+
+  if (totalAssignments === 0) return 0;
+
+  let entropy = 0;
+  for (const count of sessionCounts.values()) {
+    const p = count / totalAssignments;
+    entropy -= p * Math.log2(p);
+  }
+  return entropy;
+}
+
+/**
  * Lecturer preference penalty — each non-preferred slot incurs +1.
  *
  * Phase 15 #8: walks per-session `session.lecturerIds`. A lecturer assigned
@@ -302,6 +344,7 @@ export function evaluateFitness(
   const preferencePenalty = calculatePreferencePenalty(chromosome, candidates, lecturerPreferenceMap);
   const loadPenalty = calculateLoadPenalty(chromosome, candidates, lecturerMaxSksMap);
   const capacityShortfallPenalty = calculateCapacityShortfallPenalty(chromosome, candidates, roomById);
+  const lecturerDistributionEntropy = calculateLecturerDistributionEntropy(chromosome, candidates);
   const softPenalty = structuralPenalty + preferencePenalty + loadPenalty + capacityShortfallPenalty;
 
   const fitness = 1 / (
@@ -310,5 +353,16 @@ export function evaluateFitness(
     (softPenalty * config.softPenaltyWeight)
   );
 
-  return { chromosome, fitness, hardViolations, softPenalty, structuralPenalty, preferencePenalty, loadPenalty, capacityShortfallPenalty, competencyMismatch };
+  return {
+    chromosome,
+    fitness,
+    hardViolations,
+    softPenalty,
+    structuralPenalty,
+    preferencePenalty,
+    loadPenalty,
+    capacityShortfallPenalty,
+    lecturerDistributionEntropy,
+    competencyMismatch,
+  };
 }

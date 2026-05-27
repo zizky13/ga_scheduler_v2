@@ -17,11 +17,13 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  evaluateFitness,
   evaluateHardFitness,
   calculateStructuralPenalty,
   calculatePreferencePenalty,
   calculateLoadPenalty,
   calculateCapacityShortfallPenalty,
+  calculateLecturerDistributionEntropy,
 } from '../../src/ga/fitness.js';
 import type { Chromosome, FlexibleGene, PreGACandidate, Room } from '../../src/types.js';
 
@@ -406,5 +408,89 @@ describe('calculateCapacityShortfallPenalty — null-room overflow (Phase 11 tas
     };
     const rooms = new Map<number, Room>([[10, room(10, 30)]]);
     expect(calculateCapacityShortfallPenalty(chrom, [preAssignedCand], rooms)).toBe(0);
+  });
+});
+
+describe('calculateLecturerDistributionEntropy — Phase 15 #10 telemetry', () => {
+  function cohortCandidate(offeringId: number): PreGACandidate {
+    return {
+      offeringId,
+      courseId: offeringId * 10,
+      roomId: null,
+      lecturerIds: [100],
+      effectiveStudentCount: 97,
+      parallelSessionCount: 4,
+      sessionDuration: 1,
+      possibleTimeSlotIds: [1, 2, 3, 4],
+      possibleRoomIds: [10, 11],
+      isFixedRoom: false,
+      siblingOfferingIds: [offeringId, offeringId + 1],
+      lecturerPool: [100, 200],
+      siblingLecturerGroups: [[100], [200]],
+    };
+  }
+
+  it('returns 0 when no multi-offering cohorts are present', () => {
+    const chrom: Chromosome = [
+      flex(1, [
+        { roomId: 10, timeSlotIds: [1], lecturerIds: [100] },
+        { roomId: 11, timeSlotIds: [2], lecturerIds: [200] },
+      ]),
+    ];
+    const cands = [candidate(1, [100], 1)];
+
+    expect(calculateLecturerDistributionEntropy(chrom, cands)).toBe(0);
+  });
+
+  it('is 1 bit for a perfectly split two-lecturer cohort', () => {
+    const chrom: Chromosome = [
+      flex(1, [
+        { roomId: 10, timeSlotIds: [1], lecturerIds: [100] },
+        { roomId: 11, timeSlotIds: [2], lecturerIds: [200] },
+        { roomId: 10, timeSlotIds: [3], lecturerIds: [100] },
+        { roomId: 11, timeSlotIds: [4], lecturerIds: [200] },
+      ]),
+    ];
+
+    expect(calculateLecturerDistributionEntropy(chrom, [cohortCandidate(1)])).toBe(1);
+  });
+
+  it('is 0 when one lecturer owns every multi-sibling cohort session', () => {
+    const chrom: Chromosome = [
+      flex(1, [
+        { roomId: 10, timeSlotIds: [1], lecturerIds: [100] },
+        { roomId: 11, timeSlotIds: [2], lecturerIds: [100] },
+        { roomId: 10, timeSlotIds: [3], lecturerIds: [100] },
+      ]),
+    ];
+
+    expect(calculateLecturerDistributionEntropy(chrom, [cohortCandidate(1)])).toBe(0);
+  });
+
+  it('does not change softPenalty or fitness when only the lecturer distribution changes', () => {
+    const cands = [cohortCandidate(1)];
+    const structural = new Map<number, boolean>();
+    const prefs = new Map<number, Set<number>>();
+    const maxSks = new Map<number, number>();
+    const balanced = [
+      flex(1, [
+        { roomId: 10, timeSlotIds: [1], lecturerIds: [100] },
+        { roomId: 11, timeSlotIds: [2], lecturerIds: [200] },
+      ]),
+    ];
+    const concentrated = [
+      flex(1, [
+        { roomId: 10, timeSlotIds: [1], lecturerIds: [100] },
+        { roomId: 11, timeSlotIds: [2], lecturerIds: [100] },
+      ]),
+    ];
+
+    const balancedFitness = evaluateFitness(balanced, cands, structural, prefs, maxSks);
+    const concentratedFitness = evaluateFitness(concentrated, cands, structural, prefs, maxSks);
+
+    expect(balancedFitness.lecturerDistributionEntropy).toBe(1);
+    expect(concentratedFitness.lecturerDistributionEntropy).toBe(0);
+    expect(balancedFitness.softPenalty).toBe(concentratedFitness.softPenalty);
+    expect(balancedFitness.fitness).toBe(concentratedFitness.fitness);
   });
 });

@@ -301,6 +301,7 @@ export interface EvaluatedChromosome {
   preferencePenalty: number;
   loadPenalty: number;
   capacityShortfallPenalty: number;
+  lecturerDistributionEntropy: number;
   competencyMismatch: number;
 }
 
