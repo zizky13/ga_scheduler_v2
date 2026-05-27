@@ -10,7 +10,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { runAC3 } from '../../src/ssa/ac3.js';
-import type { BipartiteGraph, SessionNode } from '../../src/types.js';
+import { buildBipartiteGraph } from '../../src/ssa/bipartiteGraph.js';
+import type { BipartiteGraph, PreGACandidate, SessionNode } from '../../src/types.js';
 
 interface SessionSpec {
   sessionId: number;
@@ -36,6 +37,33 @@ function buildGraph(specs: SessionSpec[]): BipartiteGraph {
   for (const s of specs) for (const slot of s.domain) slotIds.add(slot);
   const slots = Array.from(slotIds).map(id => ({ slotId: id }));
   return { sessions, slots, adjacency };
+}
+
+function candidate(args: {
+  offeringId: number;
+  lecturerIds?: number[];
+  lecturerPool?: number[];
+  siblingOfferingIds?: number[];
+  siblingLecturerGroups?: number[][];
+  parallelSessionCount?: number;
+  possibleTimeSlotIds?: number[];
+}): PreGACandidate {
+  const lecturerIds = args.lecturerIds ?? [500];
+  return {
+    offeringId: args.offeringId,
+    courseId: args.offeringId * 10,
+    roomId: null,
+    lecturerIds,
+    effectiveStudentCount: 30,
+    parallelSessionCount: args.parallelSessionCount ?? 1,
+    sessionDuration: 1,
+    possibleTimeSlotIds: args.possibleTimeSlotIds ?? [1, 2],
+    possibleRoomIds: [10, 20],
+    isFixedRoom: false,
+    siblingOfferingIds: args.siblingOfferingIds ?? [args.offeringId],
+    lecturerPool: args.lecturerPool ?? [...lecturerIds],
+    siblingLecturerGroups: args.siblingLecturerGroups ?? [[...lecturerIds]],
+  };
 }
 
 describe('runAC3 (techspec §10.1)', () => {
@@ -167,6 +195,57 @@ describe('runAC3 (techspec §10.1)', () => {
     expect(result.consistent).toBe(true);
     expect(Array.from(graph.adjacency.get(300)!).sort()).toEqual([2]);
     expect(Array.from(graph.adjacency.get(400)!).sort()).toEqual([1]);
+  });
+
+  it('does NOT propagate shared-lecturer constraints for a multi-offering cohort graph (Phase 15 #13)', () => {
+    const graph = buildBipartiteGraph([
+      candidate({
+        offeringId: 10,
+        parallelSessionCount: 2,
+        possibleTimeSlotIds: [1, 2],
+        lecturerIds: [500],
+        lecturerPool: [500, 600],
+        siblingOfferingIds: [10, 11],
+        siblingLecturerGroups: [[500], [600]],
+      }),
+    ]);
+
+    const result = runAC3(graph);
+
+    const siblingA = graph.sessions.find(s => s.sessionIndex === 0)!;
+    const siblingB = graph.sessions.find(s => s.sessionIndex === 1)!;
+    expect(result.consistent).toBe(true);
+    expect(Array.from(graph.adjacency.get(siblingA.sessionId)!).sort()).toEqual([1, 2]);
+    expect(Array.from(graph.adjacency.get(siblingB.sessionId)!).sort()).toEqual([1, 2]);
+  });
+
+  it('DOES propagate shared-lecturer constraints between separate cohort graphs (Phase 15 #13)', () => {
+    const graph = buildBipartiteGraph([
+      candidate({
+        offeringId: 20,
+        possibleTimeSlotIds: [1, 2],
+        lecturerIds: [500],
+        lecturerPool: [500, 600],
+        siblingOfferingIds: [20, 21],
+        siblingLecturerGroups: [[500], [600]],
+      }),
+      candidate({
+        offeringId: 30,
+        possibleTimeSlotIds: [1],
+        lecturerIds: [500],
+        lecturerPool: [500, 700],
+        siblingOfferingIds: [30, 31],
+        siblingLecturerGroups: [[500], [700]],
+      }),
+    ]);
+
+    const result = runAC3(graph);
+
+    const cohortA = graph.sessions.find(s => s.offeringId === 20)!;
+    const cohortB = graph.sessions.find(s => s.offeringId === 30)!;
+    expect(result.consistent).toBe(true);
+    expect(Array.from(graph.adjacency.get(cohortA.sessionId)!).sort()).toEqual([2]);
+    expect(Array.from(graph.adjacency.get(cohortB.sessionId)!).sort()).toEqual([1]);
   });
 
   it('does NOT add shared-room constraint between null-room siblings (Phase 11 task #10)', () => {
