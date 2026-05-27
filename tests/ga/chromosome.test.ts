@@ -8,8 +8,55 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createGeneFromCandidate } from '../../src/ga/chromosome.js';
-import type { PreGACandidate } from '../../src/types.js';
+import { buildSlotLookup, createGeneFromCandidate } from '../../src/ga/chromosome.js';
+import type { PreGACandidate, TimeSlot } from '../../src/types.js';
+
+// Phase 16 #18 fixture — mirrors the same id layout used by the parallel
+// fixtures in tests/ga/mutation.test.ts and tests/ga/repair.test.ts so all
+// three layers (seeder / mutation / repair) exercise the same same-day-
+// anchored selector on byte-identical inputs. Monday holds five same-day
+// slots: a 3-slot contiguous run 101→102→103 (08:00–10:30), a 10-minute
+// break, then a 2-slot contiguous run 104→105 (10:40–12:20). Tuesday
+// carries an independent 3-slot run 201→202→203. No single day has a
+// 5-slot contiguous run, so `findContiguousSlots(5)` returns []; the
+// fallback path under test (chromosome.ts:pickSameDaySessionSlots) must
+// stay same-day.
+const PHASE16_FRAGMENTED_SLOTS: TimeSlot[] = [
+  { id: 101, day: 'Mon', startTime: '08:00', endTime: '08:50' },
+  { id: 102, day: 'Mon', startTime: '08:50', endTime: '09:40' },
+  { id: 103, day: 'Mon', startTime: '09:40', endTime: '10:30' },
+  { id: 104, day: 'Mon', startTime: '10:40', endTime: '11:30' },
+  { id: 105, day: 'Mon', startTime: '11:30', endTime: '12:20' },
+  { id: 201, day: 'Tue', startTime: '08:00', endTime: '08:50' },
+  { id: 202, day: 'Tue', startTime: '09:00', endTime: '09:50' },
+  { id: 203, day: 'Tue', startTime: '10:00', endTime: '10:50' },
+];
+
+const PHASE16_LOOKUP = buildSlotLookup(PHASE16_FRAGMENTED_SLOTS);
+
+function slotDays(slotIds: number[]): string[] {
+  return slotIds.map((id) => PHASE16_LOOKUP.get(id)!.day);
+}
+
+function fragmentedFiveSksCandidate(): PreGACandidate {
+  return {
+    offeringId: 1604,
+    courseId: 16,
+    roomId: null,
+    lecturerIds: [88],
+    effectiveStudentCount: 30,
+    parallelSessionCount: 1,
+    sessionDuration: 5,
+    possibleTimeSlotIds: PHASE16_FRAGMENTED_SLOTS.map((slot) => slot.id),
+    possibleRoomIds: [41, 42],
+    isFixedRoom: false,
+    siblingOfferingIds: [1604],
+    lecturerPool: [88],
+    siblingLecturerGroups: [[88]],
+    longestContiguousRun: 3,
+    fragmentationRequired: true,
+  };
+}
 
 function baseCandidate(overrides: Partial<PreGACandidate> = {}): PreGACandidate {
   return {
@@ -225,5 +272,66 @@ describe('createGeneFromCandidate — Phase 15 lecturer distribution', () => {
     );
     gene.sessions[0]!.lecturerIds.push(999);
     expect(gene.sessions[2]!.lecturerIds).toEqual([10]); // not [10, 999]
+  });
+});
+
+// Phase 16 #18 — the chromosome seeder must never cross days when filling a
+// session whose `sessionDuration` exceeds the timetable's `longestContiguous
+// Run` (OQ-33 default). The pre-Phase-16 fallback `fisherYatesShuffle(possible
+// TimeSlotIds).slice(i*sks, (i+1)*sks)` silently spanned days; the Phase 16 #4
+// replacement (chromosome.ts:pickSameDaySessionSlots) anchors every session
+// to one day even when that day cannot supply a contiguous block of the
+// requested duration. The sibling tests in tests/ga/mutation.test.ts
+// (`mutateChromosome — Phase 16 #5`) and tests/ga/repair.test.ts
+// (`repairChromosome — Phase 16 #7`) cover the same contract for mutation
+// and repair so all three layers stay in lockstep.
+describe('createGeneFromCandidate — Phase 16 #4 same-day fragmented fallback', () => {
+  it('seeds a FLEXIBLE 5-SKS session entirely on one day when no day holds a 5-slot contiguous run', () => {
+    const candidate = fragmentedFiveSksCandidate();
+
+    // Run repeatedly: the helper picks the day with the longest run, and ties
+    // are broken uniformly at random for diversity. Mon is the unique longest-
+    // run day (3 vs Tue's 3 also — actually Tue also has a 3-slot run, so the
+    // tie-break could pick either day on a given draw. The contract being
+    // tested is "all five session slots fall on a single day", not "always
+    // Monday" — so the loop just asserts the invariant holds every time).
+    for (let trial = 0; trial < 25; trial += 1) {
+      const gene = createGeneFromCandidate(candidate, PHASE16_LOOKUP);
+
+      expect(gene.kind).toBe('FLEXIBLE');
+      expect(gene.sessions).toHaveLength(1);
+      const session = gene.sessions[0]!;
+
+      // The seeder may return fewer than `sessionDuration` slots only in
+      // path-C degenerate cases (chromosome.ts docblock). For this fixture
+      // both days have ≥ 5 slots when Mon is picked, and Tue has only 3 —
+      // so we accept either "5 slots all-Mon" or "≤ 3 slots all-Tue" while
+      // pinning the invariant: the slots that ARE picked are same-day.
+      const days = new Set(slotDays(session.timeSlotIds));
+      expect(days.size).toBe(1);
+      // FLEXIBLE: roomId must come from possibleRoomIds.
+      expect(candidate.possibleRoomIds!).toContain(session.roomId);
+    }
+  });
+
+  it('seeds a FIXED 5-SKS session same-day while preserving the locked roomId', () => {
+    const candidate: PreGACandidate = {
+      ...fragmentedFiveSksCandidate(),
+      roomId: 41,
+      isFixedRoom: true,
+    };
+
+    for (let trial = 0; trial < 25; trial += 1) {
+      const gene = createGeneFromCandidate(candidate, PHASE16_LOOKUP);
+
+      expect(gene.kind).toBe('FIXED');
+      expect(gene.sessions).toHaveLength(1);
+      const session = gene.sessions[0]!;
+
+      // FIXED: roomId is the locked candidate.roomId verbatim — not a draw.
+      expect(session.roomId).toBe(41);
+      const days = new Set(slotDays(session.timeSlotIds));
+      expect(days.size).toBe(1);
+    }
   });
 });

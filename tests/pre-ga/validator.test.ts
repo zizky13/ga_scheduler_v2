@@ -737,4 +737,78 @@ describe('runPreGA — Phase 16 #1 longestContiguousRun derivation (OQ-32 / OQ-3
     expect(candidate.fragmentationRequired).toBeUndefined();
     expect('fragmentationRequired' in candidate).toBe(false);
   });
+
+  // Phase 16 #17 — explicit regression test for the exact user-reported UPJ
+  // timetable shape (Q4): Mon-Thu have 10-minute breaks at 10:00 / 12:40 /
+  // 15:20 fragmenting each day into four 3-slot blocks; Friday has the wider
+  // Jum'at prayer break at 11:50-13:00. A 5-SKS course (Q2 says these are
+  // common, not edge cases) is silently fragmented under pre-Phase-16 code;
+  // this test locks in the correct Pre-GA behavior: longestContiguousRun
+  // settles at 3 (the per-block length), fragmentationRequired stamps true,
+  // and the wider Jum'at break is still treated as a break by OQ-32's
+  // strict-equality contiguity contract (it does not bridge runs just
+  // because it's > 10 min).
+  it('UPJ regression — 4×3-slot Mon-Thu blocks + Friday Jum\'at break → longestContiguousRun: 3, fragmentationRequired: true for sks=5', () => {
+    const rooms = [buildRoom(1, 30)];
+    // Slot pitch is 50 minutes (techspec: 1 SKS = 1 timeslot = 50 min). A
+    // day's four blocks of three slots each cover 07:30–10:00, 10:10–12:40,
+    // 12:50–15:20, 15:30–18:00 with 10-minute coffee breaks between blocks.
+    const monThuTimes = [
+      { start: '07:30', end: '08:20' },
+      { start: '08:20', end: '09:10' },
+      { start: '09:10', end: '10:00' },
+      // BREAK 10:00-10:10
+      { start: '10:10', end: '11:00' },
+      { start: '11:00', end: '11:50' },
+      { start: '11:50', end: '12:40' },
+      // BREAK 12:40-12:50
+      { start: '12:50', end: '13:40' },
+      { start: '13:40', end: '14:30' },
+      { start: '14:30', end: '15:20' },
+      // BREAK 15:20-15:30
+      { start: '15:30', end: '16:20' },
+      { start: '16:20', end: '17:10' },
+      { start: '17:10', end: '18:00' },
+    ];
+    // Friday: same morning shape, then the Jum'at break splits 11:50 from
+    // 13:00 — a 1h10m gap, much wider than the 10-min breaks elsewhere.
+    // OQ-32 strict equality says any gap (10 min or 70 min) terminates the
+    // current run; the test guards against a hypothetical "leniency creep"
+    // that might silently bridge the Jum'at break and inflate the run length.
+    const friTimes = [
+      { start: '07:30', end: '08:20' },
+      { start: '08:20', end: '09:10' },
+      { start: '09:10', end: '10:00' },
+      // BREAK 10:00-10:10
+      { start: '10:10', end: '11:00' },
+      { start: '11:00', end: '11:50' },
+      // JUM'AT BREAK 11:50-13:00 — must NOT bridge per OQ-32 strict equality.
+      { start: '13:00', end: '13:50' },
+      { start: '13:50', end: '14:40' },
+      { start: '14:40', end: '15:30' },
+    ];
+    const timeSlots = buildSlotsFromBlocks([
+      { day: 'Mon', times: monThuTimes },
+      { day: 'Tue', times: monThuTimes },
+      { day: 'Wed', times: monThuTimes },
+      { day: 'Thu', times: monThuTimes },
+      { day: 'Fri', times: friTimes },
+    ]);
+    const offering = buildFlexibleOffering({
+      id: 4,
+      courseId: 404,
+      sks: 5, // a common UPJ 5-SKS course (Q2)
+      room: rooms[0]!,
+    });
+
+    const { candidates } = runPreGA([offering], timeSlots, rooms);
+
+    expect(candidates).toHaveLength(1);
+    const candidate = candidates[0]!;
+    // No day holds a 5-slot contiguous run — every block is exactly 3 slots
+    // and OQ-32 strict equality refuses to bridge across breaks of any width.
+    expect(candidate.longestContiguousRun).toBe(3);
+    // 5-SKS course on a 3-slot-max timetable → fragmentation flag stamps true.
+    expect(candidate.fragmentationRequired).toBe(true);
+  });
 });
