@@ -97,6 +97,7 @@ interface ScheduleRunDetail {
   competencyMismatch: number;
   loadPenalty: number;
   capacityShortfallPenalty: number;
+  fragmentationPenalty: number;
   generationsRun: number;
   currentGeneration: number;
   stagnatedEarly: boolean;
@@ -279,6 +280,7 @@ export function RunDetailPage() {
         competencyMismatch: data.competencyMismatch,
         loadPenalty: data.loadPenalty,
         capacityShortfallPenalty: data.capacityShortfallPenalty,
+        fragmentationPenalty: data.fragmentationPenalty,
       };
     });
     setChartData((prev) => [
@@ -558,6 +560,15 @@ export function RunDetailPage() {
               <p className={styles.statLabel}>Capacity Shortfall (students over cap)</p>
               <p className={`${styles.statValue} ${run.capacityShortfallPenalty === 0 ? styles.statGreen : styles.statRed}`}>
                 {run.capacityShortfallPenalty}
+              </p>
+            </div>
+            <div
+              className={styles.statCard}
+              title="Sum of within-session slot gaps caused by break-spanning sessions (soft constraint). Zero when every session is contiguous."
+            >
+              <p className={styles.statLabel}>Fragmentation Penalty (cross-break gaps)</p>
+              <p className={`${styles.statValue} ${run.fragmentationPenalty === 0 ? styles.statGreen : styles.statRed}`}>
+                {run.fragmentationPenalty}
               </p>
             </div>
           </div>
