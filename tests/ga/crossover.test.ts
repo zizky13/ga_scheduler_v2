@@ -16,7 +16,13 @@ import {
   uniformCrossover,
   pmxCrossover,
 } from '../../src/ga/crossover.js';
-import type { Chromosome, FixedRoomGene, FlexibleGene, Gene } from '../../src/types.js';
+import type {
+  Chromosome,
+  FixedRoomGene,
+  FlexibleGene,
+  Gene,
+  PreGACandidate,
+} from '../../src/types.js';
 
 // ─── Fixture helpers ──────────────────────────────────────────────
 
@@ -31,15 +37,24 @@ import type { Chromosome, FixedRoomGene, FlexibleGene, Gene } from '../../src/ty
  *   5 → FLEXIBLE, 106, 6
  */
 function buildParent(slotOffset: number): Chromosome {
+  const lecturerBase = (offeringId: number): number =>
+    offeringId * 10 + (slotOffset === 0 ? 0 : 1000);
+  const sessions = (offeringId: number, roomId: number, slots: number[]) => {
+    const base = lecturerBase(offeringId);
+    return [
+      { roomId, timeSlotIds: slots, lecturerIds: [base] },
+      { roomId, timeSlotIds: slots.map(id => id + 1), lecturerIds: [base + 1] },
+    ];
+  };
   const fixed = (offeringId: number, roomId: number, slots: number[]): FixedRoomGene => ({
     kind: 'FIXED',
     offeringId,
-    sessions: [{ roomId, timeSlotIds: slots, lecturerIds: [] }],
+    sessions: sessions(offeringId, roomId, slots),
   });
   const flexible = (offeringId: number, roomId: number, slots: number[]): FlexibleGene => ({
     kind: 'FLEXIBLE',
     offeringId,
-    sessions: [{ roomId, timeSlotIds: slots, lecturerIds: [] }],
+    sessions: sessions(offeringId, roomId, slots),
   });
   return [
     fixed(101, 1, [10 + slotOffset, 11 + slotOffset]),
@@ -49,6 +64,34 @@ function buildParent(slotOffset: number): Chromosome {
     flexible(105, 5, [50 + slotOffset]),
     flexible(106, 6, [60 + slotOffset, 61 + slotOffset]),
   ];
+}
+
+function buildCandidateMasks(): PreGACandidate[] {
+  return [101, 102, 103, 104, 105, 106].map((offeringId) => {
+    const lecturerPool = [
+      offeringId * 10,
+      offeringId * 10 + 1,
+      offeringId * 10 + 1000,
+      offeringId * 10 + 1001,
+    ];
+    return {
+      offeringId,
+      courseId: offeringId,
+      roomId: null,
+      lecturerIds: [offeringId * 10],
+      effectiveStudentCount: 30,
+      parallelSessionCount: 2,
+      sessionDuration: 1,
+      possibleTimeSlotIds: [1, 2, 3, 4],
+      possibleRoomIds: [1, 2, 3, 4, 5, 6],
+      isFixedRoom: offeringId === 101 || offeringId === 104,
+      fixedTimeSlotIds: offeringId === 101 || offeringId === 104 ? [1, 2] : undefined,
+      parentOfferingId: undefined,
+      siblingOfferingIds: [offeringId],
+      lecturerPool,
+      siblingLecturerGroups: [[offeringId * 10]],
+    };
+  });
 }
 
 function multiset(genes: Gene[]): Map<number, number> {
@@ -84,9 +127,10 @@ for (const op of operators) {
       for (let iter = 0; iter < ITERATIONS; iter++) {
         const parent1 = buildParent(0);
         const parent2 = buildParent(100);
+        const candidates = buildCandidateMasks();
         const [child1, child2] = op.fn(parent1, parent2);
-        expect(() => assertMaskingInvariant(parent1, child1)).not.toThrow();
-        expect(() => assertMaskingInvariant(parent2, child2)).not.toThrow();
+        expect(() => assertMaskingInvariant(parent1, child1, candidates)).not.toThrow();
+        expect(() => assertMaskingInvariant(parent2, child2, candidates)).not.toThrow();
       }
     });
 
@@ -126,5 +170,46 @@ for (const op of operators) {
         }
       }
     });
+
+    it('per-session lecturerIds ride along with swapped sessions and stay within candidate lecturerPool', () => {
+      for (let iter = 0; iter < ITERATIONS; iter++) {
+        const parent1 = buildParent(0);
+        const parent2 = buildParent(100);
+        const candidates = buildCandidateMasks();
+        const [child1, child2] = op.fn(parent1, parent2);
+
+        for (const child of [child1, child2]) {
+          for (let i = 0; i < child.length; i++) {
+            const candidate = candidates.find(c => c.offeringId === child[i]!.offeringId)!;
+            const pool = new Set(candidate.lecturerPool);
+            for (const session of child[i]!.sessions) {
+              for (const lecturerId of session.lecturerIds) {
+                expect(pool.has(lecturerId)).toBe(true);
+              }
+            }
+          }
+        }
+
+        expect(() => assertMaskingInvariant(parent1, child1, candidates)).not.toThrow();
+        expect(() => assertMaskingInvariant(parent2, child2, candidates)).not.toThrow();
+      }
+    });
   });
 }
+
+describe('assertMaskingInvariant Phase 15 lecturer mask', () => {
+  it('throws when a child session lecturerId is outside the candidate lecturerPool', () => {
+    const parent = buildParent(0);
+    const child = buildParent(0);
+    child[1] = {
+      ...child[1]!,
+      sessions: child[1]!.sessions.map((session, index) => index === 0
+        ? { ...session, lecturerIds: [999_999] }
+        : session
+      ),
+    };
+
+    expect(() => assertMaskingInvariant(parent, child, buildCandidateMasks()))
+      .toThrow(/lecturerId 999999 is outside candidate 102 lecturerPool/);
+  });
+});

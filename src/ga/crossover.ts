@@ -16,7 +16,7 @@
  * mutations across parents and children.
  */
 
-import type { Chromosome, Gene, GeneSession } from '../types.js';
+import type { Chromosome, Gene, GeneSession, PreGACandidate } from '../types.js';
 
 /** Deep-clone a sessions array to avoid cross-gene aliasing. */
 function cloneSessions(sessions: GeneSession[]): GeneSession[] {
@@ -32,16 +32,59 @@ function cloneGene(g: Gene): Gene {
   return { ...g, sessions: cloneSessions(g.sessions) };
 }
 
+type CandidateMask = PreGACandidate[] | Map<number, PreGACandidate>;
+
+function toCandidateMap(candidates?: CandidateMask): Map<number, PreGACandidate> | undefined {
+  if (candidates === undefined) return undefined;
+  if (candidates instanceof Map) return candidates;
+  return new Map(candidates.map(c => [c.offeringId, c]));
+}
+
+function assertLecturersWithinPool(
+  childGene: Gene,
+  candidate: PreGACandidate | undefined,
+  locus: number | undefined,
+): void {
+  if (candidate === undefined) return;
+
+  const lecturerPool = new Set(candidate.lecturerPool);
+  for (let sessionIndex = 0; sessionIndex < childGene.sessions.length; sessionIndex++) {
+    const session = childGene.sessions[sessionIndex]!;
+    for (const lecturerId of session.lecturerIds) {
+      if (!lecturerPool.has(lecturerId)) {
+        throw new Error(
+          `MASKING VIOLATION at locus ${locus} session ${sessionIndex}: ` +
+          `lecturerId ${lecturerId} is outside candidate ${candidate.offeringId} lecturerPool ` +
+          `[${candidate.lecturerPool.join(', ')}]`
+        );
+      }
+    }
+  }
+}
+
 /** Runtime masking invariant check (non-production only) */
-export function assertMaskingInvariant(parent: Gene, child: Gene, locus: number): void;
-export function assertMaskingInvariant(parent: Chromosome, child: Chromosome): void;
+export function assertMaskingInvariant(
+  parent: Gene,
+  child: Gene,
+  locus: number,
+  candidate?: PreGACandidate
+): void;
+export function assertMaskingInvariant(
+  parent: Chromosome,
+  child: Chromosome,
+  candidates?: CandidateMask
+): void;
 export function assertMaskingInvariant(
   parent: Gene | Chromosome,
   child: Gene | Chromosome,
-  locus?: number
+  locusOrCandidates?: number | CandidateMask,
+  candidate?: PreGACandidate
 ): void {
   // Chromosome-level overload: walk locus-by-locus and delegate.
   if (Array.isArray(parent) && Array.isArray(child)) {
+    const candidateMap = toCandidateMap(
+      typeof locusOrCandidates === 'number' ? undefined : locusOrCandidates
+    );
     if (parent.length !== child.length) {
       throw new Error(
         `MASKING VIOLATION: parent length ${parent.length} !== child length ${child.length}`
@@ -55,7 +98,13 @@ export function assertMaskingInvariant(
           `MASKING VIOLATION at locus ${i}: offeringId changed from ${p.offeringId} to ${c.offeringId}`
         );
       }
-      assertMaskingInvariant(p, c, i);
+      const candidateForGene = candidateMap?.get(c.offeringId);
+      if (candidateMap !== undefined && candidateForGene === undefined) {
+        throw new Error(
+          `MASKING VIOLATION at locus ${i}: missing candidate mask for offeringId ${c.offeringId}`
+        );
+      }
+      assertMaskingInvariant(p, c, i, candidateForGene);
     }
     return;
   }
@@ -63,6 +112,7 @@ export function assertMaskingInvariant(
   // Per-locus overload (original body, behavior unchanged).
   const parentGene = parent as Gene;
   const childGene = child as Gene;
+  const locus = typeof locusOrCandidates === 'number' ? locusOrCandidates : undefined;
   if (process.env.NODE_ENV !== 'production') {
     if (parentGene.kind === 'FIXED') {
       if (childGene.kind !== 'FIXED') {
@@ -83,6 +133,10 @@ export function assertMaskingInvariant(
         }
       }
     }
+
+    // Phase 15 #7: crossover may swap whole sessions, but every per-session
+    // lecturer assignment must remain masked to the candidate's cohort pool.
+    assertLecturersWithinPool(childGene, candidate, locus);
   }
 }
 
