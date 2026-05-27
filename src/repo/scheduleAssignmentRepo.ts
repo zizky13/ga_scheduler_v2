@@ -40,9 +40,9 @@ export async function persistScheduleAssignments(
   const writes = chromosomeToScheduleAssignmentWrites(runId, chromosome);
   if (writes.length === 0) return;
 
-  await prisma.$transaction(
-    writes.map((w) =>
-      prisma.scheduleAssignment.create({
+  await prisma.$transaction(async (tx) => {
+    for (const w of writes) {
+      const assignment = await tx.scheduleAssignment.create({
         data: {
           runId: w.runId,
           offeringId: w.offeringId,
@@ -50,11 +50,20 @@ export async function persistScheduleAssignments(
           roomId: w.roomId,
           isFixedRoom: w.isFixedRoom,
           slots: w.slots,
-          lecturers: w.lecturers,
         },
-      }),
-    ),
-  );
+      });
+
+      if (w.lecturers.create.length > 0) {
+        await tx.scheduleAssignmentLecturer.createMany({
+          data: w.lecturers.create.map((l) => ({
+            runId: l.runId,
+            assignmentId: assignment.id,
+            lecturerId: l.lecturerId,
+          })),
+        });
+      }
+    }
+  });
 }
 
 /**
