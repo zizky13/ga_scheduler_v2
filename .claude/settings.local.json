@@ -65,7 +65,8 @@
       "Bash(grep -n \"^##\\\\|^###\\\\|^####\\\\|ScheduleAssignment\\\\|model ScheduleAssignment\\\\|^| \\\\`\" \"/Users/zikarnurizky/Desktop/01_Project/Tugas Akhir/ga_scheduler_v2/docs/api_and_database_design.md\")",
       "Bash(awk 'BEGIN{c=0} /^```/{c++} END{print \"fence count:\", c, \"\\(should be even\\)\"}' docs/techspec_upj_scheduler_v2.md docs/api_and_database_design.md)",
       "Bash(grep -c '^```' docs/techspec_upj_scheduler_v2.md docs/api_and_database_design.md)",
-      "Bash(grep -c '^```mermaid' docs/api_and_database_design.md)"
+      "Bash(grep -c '^```mermaid' docs/api_and_database_design.md)",
+      "Bash(grep -n '^```' docs/erd.md)"
     ]
   }
 }

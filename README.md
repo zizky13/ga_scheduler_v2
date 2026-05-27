@@ -497,6 +497,10 @@ The GA loop is asynchronous -- it yields to the event loop between generations v
 
 A lecturer is **eligible** for a course iff the intersection of `lecturer.competencies` and `course.requiredCompetencies` contains at least one element. If `course.requiredCompetencies` is empty, any lecturer is eligible. The helper `isLecturerEligibleForCourse` lives in `src/pre-ga/checks.ts`.
 
+### Shared-cohort behavior
+
+If you create two offerings for the same course in the same semester, the scheduler treats them as one cohort and splits the sessions across all assigned lecturers. You get a single cohort of N parallel sessions distributed over the union of the offerings' lecturers, not independent runs of each offering. Cohort aggregation lives in `src/pre-ga/validator.ts`.
+
 ---
 
 ## Project Structure
