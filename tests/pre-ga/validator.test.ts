@@ -594,3 +594,147 @@ describe('runPreGA — Phase 14 #6 mappingDefects rejection', () => {
     expect(metadata.fields[1]!.mismatches).toEqual([{ id: 42 }]);
   });
 });
+
+describe('runPreGA — Phase 16 #1 longestContiguousRun derivation (OQ-32 / OQ-33)', () => {
+  // Custom timeslot builder — the default `buildTimeSlots` produces a single
+  // strictly-contiguous Monday block, which can't exercise per-day grouping
+  // or in-day gaps. Each block represents one day's slot list; gaps between
+  // adjacent entries (where `prev.endTime !== next.startTime`) terminate the
+  // current run, matching the OQ-32 strict-equality contract.
+  function buildSlotsFromBlocks(
+    blocks: Array<{ day: string; times: Array<{ start: string; end: string }> }>,
+  ): TimeSlot[] {
+    const slots: TimeSlot[] = [];
+    let id = 1;
+    for (const block of blocks) {
+      for (const t of block.times) {
+        slots.push({ id: id++, day: block.day, startTime: t.start, endTime: t.end });
+      }
+    }
+    return slots;
+  }
+
+  function buildFlexibleOffering(opts: {
+    id: number;
+    courseId: number;
+    sks: number;
+    room: Room;
+  }): CourseOffering {
+    return {
+      id: opts.id,
+      courseId: opts.courseId,
+      course: { ...buildCourse(), id: opts.courseId, sks: opts.sks },
+      roomId: opts.room.id,
+      room: opts.room,
+      lecturers: [buildLecturer()],
+      effectiveStudentCount: 20,
+      isFixed: false,
+    };
+  }
+
+  it('(a) takes max(perDayLongestRun) — 3-slot run on Mon, 5-slot run on Tue → longestContiguousRun === 5', () => {
+    const rooms = [buildRoom(1, 30)];
+    const timeSlots = buildSlotsFromBlocks([
+      {
+        day: 'Mon',
+        times: [
+          { start: '08:00', end: '09:00' },
+          { start: '09:00', end: '10:00' },
+          { start: '10:00', end: '11:00' },
+        ],
+      },
+      {
+        day: 'Tue',
+        times: [
+          { start: '08:00', end: '09:00' },
+          { start: '09:00', end: '10:00' },
+          { start: '10:00', end: '11:00' },
+          { start: '11:00', end: '12:00' },
+          { start: '12:00', end: '13:00' },
+        ],
+      },
+    ]);
+    const offering = buildFlexibleOffering({
+      id: 1,
+      courseId: 401,
+      sks: 1,
+      room: rooms[0]!,
+    });
+
+    const { candidates } = runPreGA([offering], timeSlots, rooms);
+
+    expect(candidates).toHaveLength(1);
+    const candidate = candidates[0]!;
+    // possibleTimeSlotIds spans both days; the day-grouped reducer must pick
+    // the longer of the two per-day runs (5 on Tue) and never cross days.
+    expect(candidate.longestContiguousRun).toBe(5);
+    // sessionDuration (1) <= longestContiguousRun → no fragmentation flag.
+    expect(candidate.fragmentationRequired).toBeUndefined();
+  });
+
+  it('(b) only 3-slot runs exist and sessionDuration === 5 → longestContiguousRun === 3, fragmentationRequired === true', () => {
+    const rooms = [buildRoom(1, 30)];
+    // Mon fragments into two 3-slot blocks separated by an 11:00-12:00 gap;
+    // OQ-32 strict equality means the gap terminates the run, so no day
+    // ever exceeds 3 contiguous slots.
+    const timeSlots = buildSlotsFromBlocks([
+      {
+        day: 'Mon',
+        times: [
+          { start: '08:00', end: '09:00' },
+          { start: '09:00', end: '10:00' },
+          { start: '10:00', end: '11:00' },
+          // gap 11:00 — 12:00
+          { start: '12:00', end: '13:00' },
+          { start: '13:00', end: '14:00' },
+          { start: '14:00', end: '15:00' },
+        ],
+      },
+    ]);
+    const offering = buildFlexibleOffering({
+      id: 2,
+      courseId: 402,
+      sks: 5, // session needs 5 contiguous slots; no day holds 5 in a row
+      room: rooms[0]!,
+    });
+
+    const { candidates } = runPreGA([offering], timeSlots, rooms);
+
+    expect(candidates).toHaveLength(1);
+    const candidate = candidates[0]!;
+    expect(candidate.longestContiguousRun).toBe(3);
+    expect(candidate.fragmentationRequired).toBe(true);
+  });
+
+  it('(c) sessionDuration === 3 fits inside a 5-slot run → no fragmentationRequired flag (sparse, not `false`)', () => {
+    const rooms = [buildRoom(1, 30)];
+    const timeSlots = buildSlotsFromBlocks([
+      {
+        day: 'Mon',
+        times: [
+          { start: '08:00', end: '09:00' },
+          { start: '09:00', end: '10:00' },
+          { start: '10:00', end: '11:00' },
+          { start: '11:00', end: '12:00' },
+          { start: '12:00', end: '13:00' },
+        ],
+      },
+    ]);
+    const offering = buildFlexibleOffering({
+      id: 3,
+      courseId: 403,
+      sks: 3,
+      room: rooms[0]!,
+    });
+
+    const { candidates } = runPreGA([offering], timeSlots, rooms);
+
+    expect(candidates).toHaveLength(1);
+    const candidate = candidates[0]!;
+    expect(candidate.longestContiguousRun).toBe(5);
+    // Sparse-on-purpose contract from types.ts: the flag is OMITTED when the
+    // session fits, never stamped `false`. Consumers `if (c.fragmentationRequired)`.
+    expect(candidate.fragmentationRequired).toBeUndefined();
+    expect('fragmentationRequired' in candidate).toBe(false);
+  });
+});
