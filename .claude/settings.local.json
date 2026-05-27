@@ -66,7 +66,12 @@
       "Bash(awk 'BEGIN{c=0} /^```/{c++} END{print \"fence count:\", c, \"\\(should be even\\)\"}' docs/techspec_upj_scheduler_v2.md docs/api_and_database_design.md)",
       "Bash(grep -c '^```' docs/techspec_upj_scheduler_v2.md docs/api_and_database_design.md)",
       "Bash(grep -c '^```mermaid' docs/api_and_database_design.md)",
-      "Bash(grep -n '^```' docs/erd.md)"
+      "Bash(grep -n '^```' docs/erd.md)",
+      "Bash(PGPASSWORD='Worchestershire11!' psql -U zikarnurizky -d ga_scheduler_v2 -c '\\\\dt')",
+      "Bash(PGPASSWORD='Worchestershire11!' psql -U zikarnurizky -d ga_scheduler_v2 -c 'SELECT id, email, role FROM users;')",
+      "Bash(PGPASSWORD='Worchestershire11!' pg_dump -U zikarnurizky --data-only --table=users ga_scheduler_v2)",
+      "Bash(PGPASSWORD='Worchestershire11!' psql -U zikarnurizky -d ga_scheduler_v2_demo)",
+      "Bash(PGPASSWORD='Worchestershire11!' psql *)"
     ]
   }
 }

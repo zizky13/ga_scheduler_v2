@@ -16,6 +16,7 @@
     "check:migrations": "npx prisma migrate status",
     "db:migrate:demo": "dotenv -e .env.demo -- npx prisma migrate deploy",
     "db:seed:demo": "dotenv -e .env.demo -- tsx prisma/seed.ts",
+    "db:clone:demo": "node scripts/clone-dev-to-demo.mjs",
     "check:migrations:demo": "dotenv -e .env.demo -- npx prisma migrate status",
     "api:dev:demo": "dotenv -e .env.demo -- tsx src/api/server.ts",
     "worker:demo": "dotenv -e .env.demo -- tsx src/worker/index.ts",

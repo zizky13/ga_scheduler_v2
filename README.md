@@ -223,7 +223,9 @@ If `db` or `redis` shows `"fail"`, check that the respective service is running 
 
 Git branches isolate **code**, not **database state**. If you run `npx prisma migrate dev` on a fix branch and the migration alters a table, your local PostgreSQL is permanently changed. Checking out the demo branch afterwards will surface schema mismatches — the demo code expects the old shape, but the DB has the new one.
 
-To keep a presentable demo build that survives experimental schema work on other branches, point the demo at its own database:
+To keep a presentable demo build that survives experimental schema work on other branches, point the demo at its own database (`ga_scheduler_v2_demo`) and snapshot the current dev state into it.
+
+#### Initial setup (snapshot the dev DB)
 
 ```bash
 # 1. Create a second PostgreSQL database alongside the dev one
@@ -232,13 +234,17 @@ createdb ga_scheduler_v2_demo
 # 2. Copy the template and fill in the demo connection string
 cp .env.demo.example .env.demo
 # Edit .env.demo so DATABASE_URL ends in /ga_scheduler_v2_demo
+# (use the same user/password/JWT_SECRET as .env unless you need them to differ)
 
-# 3. Apply migrations and seed against the demo DB
-npm run db:migrate:demo
-npm run db:seed:demo
+# 3. Clone the current dev DB into the demo DB
+npm run db:clone:demo
 ```
 
-When you want to run the demo build (typically: check out the demo branch first, then), use the `*:demo` scripts:
+`db:clone:demo` (`scripts/clone-dev-to-demo.mjs`) reads both `.env` and `.env.demo`, force-disconnects any open sessions on the demo DB, drops and recreates it, then pipes `pg_dump <dev> | psql <demo>`. The result is a bit-for-bit copy: schema, data, sequences, `_prisma_migrations` rows, users — everything. Same admin credentials work on both DBs because the `users` table comes along for the ride.
+
+#### Running the demo build
+
+Use the `*:demo` scripts to point any process at the demo DB:
 
 ```bash
 npm run check:migrations:demo  # status against the demo DB
@@ -246,13 +252,13 @@ npm run api:dev:demo           # API server pointing at the demo DB
 npm run worker:demo            # GA worker pointing at the demo DB
 ```
 
-These wrap the regular commands with `dotenv -e .env.demo`, so the demo DB is never touched unless you explicitly call a `:demo` script. Migrations you run on fix/feature branches go to the dev DB only and leave the demo build intact.
+These wrap the regular commands with `dotenv -e .env.demo`, so the demo DB is never touched unless you explicitly call a `:demo` script (or `db:clone:demo`). Migrations you run on fix/feature branches go to the dev DB only and leave the demo build intact.
 
 Note: Redis (BullMQ jobs) is still shared. If demo and dev run simultaneously you may want to set a different `REDIS_URL` or a BullMQ queue prefix in `.env.demo`.
 
 #### Rolling-demo workflow
 
-The intended pattern: **demo tracks `main`**. Fix/feature branches stay isolated from the demo DB while in progress; when a fix merges into `main`, the demo rolls forward to match.
+The intended pattern: **demo tracks `main`**. Fix/feature branches stay isolated from the demo DB while in progress; when a fix merges into `main` (and is applied to your dev DB), re-clone to roll the demo forward.
 
 **A. Starting a fix (don't touch the demo DB yet)**
 
@@ -262,7 +268,7 @@ git checkout -b fix/whatever
 npx prisma migrate dev --name your_fix   # applies to DEV DB only (.env)
 ```
 
-Migration files exist on the fix branch only. The demo DB stays on the pre-fix schema, matching `main`.
+Migration files exist on the fix branch only. The demo DB stays on the pre-fix snapshot, matching `main`.
 
 **B. Presentation arrives, fix is NOT done**
 
@@ -278,15 +284,31 @@ npm run api:dev:demo
 ```bash
 git checkout main
 git pull
-npm run check:migrations:demo   # confirm what's pending on demo DB
-npm run db:migrate:demo         # apply the merged migrations
-npm run db:seed:demo            # optional: re-run seed if fixture shape changed
-npm run api:dev:demo            # verify
+npx prisma migrate deploy   # apply merged migrations to the DEV DB first
+npm run db:clone:demo       # then snapshot dev into demo
+npm run api:dev:demo        # verify
 ```
 
-**Gotcha:** while on a fix branch, never run `*:demo` scripts — they would apply your in-progress migration to the demo DB before merge, defeating the isolation. Use `:demo` scripts only at the post-merge promotion step.
+Re-cloning is the simplest path because it also brings over any dev-side data you've built up (new schedule runs, manually added rooms, etc.). If you'd rather migrate the demo DB in place without overwriting its data, use `npm run db:migrate:demo` instead of `db:clone:demo`.
 
-**Destructive migrations:** if a merged migration drops columns or tables, the demo DB loses that data the same way the dev DB did. Re-seed (`db:seed:demo`) or restore from a `pg_dump` snapshot if you need the old data back.
+**Gotcha:** while on a fix branch, never run `*:demo` or `db:clone:demo` — both would propagate your in-progress, unmerged work to the demo DB and defeat the isolation. Use them only at the post-merge promotion step.
+
+**Destructive migrations:** `db:clone:demo` drops and recreates the demo DB every time. Anything you'd added to the demo DB independently of dev will be lost. If you need to preserve demo-only state, use `db:migrate:demo` to migrate in place, or `pg_dump ga_scheduler_v2_demo > snapshot.sql` before cloning.
+
+#### Alternative: empty demo from scratch (no dev data)
+
+If you'd rather start the demo DB empty and populate only the canonical seed:
+
+```bash
+npm run db:migrate:demo
+npm run db:seed:demo
+
+# Then copy auth users from the dev DB, since the seed does NOT create accounts.
+PGPASSWORD='<your-postgres-password>' pg_dump -U zikarnurizky --data-only --table=users ga_scheduler_v2 \
+  | PGPASSWORD='<your-postgres-password>' psql -U zikarnurizky -d ga_scheduler_v2_demo
+```
+
+The user-copy step is required because `prisma/seed.ts` only populates scheduling fixtures (rooms, time slots, lecturers, courses, offerings) — the `users` table is bootstrapped manually on the dev DB (via the API register flow or direct SQL), so a freshly migrated+seeded demo DB has zero accounts and you cannot log in.
 
 ---
 
