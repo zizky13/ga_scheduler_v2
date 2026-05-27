@@ -353,6 +353,11 @@ model ScheduleRun {
   // max(0, effectiveStudentCount − Σ session.room.capacity). Surfaced via
   // run-detail + telemetry alongside loadPenalty.
   capacityShortfallPenalty Int     @default(0)
+  // Per-run aggregate of `EvaluatedChromosome.fragmentationPenalty`
+  // (Phase 16 task #6) — Σ over sessions of within-day slot gaps caused by
+  // break-spanning sessions (zero when every session is contiguous). Surfaced
+  // via run-detail + telemetry alongside capacityShortfallPenalty.
+  fragmentationPenalty     Int     @default(0)
   stagnatedEarly           Boolean @default(false)
 
   // Raw history retained for techspec §8.2 compatibility; also normalized below.
@@ -463,6 +468,10 @@ model FitnessHistory {
   // room offerings of max(0, effectiveStudentCount − Σ session.room.capacity).
   // Added @default(0) for the same backfill reason as loadPenalty above.
   capacityShortfallPenalty Int      @default(0)
+  // Per-generation `fragmentationPenalty` (Phase 16 task #6) — Σ over sessions
+  // of within-day slot gaps caused by break-spanning sessions. Added @default(0)
+  // for the same backfill reason as loadPenalty / capacityShortfallPenalty above.
+  fragmentationPenalty     Int      @default(0)
   recordedAt               DateTime @default(now())
 
   run ScheduleRun @relation(fields: [runId], references: [id], onDelete: Cascade)

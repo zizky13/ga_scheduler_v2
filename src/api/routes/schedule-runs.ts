@@ -271,6 +271,7 @@ interface ScheduleRunSummaryWire {
   competencyMismatch: number;
   loadPenalty: number;
   capacityShortfallPenalty: number;
+  fragmentationPenalty: number;
   generationsRun: number;
   currentGeneration: number;
   stagnatedEarly: boolean;
@@ -294,6 +295,7 @@ function toSummaryWire(r: ScheduleRunSummaryRecord): ScheduleRunSummaryWire {
     competencyMismatch: r.competencyMismatch,
     loadPenalty: r.loadPenalty,
     capacityShortfallPenalty: r.capacityShortfallPenalty,
+    fragmentationPenalty: r.fragmentationPenalty,
     generationsRun: r.generationsRun,
     currentGeneration: r.currentGeneration,
     stagnatedEarly: r.stagnatedEarly,
