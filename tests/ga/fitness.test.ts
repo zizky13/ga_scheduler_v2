@@ -412,6 +412,15 @@ describe('calculateCapacityShortfallPenalty — null-room overflow (Phase 11 tas
   });
 });
 
+// Phase 16 #19 — three cases pinned by the backlog spec:
+//   (a) strictly contiguous same-day slots          → fragmentationPenalty: 0
+//   (b) same-day with one or more missing positions → > 0, proportional to gap
+//   (c) cross-day slots (OQ-33 defense-in-depth)    → much larger (≫ 0)
+// The fourth `it` exercises the evaluateFitness aggregation path so the term
+// actually contributes to `softPenalty` when the timetable topology is
+// supplied. Slot times use the 50-min/SKS convention from the techspec, so
+// the spec's illustrative "10:50 after the 10:00 break" lands at 10:40 here
+// (slot 4 starts after a 10-minute coffee break following slot 3's 10:30 end).
 describe('calculateFragmentationPenalty — same-day session gaps', () => {
   const slots: TimeSlot[] = [
     { id: 1, day: 'Mon', startTime: '08:00', endTime: '08:50' },
