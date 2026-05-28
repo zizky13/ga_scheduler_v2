@@ -452,6 +452,13 @@ model ScheduleRun {
   // the per-run aggregate so the audit log can attribute hard violations to
   // [HC-COMPETENCY] specifically rather than a single opaque integer.
   competencyMismatch Int       @default(0)
+  // Per-run aggregate of `EvaluatedChromosome.fragmentationPenalty`
+  // (Phase 16 task #6) — Σ over sessions of within-day slot gaps caused by
+  // break-spanning sessions (zero when every session is contiguous). Surfaced
+  // via run-detail + telemetry alongside `loadPenalty` (Phase 8 task #14)
+  // and `capacityShortfallPenalty` (Phase 11 task #6). Shares `softPenaltyWeight`
+  // per OQ-31 — no new GAConfig knob.
+  fragmentationPenalty Int     @default(0)
   stagnatedEarly    Boolean    @default(false)
 
   // Raw history retained for techspec §8.2 compatibility; also normalized below.
@@ -557,6 +564,13 @@ model FitnessHistory {
   // (techspec §4.3). Lets the chart UI overlay competency violations on top of
   // the global hardViolations curve for traceability.
   competencyMismatch Int
+  // Per-generation `fragmentationPenalty` (Phase 16 task #6) — Σ over sessions
+  // of within-day slot gaps caused by break-spanning sessions. Mirrors the
+  // per-run aggregate on `ScheduleRun` and the placement of `loadPenalty`
+  // (Phase 8 task #14) / `capacityShortfallPenalty` (Phase 11 task #6) so the
+  // chart UI can overlay it on the soft-penalty curve. Carries `@default(0)`
+  // because the column is added to an already-populated table.
+  fragmentationPenalty Int    @default(0)
   recordedAt      DateTime @default(now())
 
   run             ScheduleRun @relation(fields: [runId], references: [id], onDelete: Cascade)
@@ -848,6 +862,21 @@ rateLimitAuth, rateLimitRun
 | 422  | Domain rejection: `NO_FEASIBLE_CANDIDATES`, `SSA_INFEASIBLE`, `AC3_DOMAIN_EMPTY`, `BIPARTITE_MATCHING_INSUFFICIENT`, `COMPETENCY_MISMATCH` (techspec §4.3 `[HC-COMPETENCY]`, §8.3) |
 
 **`COMPETENCY_MISMATCH` is per-offering, not per-run.** Unlike `SSA_INFEASIBLE`, `AC3_DOMAIN_EMPTY`, or `BIPARTITE_MATCHING_INSUFFICIENT`, the `COMPETENCY_MISMATCH` code is emitted by Pre-GA's `checkCompetencies` (techspec §4.3) against an individual `CourseOffering` and appears inside the `preGASummary.infeasible[]` list returned with the run, not as a top-level run failure. A run only escalates to a top-level `422 NO_FEASIBLE_CANDIDATES` when the **entire** feasible list is empty after Pre-GA — i.e., every offering was rejected (whether for `COMPETENCY_MISMATCH` or any other Layer 1 reason). A run with some competency-rejected offerings and some feasible offerings still proceeds through SSA → GA on the feasible subset.
+
+**`preGASummary.warnings[]` — per-offering visibility channel (Phase 16 task #2).** In addition to `feasible: number` and `infeasible: PreGAInfeasibleEntry[]`, the `preGASummary` payload returned with a run now carries a `warnings: PreGAWarningEntry[]` array. Each entry has the shape:
+
+```
+{ offeringId: number, code: string, message: string, fragmentationRequired?: boolean, longestContiguousRun?: number, sessionDuration?: number, metadata?: unknown }
+```
+
+`code` is currently always `'FRAGMENTATION_REQUIRED'` (emitted whenever a candidate's `longestContiguousRun < sessionDuration` — see techspec §4.3 / Phase 16 task #1), but the field is intentionally `string` so future Pre-GA visibility channels (e.g., soft-preference warnings) can reuse the same envelope without a wire migration. The shape mirrors `PreGAInfeasibleEntry` (open-ended `metadata?` for future structured payloads) and the canonical source-of-truth is `src/types.ts:PreGAWarningEntry`.
+
+**Contrast — `warnings[]` vs `infeasible[]`.** The two arrays are deliberately distinct visibility channels and must not be conflated:
+
+- **`infeasible[]`** — the offering was **rejected** at Pre-GA and does **not** reach SSA or the GA. The run may still `SUCCESS` on the feasible subset (per the `COMPETENCY_MISMATCH` rule above), or escalate to a top-level `422 NO_FEASIBLE_CANDIDATES` if the rejection list consumes every offering.
+- **`warnings[]`** — the offering **passed** Pre-GA, stays in `validation.feasible`, and **does** reach the GA. The flag is a best-effort visibility signal (Q3=B per OQ-33) that downstream surfaces — the fitness term `fragmentationPenalty` (Phase 16 task #6), the Run Detail panel's Fragmented Sessions section (Phase 16 task #15), the Timetable Management banner — will act on. Warnings never reduce `feasible` and never block the run.
+
+Consumers that only care about rejections keep reading `infeasible[]` and can safely ignore `warnings[]` — the addition is fully backward-compatible. Legacy runs persisted before Phase 16 task #2 surface `warnings: []` (the defensive extractors in `src/api/routes/schedule-runs.ts` and the JSON parser default an absent field to the empty array).
 | 429 | Rate limit exceeded |
 | 500 | Unhandled internal error |
 | 503 | Worker queue unavailable, DB unreachable |
@@ -1010,8 +1039,10 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
     "id": "ck123…",
     "status": "COMPLETED",
     "config": GAConfig,
-    "preGASummary": { "feasible": 15, "infeasible": 4 },
+    "preGASummary": { "feasible": 15, "infeasible": 4, "warnings": [{ "offeringId": 12, "code": "FRAGMENTATION_REQUIRED", "message": "...", "fragmentationRequired": true, "longestContiguousRun": 1, "sessionDuration": 2 }] },
     "ssaResult": SSAResult,
+    "degradedOfferings": [12, 19],
+    "fragmentationRequired": [12, 27],
     "gaResult": {
       "bestFitness": 0.972,
       "hardViolations": 0,
@@ -1042,6 +1073,13 @@ Standard CRUD. Body: `{ semesterId, code, name, sks, requiredFacilities: string[
 - Errors: 404 if not found, or if `user` and not the owner.
 
 **Phase 15 — per-session `lecturerIds` in the response.** Each `assignments[].sessions[].lecturerIds: number[]` is materialised from the `ScheduleAssignmentLecturer` join (§3.2) and surfaces the GA's per-session lecturer distribution (techspec §6.3). A single-element array is the common case (single-sibling cohort, single lecturer); multi-element arrays carry team-teach assignments (OQ-25). Pre-Phase-15 runs have no rows in `ScheduleAssignmentLecturer`; the API surfaces `lecturerIds: []` on every session and the frontend renders a "Team teach (legacy)" placeholder using `assignments[].offering.lecturers[]` as a fallback display set (OQ-30). The Zod response schema is `overrideAssignmentBodySchema`'s counterpart in `src/api/schemas/schedule-runs.ts:scheduleRunDetailResponseSchema`.
+
+**Phase 16 — `degradedOfferings` and `fragmentationRequired` visibility channels (task #13).** The response carries two top-level `number[]` fields that surface the fragmented-session telemetry consumed by the Run Detail panel (Phase 16 task #15) and the Timetable Management banner:
+
+- **`degradedOfferings: number[]`** — sourced directly from `SSAResult.degradedOfferings`. Lists offerings whose SSA bipartite adjacency degraded to the per-slot fallback (i.e., no contiguous `sessionDuration`-length run satisfied every hard constraint, so SSA fell back to per-slot eligibility). Defensively extracted by `src/api/routes/schedule-runs.ts:extractDegradedOfferings`, which returns `[]` for legacy rows persisted before Phase 16 task #9 wired the SSA field.
+- **`fragmentationRequired: number[]`** — derived from `preGASummary.warnings[]` filtered to `code === 'FRAGMENTATION_REQUIRED'`. Lists offerings whose Pre-GA candidate had `longestContiguousRun < sessionDuration` — i.e., the timetable structurally cannot hold the session as one block (Phase 16 task #2). Defensively extracted by `src/api/routes/schedule-runs.ts:extractFragmentationRequired`, which returns `[]` for legacy rows whose `preGASummaryJson` predates the `warnings[]` channel.
+
+The two arrays often overlap (a fragmentation-required offering will typically also degrade in SSA) but neither is a subset of the other; the Run Detail panel renders the union. **Both are visibility channels, not rejection signals** — the affected offerings still reach the GA and receive an assignment, contributing to `fragmentationPenalty` on `ScheduleRun` and `FitnessHistory` rather than being culled from `feasible`. Consumers that only need the rejection list keep reading `preGASummary.infeasible[]` and can safely ignore both fields — the contract is fully backward-compatible.
 
 **`GET /schedule-runs/:id/stream`** — Server-Sent Events. Recommendation: SSE over WebSocket (OQ-4) — the channel is one-way (worker → client), SSE auto-reconnects on the browser side, and there is no need for client-driven messages here. The HTTP request stays open and emits:
 
