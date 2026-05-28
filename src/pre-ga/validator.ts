@@ -63,6 +63,7 @@ export function runPreGA(
   const infeasible: PreGAValidationResult['infeasible'] = [];
 
   const totalSlots = allTimeSlots.length;
+  const timeSlotById = new Map<number, TimeSlot>(allTimeSlots.map(ts => [ts.id, ts]));
   const checks = [
     (o: CourseOffering) => checkIntegrity(o),
     (o: CourseOffering) => checkRoomCapacity(o),
@@ -359,6 +360,20 @@ export function runPreGA(
       }
     }
 
+    // note (Phase 16 #1 / OQ-32 / OQ-33): derive `longestContiguousRun` from
+    // the candidate's `possibleTimeSlotIds` by grouping slots by day, sorting
+    // within each day by `startTime`, then counting the longest run of
+    // strictly back-to-back slots (`slots[i].endTime === slots[i+1].startTime`
+    // per OQ-32 default — no tolerance). Take `max(perDayLongestRun)`; runs
+    // never cross days (OQ-33 default). When the resulting value is shorter
+    // than `sessionDuration`, also stamp `fragmentationRequired: true` —
+    // this is a visibility flag only, the candidate stays in `feasible`
+    // per Q3=B (best-effort with soft penalty + visible warning).
+    const longestContiguousRun = computeLongestContiguousRun(
+      possibleTimeSlotIds,
+      timeSlotById,
+    );
+
     const candidate: PreGACandidate = {
       offeringId: primary.id,
       courseId: primary.courseId,
@@ -372,7 +387,11 @@ export function runPreGA(
       siblingOfferingIds,
       lecturerPool,
       siblingLecturerGroups,
+      longestContiguousRun,
     };
+    if (longestContiguousRun < primary.course.sks) {
+      candidate.fragmentationRequired = true;
+    }
     const possibleRoomIds = possibleRoomIdsByOffering.get(primary.id);
     if (possibleRoomIds) candidate.possibleRoomIds = possibleRoomIds;
     rawCandidates.push(candidate);
@@ -398,4 +417,54 @@ export function runPreGA(
     validation: { feasible, infeasible },
     candidates,
   };
+}
+
+/**
+ * Phase 16 #1 — longest contiguous run derivation (OQ-32 strict equality,
+ * OQ-33 same-day only).
+ *
+ * Walks `possibleTimeSlotIds`, groups by `timeSlot.day`, orders by
+ * `startTime` within each day, then counts the longest run where
+ * `slots[i].endTime === slots[i+1].startTime` (strict string equality on
+ * the `HH:MM` representation — OQ-32 default). Cross-day runs never count
+ * (OQ-33 default — sessions never span days). Returns 0 for an empty
+ * `possibleTimeSlotIds` array.
+ *
+ * Unknown slot ids (a possibleTimeSlotIds entry with no matching TimeSlot
+ * in `timeSlotById`) are skipped — they cannot contribute to a contiguous
+ * run because their day / wall-clock position is unknown. This is
+ * defense-in-depth against a stale `fixedTimeSlotIds` reference; in
+ * practice every id in `possibleTimeSlotIds` resolves because Pre-GA
+ * sources them from `allTimeSlots` directly.
+ */
+function computeLongestContiguousRun(
+  possibleTimeSlotIds: number[],
+  timeSlotById: ReadonlyMap<number, TimeSlot>,
+): number {
+  if (possibleTimeSlotIds.length === 0) return 0;
+  const slotsByDay = new Map<string, TimeSlot[]>();
+  for (const id of possibleTimeSlotIds) {
+    const slot = timeSlotById.get(id);
+    if (!slot) continue;
+    const bucket = slotsByDay.get(slot.day) ?? [];
+    bucket.push(slot);
+    slotsByDay.set(slot.day, bucket);
+  }
+
+  let maxRun = 0;
+  for (const bucket of slotsByDay.values()) {
+    bucket.sort((a, b) => a.startTime.localeCompare(b.startTime));
+    let run = 1;
+    let bestForDay = 1;
+    for (let i = 1; i < bucket.length; i++) {
+      if (bucket[i - 1]!.endTime === bucket[i]!.startTime) {
+        run += 1;
+        if (run > bestForDay) bestForDay = run;
+      } else {
+        run = 1;
+      }
+    }
+    if (bestForDay > maxRun) maxRun = bestForDay;
+  }
+  return maxRun;
 }

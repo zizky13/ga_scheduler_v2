@@ -592,6 +592,17 @@ A lecturer is **eligible** for a course iff the intersection of `lecturer.compet
 
 If you create two offerings for the same course in the same semester, the scheduler treats them as one cohort and splits the sessions across all assigned lecturers. You get a single cohort of N parallel sessions distributed over the union of the offerings' lecturers, not independent runs of each offering. Cohort aggregation lives in `src/pre-ga/validator.ts`.
 
+### Session fragmentation safety net
+
+If your timetable's longest contiguous run is shorter than your largest course's SKS, the scheduler will still produce a schedule but the affected sessions will be fragmented across breaks. The Timetable Management page warns you when this is the case — the long-term fix is to add more back-to-back slots.
+
+You will see this surface in two places:
+
+- **Timetable Management page** (`/timeslots`): a non-dismissable warning banner names the offending courses whenever the global longest contiguous run is shorter than at least one course's SKS. The banner is informational — saving the timetable is still allowed — but it is the canonical signal that fragmentation will occur on the next run.
+- **Run Detail page**: a **Fragmented Sessions** panel lists each affected offering with its same-day fragmented slot sequence and a click-through back to `/timeslots`, and a **Fragmentation Penalty** stat card surfaces the GA's soft-penalty value (`fragmentationPenalty`) — green when zero, red when nonzero. The GA evolves toward lower fragmentation where the timetable allows it.
+
+Even when a session has to be fragmented, every slot for that session stays on a single day — sessions are never split across days.
+
 ---
 
 ## Project Structure

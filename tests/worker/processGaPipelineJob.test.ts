@@ -211,6 +211,9 @@ describe('processGaPipelineJob', () => {
         competencyMismatch: 1,
         structuralPenalty: 2,
         preferencePenalty: 1,
+        loadPenalty: 0,
+        capacityShortfallPenalty: 0,
+        fragmentationPenalty: 7,
       });
       await input.hooks?.onGeneration?.({
         generation: 2,
@@ -221,6 +224,9 @@ describe('processGaPipelineJob', () => {
         competencyMismatch: 0,
         structuralPenalty: 1,
         preferencePenalty: 1,
+        loadPenalty: 0,
+        capacityShortfallPenalty: 0,
+        fragmentationPenalty: 4,
       });
       await input.hooks?.onGeneration?.({
         generation: 3,
@@ -231,6 +237,9 @@ describe('processGaPipelineJob', () => {
         competencyMismatch: 0,
         structuralPenalty: 0,
         preferencePenalty: 1,
+        loadPenalty: 0,
+        capacityShortfallPenalty: 0,
+        fragmentationPenalty: 2,
       });
       const out: OrchestratorOutput = {
         response: {
@@ -240,6 +249,7 @@ describe('processGaPipelineJob', () => {
             status: 'FEASIBLE',
             totalSessionsRequired: 1,
             maximumAchievableMatching: 1,
+            degradedOfferings: [],
           },
           gaResult,
           durationMs: 42,
@@ -251,6 +261,7 @@ describe('processGaPipelineJob', () => {
             status: 'FEASIBLE',
             totalSessionsRequired: 1,
             maximumAchievableMatching: 1,
+            degradedOfferings: [],
           },
           lecturerStructuralMap: new Map(),
           lecturerPreferenceMap: new Map(),
@@ -300,6 +311,7 @@ describe('processGaPipelineJob', () => {
     expect(progressTypes).toHaveLength(3);
     expect((progressTypes[0]!.event as { snapshot: { generation: number } }).snapshot.generation).toBe(1);
     expect((progressTypes[2]!.event as { snapshot: { generation: number } }).snapshot.generation).toBe(3);
+    expect((progressTypes[2]!.event as { snapshot: { fragmentationPenalty: number } }).snapshot.fragmentationPenalty).toBe(2);
   });
 
   it('Checkpoint: writes latest onCheckpoint snapshot to Redis under `ga:run:<id>:checkpoint` with 1h TTL (techspec §7.2)', async () => {
@@ -348,6 +360,7 @@ describe('processGaPipelineJob', () => {
             status: 'FEASIBLE',
             totalSessionsRequired: 1,
             maximumAchievableMatching: 1,
+            degradedOfferings: [],
           },
           gaResult,
           durationMs: 100,
@@ -359,6 +372,7 @@ describe('processGaPipelineJob', () => {
             status: 'FEASIBLE',
             totalSessionsRequired: 1,
             maximumAchievableMatching: 1,
+            degradedOfferings: [],
           },
           lecturerStructuralMap: new Map(),
           lecturerPreferenceMap: new Map(),
@@ -415,6 +429,9 @@ describe('processGaPipelineJob', () => {
         competencyMismatch: 0,
         structuralPenalty: 0,
         preferencePenalty: 5,
+        loadPenalty: 0,
+        capacityShortfallPenalty: 0,
+        fragmentationPenalty: 1,
       });
       const out: OrchestratorOutput = {
         response: {
@@ -424,6 +441,7 @@ describe('processGaPipelineJob', () => {
             status: 'FEASIBLE',
             totalSessionsRequired: 1,
             maximumAchievableMatching: 1,
+            degradedOfferings: [],
           },
           gaResult,
           durationMs: 5,
@@ -435,6 +453,7 @@ describe('processGaPipelineJob', () => {
             status: 'FEASIBLE',
             totalSessionsRequired: 1,
             maximumAchievableMatching: 1,
+            degradedOfferings: [],
           },
           lecturerStructuralMap: new Map(),
           lecturerPreferenceMap: new Map(),
@@ -495,6 +514,7 @@ describe('processGaPipelineJob', () => {
           status: 'INFEASIBLE',
           totalSessionsRequired: 5,
           maximumAchievableMatching: 3,
+          degradedOfferings: [],
           deadlockReport: {
             code: 'BIPARTITE_MATCHING_INSUFFICIENT',
             message: 'short',
@@ -511,6 +531,7 @@ describe('processGaPipelineJob', () => {
           status: 'INFEASIBLE',
           totalSessionsRequired: 5,
           maximumAchievableMatching: 3,
+          degradedOfferings: [],
         },
         lecturerStructuralMap: new Map(),
         lecturerPreferenceMap: new Map(),
@@ -554,6 +575,7 @@ describe('processGaPipelineJob', () => {
           status: 'FEASIBLE',
           totalSessionsRequired: 1,
           maximumAchievableMatching: 1,
+          degradedOfferings: [],
         },
         gaResult,
         durationMs: 1000,
@@ -565,6 +587,7 @@ describe('processGaPipelineJob', () => {
           status: 'FEASIBLE',
           totalSessionsRequired: 1,
           maximumAchievableMatching: 1,
+          degradedOfferings: [],
         },
         lecturerStructuralMap: new Map(),
         lecturerPreferenceMap: new Map(),

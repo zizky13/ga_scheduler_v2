@@ -63,6 +63,7 @@ const infeasibleCandidates: PreGACandidate[] = [
     siblingOfferingIds: [101],
     lecturerPool: [1],
     siblingLecturerGroups: [[1]],
+    longestContiguousRun: 1,
   },
   {
     offeringId: 102, courseId: 2, roomId: 1,
@@ -73,6 +74,7 @@ const infeasibleCandidates: PreGACandidate[] = [
     siblingOfferingIds: [102],
     lecturerPool: [2],
     siblingLecturerGroups: [[2]],
+    longestContiguousRun: 1,
   },
   {
     offeringId: 103, courseId: 3, roomId: 1,
@@ -83,6 +85,7 @@ const infeasibleCandidates: PreGACandidate[] = [
     siblingOfferingIds: [103],
     lecturerPool: [3],
     siblingLecturerGroups: [[3]],
+    longestContiguousRun: 1,
   },
 ];
 
@@ -110,6 +113,7 @@ const ac3ForcedCandidates: PreGACandidate[] = [
     siblingOfferingIds: [201],
     lecturerPool: [1],
     siblingLecturerGroups: [[1]],
+    longestContiguousRun: 1,
   },
   {
     offeringId: 202, courseId: 2, roomId: 1,
@@ -120,6 +124,7 @@ const ac3ForcedCandidates: PreGACandidate[] = [
     siblingOfferingIds: [202],
     lecturerPool: [2],
     siblingLecturerGroups: [[2]],
+    longestContiguousRun: 1,
   },
 ];
 
@@ -146,6 +151,7 @@ const exclusionInfeasible: PreGACandidate[] = [
     siblingOfferingIds: [301],
     lecturerPool: [1],
     siblingLecturerGroups: [[1]],
+    longestContiguousRun: 1,
   },
   // Fixed offering locks Room 1, Slot 2
   {
@@ -157,6 +163,7 @@ const exclusionInfeasible: PreGACandidate[] = [
     siblingOfferingIds: [302],
     lecturerPool: [2],
     siblingLecturerGroups: [[2]],
+    longestContiguousRun: 1,
   },
   // Flexible offering in Room 1 — only has slots [1, 2] which are both locked
   {
@@ -168,6 +175,7 @@ const exclusionInfeasible: PreGACandidate[] = [
     siblingOfferingIds: [303],
     lecturerPool: [3],
     siblingLecturerGroups: [[3]],
+    longestContiguousRun: 1,
   },
 ];
 

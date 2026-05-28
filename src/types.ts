@@ -186,6 +186,34 @@ export interface PreGACandidate {
    * equivalent (as a set) to `lecturerIds`.
    */
   siblingLecturerGroups: number[][];
+  /**
+   * Phase 16 #1 (OQ-32 / OQ-33): the longest run of strictly back-to-back
+   * timeslots found in `possibleTimeSlotIds`, computed per-day (`slots[i].endTime
+   * === slots[i+1].startTime`, OQ-32 strict-equality default) and reduced via
+   * `max(perDayLongestRun)`. Captures the candidate's wall-clock topology so
+   * downstream consumers can decide whether a session can fit contiguously.
+   * Cross-day runs are never considered contiguous (OQ-33 default — sessions
+   * never span days).
+   */
+  longestContiguousRun: number;
+  /**
+   * Phase 16 #1 (Q3=B best-effort visibility): stamped `true` when
+   * `longestContiguousRun < sessionDuration` — the timetable cannot hold the
+   * cohort's session as a single contiguous run on any single day, so the GA
+   * will be forced to fragment the session across one or more in-day breaks.
+   *
+   * Crucially, fragmentationRequired candidates are NOT rejected from
+   * `validation.feasible` (Q3=B — best-effort with soft penalty + visible
+   * warning). The flag is a visibility channel only: the run still reaches the
+   * GA, the GA flags it via `fragmentationPenalty` (Phase 16 #6), the
+   * Fragmented Sessions panel renders the offering (Phase 16 #15), and the
+   * Timetable Management warning (Phase 16 #14) drives the admin to fix the
+   * underlying timetable per the long-term-intent fix. Absent (omitted) when
+   * the candidate's longest run is ≥ sessionDuration — sparse on purpose so a
+   * consumer can `if (candidate.fragmentationRequired)` without comparing to
+   * `false`.
+   */
+  fragmentationRequired?: boolean;
 }
 
 // ─── Layer 2: SSA Types ──────────────────────────────────────────
@@ -212,6 +240,14 @@ export interface BipartiteGraph {
   sessions: SessionNode[];
   slots: SlotNode[];
   adjacency: Map<number, Set<number>>; // sessionId → Set<slotId>
+  /**
+   * Phase 16 #9: offerings whose adjacency had to degrade from
+   * `sessionDuration`-sized contiguous block starts to the legacy per-slot
+   * fallback because no day can hold a full contiguous session. SSA remains
+   * FEASIBLE when matching succeeds (Q3=B); this list is visibility metadata
+   * for the run-detail fragmented-session surface.
+   */
+  degradedOfferings: number[];
 }
 
 export interface AC3Result {
@@ -241,6 +277,7 @@ export interface SSAResult {
   status: SSAStatus;
   totalSessionsRequired: number;
   maximumAchievableMatching: number;
+  degradedOfferings: number[];
   deadlockReport?: DeadlockReport;
 }
 
@@ -301,6 +338,7 @@ export interface EvaluatedChromosome {
   preferencePenalty: number;
   loadPenalty: number;
   capacityShortfallPenalty: number;
+  fragmentationPenalty: number;
   lecturerDistributionEntropy: number;
   competencyMismatch: number;
 }
@@ -360,9 +398,53 @@ export interface PreGAInfeasibleEntry {
   metadata?: unknown;
 }
 
+/**
+ * Phase 16 #2 — per-offering warning record produced by Pre-GA. Surfaced to
+ * the API consumer as part of `SchedulerResponse.preGASummary.warnings[]`.
+ *
+ * Distinct from `infeasible[]` (Q3=B / OQ-33): warnings are offerings that
+ * stay in `validation.feasible` and reach the GA, but the timetable cannot
+ * hold their session as a single contiguous run — the GA will be forced to
+ * fragment the session and surface a `fragmentationPenalty` (Phase 16 #6).
+ * The frontend panel (Phase 16 #13/#15) consumes this channel to list the
+ * affected offerings without conflating them with hard rejections.
+ *
+ * `code` is currently always `'FRAGMENTATION_REQUIRED'` — the shape is left
+ * open-ended (string) so future Pre-GA visibility channels (e.g., a soft
+ * preference warning) can reuse the same envelope without a wire migration.
+ */
+export interface PreGAWarningEntry {
+  offeringId: number;
+  code: string;
+  message: string;
+  /**
+   * Mirrors `PreGACandidate.fragmentationRequired` — `true` whenever the
+   * candidate's `longestContiguousRun < sessionDuration`. Kept as an
+   * explicit boolean (not derived from `code`) so the integration test in
+   * Phase 16 #20 can assert on the flag directly.
+   */
+  fragmentationRequired?: boolean;
+  /** Snapshot of `PreGACandidate.longestContiguousRun` for UI rendering. */
+  longestContiguousRun?: number;
+  /** Snapshot of `PreGACandidate.sessionDuration` for UI rendering. */
+  sessionDuration?: number;
+  /**
+   * Structured payload for future Pre-GA warning codes (parallels
+   * `PreGAInfeasibleEntry.metadata`). Unused for `FRAGMENTATION_REQUIRED`.
+   */
+  metadata?: unknown;
+}
+
 export interface SchedulerResponse {
   status: 'SUCCESS' | 'INFEASIBLE' | 'NO_FEASIBLE_CANDIDATES';
-  preGASummary: { feasible: number; infeasible: PreGAInfeasibleEntry[] };
+  /**
+   * Phase 16 #2 — `warnings[]` is a visibility channel for candidates that
+   * passed Pre-GA but carry a soft signal the UI should surface (currently
+   * only `FRAGMENTATION_REQUIRED`). Warnings never reduce `feasible` and
+   * never block the run; consumers that only care about hard rejections
+   * keep reading `infeasible[]` and can safely ignore `warnings[]`.
+   */
+  preGASummary: { feasible: number; infeasible: PreGAInfeasibleEntry[]; warnings: PreGAWarningEntry[] };
   ssaResult?: SSAResult;
   gaResult?: GAResult;
   durationMs: number;

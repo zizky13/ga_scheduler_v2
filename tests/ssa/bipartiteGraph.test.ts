@@ -11,6 +11,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildBipartiteGraph } from '../../src/ssa/bipartiteGraph.js';
 import { runHopcroftKarp } from '../../src/ssa/hopcroftKarp.js';
+import { runSSA } from '../../src/ssa/index.js';
 import type { PreGACandidate, TimeSlot } from '../../src/types.js';
 
 /** Build N back-to-back 50-min slots starting at 08:00 on the given day. */
@@ -86,6 +87,7 @@ describe('buildBipartiteGraph — multi-slot block matching nodes', () => {
     });
     const graph = buildBipartiteGraph([cand], slots);
     expect(Array.from(graph.adjacency.get(graph.sessions[0]!.sessionId)!).sort((a, b) => a - b)).toEqual([1, 2]);
+    expect(graph.degradedOfferings).toEqual([1]);
   });
 
   it('does not stitch blocks across day boundaries (still falls back when no day fits)', () => {
@@ -99,6 +101,7 @@ describe('buildBipartiteGraph — multi-slot block matching nodes', () => {
     });
     const graph = buildBipartiteGraph([cand], slots);
     expect(Array.from(graph.adjacency.get(graph.sessions[0]!.sessionId)!).sort((a, b) => a - b)).toEqual([1, 2, 10, 11]);
+    expect(graph.degradedOfferings).toEqual([1]);
   });
 
   it('does not cross day boundaries when contiguous blocks DO exist on a single day', () => {
@@ -114,6 +117,7 @@ describe('buildBipartiteGraph — multi-slot block matching nodes', () => {
     const graph = buildBipartiteGraph([cand], slots);
     // Only block start: slot 1 on Monday.
     expect(Array.from(graph.adjacency.get(graph.sessions[0]!.sessionId)!).sort((a, b) => a - b)).toEqual([1]);
+    expect(graph.degradedOfferings).toEqual([]);
   });
 
   it('parallel sessions of the same offering share the block-start adjacency', () => {
@@ -227,6 +231,59 @@ describe('buildBipartiteGraph — multi-slot block matching nodes', () => {
     const graph = buildBipartiteGraph([cand], slots);
     const adj = graph.adjacency.get(graph.sessions[0]!.sessionId)!;
     expect(Array.from(adj).sort((a, b) => a - b)).toEqual([1, 2, 3]);
+    expect(graph.degradedOfferings).toEqual([]);
+  });
+
+  it('surfaces degraded offerings on SSAResult while preserving FEASIBLE status', () => {
+    const slots = buildDay('Monday', 2, 1);
+    const cand = candidate({
+      offeringId: 42,
+      sessionDuration: 3,
+      possibleTimeSlotIds: [1, 2],
+    });
+
+    const result = runSSA([cand], slots);
+
+    expect(result.status).toBe('FEASIBLE');
+    expect(result.maximumAchievableMatching).toBe(1);
+    expect(result.degradedOfferings).toEqual([42]);
+  });
+
+  it('Phase 16 #10: marks a 5-SKS offering degraded when longest contiguous run is only 3 slots', () => {
+    // Monday and Tuesday each have a longest contiguous run of 3. No single
+    // day can hold this 5-SKS session, so SSA falls back to per-slot adjacency
+    // and records the offering for downstream fragmented-session visibility.
+    const slots = [
+      ...buildDay('Monday', 3, 1),
+      ...buildDay('Tuesday', 3, 10),
+    ];
+    const cand = candidate({
+      offeringId: 50,
+      sessionDuration: 5,
+      possibleTimeSlotIds: [1, 2, 3, 10, 11, 12],
+    });
+
+    const result = runSSA([cand], slots);
+
+    expect(result.status).toBe('FEASIBLE');
+    expect(result.maximumAchievableMatching).toBe(1);
+    expect(result.degradedOfferings).toContain(50);
+  });
+
+  it('Phase 16 #10: does not mark an offering degraded when a 5-slot contiguous run exists', () => {
+    const slots = buildDay('Monday', 5, 1);
+    const cand = candidate({
+      offeringId: 51,
+      sessionDuration: 5,
+      possibleTimeSlotIds: [1, 2, 3, 4, 5],
+    });
+
+    const result = runSSA([cand], slots);
+
+    expect(result.status).toBe('FEASIBLE');
+    expect(result.maximumAchievableMatching).toBe(1);
+    expect(result.degradedOfferings).not.toContain(51);
+    expect(result.degradedOfferings).toEqual([]);
   });
 });
 

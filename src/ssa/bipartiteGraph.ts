@@ -34,12 +34,14 @@ export function buildBipartiteGraph(
   const sessions: SessionNode[] = [];
   const slotIdSet = new Set<number>();
   const adjacency = new Map<number, Set<number>>();
+  const degradedOfferings = new Set<number>();
 
   for (const candidate of candidates) {
     // Compute valid contiguous block START slot ids once per candidate.
     // Each parallel session of the same offering has identical eligibility,
     // so they share this set.
-    const blockStarts = computeBlockStarts(candidate, lookup);
+    const { blockStarts, degraded } = computeBlockStarts(candidate, lookup);
+    if (degraded) degradedOfferings.add(candidate.offeringId);
     const lecturerIdsForSSA =
       candidate.siblingOfferingIds.length > 1
         ? candidate.lecturerPool
@@ -84,7 +86,7 @@ export function buildBipartiteGraph(
 
   const slots: SlotNode[] = Array.from(slotIdSet).map(id => ({ slotId: id }));
 
-  return { sessions, slots, adjacency };
+  return { sessions, slots, adjacency, degradedOfferings: Array.from(degradedOfferings) };
 }
 
 /**
@@ -105,13 +107,18 @@ export function buildBipartiteGraph(
 function computeBlockStarts(
   candidate: PreGACandidate,
   lookup: SlotLookup | undefined
-): number[] {
-  if (!lookup) return [...candidate.possibleTimeSlotIds];
+): { blockStarts: number[]; degraded: boolean } {
+  if (!lookup) return { blockStarts: [...candidate.possibleTimeSlotIds], degraded: false };
   const blocks = findContiguousSlots(
     candidate.possibleTimeSlotIds,
     candidate.sessionDuration,
     lookup
   );
-  if (blocks.length === 0) return [...candidate.possibleTimeSlotIds];
-  return blocks.map(b => b[0]!);
+  if (blocks.length === 0) {
+    return {
+      blockStarts: [...candidate.possibleTimeSlotIds],
+      degraded: candidate.possibleTimeSlotIds.length > 0,
+    };
+  }
+  return { blockStarts: blocks.map(b => b[0]!), degraded: false };
 }

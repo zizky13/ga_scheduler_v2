@@ -1495,3 +1495,207 @@ describe('Pipeline integration — Phase 15 shared-cohort lecturer distribution'
     }
   });
 });
+
+// ─── Phase 16 — fragmented session visibility (LOAD-BEARING) ─────
+//
+// This is the load-bearing acceptance test for the whole of Phase 16. It
+// replicates the user-reported UPJ scenario byte-for-byte: a 5-SKS course
+// on a timetable that fragments Mon-Thu into four 3-slot blocks with
+// 10-minute coffee breaks at 10:00 / 12:40 / 15:20, plus Friday with the
+// Jum'at prayer break at 11:50-13:00 (Q4). Pre-Phase-16 code silently
+// shipped wrong schedules for this shape (Q2 confirmed 4-6 SKS courses
+// are common, not edge cases). The seven assertions below pin every layer
+// of the Phase 16 visibility loop:
+//
+//   (a) Pre-GA stays Q3=B (best-effort) — the 5-SKS offering is NOT
+//       rejected, just flagged.
+//   (b) preGASummary.warnings[] (Phase 16 #2) surfaces the offering with
+//       fragmentationRequired: true and code 'FRAGMENTATION_REQUIRED'.
+//   (c) The run reaches SUCCESS — no PRE_GA_EMPTY, no SSA_INFEASIBLE.
+//   (d) The best chromosome carries fragmentationPenalty > 0 (Phase 16 #6),
+//       so the GA's fitness signal is non-zero and the term contributes to
+//       evolution pressure.
+//   (e) The seeded / evolved gene's 5 session slots fall on a SINGLE day
+//       (OQ-33 default — never crosses days, per Phase 16 #4/#5/#7).
+//   (f) SSA.degradedOfferings (Phase 16 #9) lists the offering — the SSA
+//       layer's per-slot fallback was needed to keep the bipartite match
+//       feasible.
+//   (g) The orchestrator response carries both visibility channels
+//       (warnings + degradedOfferings) so the HTTP wire (Phase 16 #13) and
+//       the frontend panel (Phase 16 #15) have data to render.
+describe('Pipeline integration — Phase 16 fragmented session visibility (LOAD-BEARING)', () => {
+  it('5-SKS course on a 3-slot-max UPJ timetable: pipeline completes with full visibility down to the gene', async () => {
+    const rooms: Room[] = [
+      { id: 1, name: 'R-A', capacity: 40, facilities: [] },
+    ];
+
+    // Mon-Thu: four contiguous 3-slot blocks per day separated by 10-min
+    // coffee breaks at 10:00 / 12:40 / 15:20. Slots are 50 min apiece
+    // (1 SKS = 1 timeslot per techspec).
+    const monThuTimes = [
+      { start: '07:30', end: '08:20' },
+      { start: '08:20', end: '09:10' },
+      { start: '09:10', end: '10:00' },
+      { start: '10:10', end: '11:00' },
+      { start: '11:00', end: '11:50' },
+      { start: '11:50', end: '12:40' },
+      { start: '12:50', end: '13:40' },
+      { start: '13:40', end: '14:30' },
+      { start: '14:30', end: '15:20' },
+      { start: '15:30', end: '16:20' },
+      { start: '16:20', end: '17:10' },
+      { start: '17:10', end: '18:00' },
+    ];
+    // Friday: morning 3-block, then a 2-slot run truncated by the Jum'at
+    // break (11:50-13:00, wider than the Mon-Thu coffee breaks), then a
+    // 3-slot afternoon block. OQ-32 strict equality treats both break
+    // widths as hard breaks — the Jum'at gap must not bridge runs.
+    const friTimes = [
+      { start: '07:30', end: '08:20' },
+      { start: '08:20', end: '09:10' },
+      { start: '09:10', end: '10:00' },
+      { start: '10:10', end: '11:00' },
+      { start: '11:00', end: '11:50' },
+      { start: '13:00', end: '13:50' },
+      { start: '13:50', end: '14:40' },
+      { start: '14:40', end: '15:30' },
+    ];
+
+    const timeSlots: TimeSlot[] = [];
+    let nextSlotId = 1;
+    for (const day of ['Mon', 'Tue', 'Wed', 'Thu']) {
+      for (const t of monThuTimes) {
+        timeSlots.push({ id: nextSlotId++, day, startTime: t.start, endTime: t.end });
+      }
+    }
+    for (const t of friTimes) {
+      timeSlots.push({ id: nextSlotId++, day: 'Fri', startTime: t.start, endTime: t.end });
+    }
+
+    const lecturers: Lecturer[] = [
+      {
+        id: 1,
+        name: 'Lec',
+        isStructural: false,
+        maxSks: 12,
+        preferredTimeSlotIds: [],
+        competencies: ['core'],
+      },
+    ];
+
+    const offering5Sks: CourseOffering = {
+      id: 1,
+      courseId: 1,
+      course: {
+        id: 1,
+        code: 'BIG501',
+        name: 'Heavy 5-SKS Course',
+        sks: 5,
+        requiredFacilities: [],
+        requiredCompetencies: ['core'],
+      },
+      roomId: 1,
+      room: rooms[0]!,
+      lecturers,
+      effectiveStudentCount: 30,
+      isFixed: false,
+    };
+
+    const config: GAConfig = {
+      populationSize: 20,
+      generations: 30,
+      mutationRate: 0.1,
+      elitismCount: 2,
+      tournamentSize: 3,
+      crossoverType: 'singlePoint',
+      noiseRate: 0.15,
+      hardPenaltyWeight: 100,
+      softPenaltyWeight: 1,
+    };
+
+    const { response, context } = await runPipeline({
+      offerings: [offering5Sks],
+      timeSlots,
+      rooms,
+      lecturers,
+      config,
+    });
+
+    // (a) Pre-GA keeps the 5-SKS offering feasible (Q3=B). It is NOT in
+    //     validation.infeasible.
+    expect(
+      context.validation.infeasible.find((e) => e.offering.id === offering5Sks.id),
+    ).toBeUndefined();
+    expect(context.validation.feasible.map((o) => o.id)).toContain(offering5Sks.id);
+
+    // (b) preGASummary.warnings[] surfaces the offering with
+    //     fragmentationRequired: true and code FRAGMENTATION_REQUIRED.
+    const warning = response.preGASummary.warnings.find(
+      (w) => w.offeringId === offering5Sks.id,
+    );
+    expect(warning).toBeDefined();
+    expect(warning!.code).toBe('FRAGMENTATION_REQUIRED');
+    expect(warning!.fragmentationRequired).toBe(true);
+    expect(warning!.sessionDuration).toBe(5);
+    expect(warning!.longestContiguousRun).toBe(3);
+
+    // (c) The pipeline reaches SUCCESS — never PRE_GA_EMPTY, never
+    //     SSA_INFEASIBLE. (Worker maps SUCCESS → COMPLETED on persist.)
+    expect(response.status).toBe('SUCCESS');
+    expect(response.gaResult).toBeDefined();
+
+    // (e) The resulting gene's 5 session slots all fall on a SINGLE day —
+    //     OQ-33 default forbids cross-day spans. Asserted before (d) so a
+    //     same-day failure surfaces with a clearer signature than the
+    //     re-evaluation noise.
+    const gene = response.gaResult!.bestChromosome.find(
+      (g) => g.offeringId === offering5Sks.id,
+    );
+    expect(gene).toBeDefined();
+    expect(gene!.sessions).toHaveLength(1);
+    const session = gene!.sessions[0]!;
+    expect(session.timeSlotIds).toHaveLength(5);
+    const slotById = new Map(timeSlots.map((s) => [s.id, s]));
+    const days = new Set(session.timeSlotIds.map((id) => slotById.get(id)!.day));
+    expect(days.size).toBe(1);
+
+    // (d) fragmentationPenalty > 0 in the final fitness payload. GAResult
+    //     only carries `softPenalty` (sum); re-evaluate the best chromosome
+    //     against the candidate context to extract the per-term breakdown.
+    //     The candidate's longestContiguousRun is 3 and the session is 5
+    //     same-day slots, so at least one in-day gap (the 10-min break) is
+    //     unavoidable → the term must be strictly positive.
+    const roomById = new Map(rooms.map((r) => [r.id, r]));
+    const evaluated = evaluateFitness(
+      response.gaResult!.bestChromosome,
+      context.candidates,
+      context.lecturerStructuralMap,
+      context.lecturerPreferenceMap,
+      context.lecturerMaxSksMap,
+      { hardPenaltyWeight: 100, softPenaltyWeight: 1 },
+      context.competencyEligibilityMap,
+      roomById,
+      slotById,
+    );
+    expect(evaluated.fragmentationPenalty).toBeGreaterThan(0);
+
+    // (f) SSA.degradedOfferings lists the offering — the bipartite
+    //     adjacency had to use the per-slot fallback for a sessionDuration
+    //     no day's contiguous run could hold.
+    expect(response.ssaResult).toBeDefined();
+    expect(response.ssaResult!.degradedOfferings).toContain(offering5Sks.id);
+    // SSA stays FEASIBLE per Q3=B — degraded is a visibility flag, not a
+    // rejection signal.
+    expect(response.ssaResult!.status).toBe('FEASIBLE');
+
+    // (g) Both visibility channels are exposed on the orchestrator response
+    //     so the HTTP wire (Phase 16 #13) can synthesize the top-level
+    //     `degradedOfferings` + `fragmentationRequired` for the Run Detail
+    //     panel (Phase 16 #15). The panel consumes the union; both lists
+    //     containing this offering is the steady-state expectation under
+    //     this scenario, not a duplicate.
+    expect(Array.isArray(response.preGASummary.warnings)).toBe(true);
+    expect(response.preGASummary.warnings.length).toBeGreaterThan(0);
+    expect(response.ssaResult!.degradedOfferings.length).toBeGreaterThan(0);
+  });
+});

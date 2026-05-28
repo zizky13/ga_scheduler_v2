@@ -14,6 +14,8 @@ import {
   FileQuestion,
   WifiOff,
   Lightbulb,
+  Scissors,
+  Wrench,
 } from 'lucide-react';
 import { StatusBadge } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -49,6 +51,41 @@ interface RunConfig {
   softPenaltyWeight: number;
 }
 
+// Phase 16 #15 — mirrors ScheduleRunDetailWire's GroupedAssignmentWire from
+// `src/api/routes/schedule-runs.ts`. The Fragmented Sessions panel reads
+// `assignments[].sessions[].timeSlots[]` to visualize the slot sequence with
+// gap markers; everything else is included for parity with the wire shape.
+interface RunDetailTimeSlot {
+  id: number;
+  /** Raw Prisma `Weekday` enum value as it arrives on the wire (e.g. 'MONDAY'). */
+  day: string;
+  /** 'HH:MM' 24-hour. */
+  startTime: string;
+  /** 'HH:MM' 24-hour. */
+  endTime: string;
+}
+
+interface RunDetailSession {
+  assignmentId: number;
+  sessionIndex: number;
+  roomId: number;
+  isFixedRoom?: boolean;
+  manualOverride?: boolean;
+  lecturerIds: number[];
+  timeSlots: RunDetailTimeSlot[];
+}
+
+interface RunDetailAssignment {
+  offeringId: number;
+  offering: {
+    id: number;
+    courseCode: string;
+    courseName: string;
+    lecturers: Array<{ id: number; name: string }>;
+  };
+  sessions: RunDetailSession[];
+}
+
 interface ScheduleRunDetail {
   id: string;
   status: RunStatus;
@@ -60,6 +97,7 @@ interface ScheduleRunDetail {
   competencyMismatch: number;
   loadPenalty: number;
   capacityShortfallPenalty: number;
+  fragmentationPenalty: number;
   generationsRun: number;
   currentGeneration: number;
   stagnatedEarly: boolean;
@@ -75,7 +113,15 @@ interface ScheduleRunDetail {
   history: number[] | null;
   avgHistory: number[] | null;
   idempotencyKey: string | null;
-  assignments: unknown[];
+  // Phase 16 #15 — typed as the grouped wire shape so the Fragmented Sessions
+  // panel can index into `sessions[].timeSlots[]` without an extra cast.
+  assignments: RunDetailAssignment[];
+  // Phase 16 #13 — both fields default to `[]` on legacy rows (see
+  // `extractDegradedOfferings` / `extractFragmentationRequired` in the route).
+  // Typed as optional here for defensive client-side access in case the GET
+  // response predates Phase 16 #13.
+  degradedOfferings?: number[];
+  fragmentationRequired?: number[];
 }
 
 interface DeadlockReportPayload {
@@ -234,6 +280,7 @@ export function RunDetailPage() {
         competencyMismatch: data.competencyMismatch,
         loadPenalty: data.loadPenalty,
         capacityShortfallPenalty: data.capacityShortfallPenalty,
+        fragmentationPenalty: data.fragmentationPenalty,
       };
     });
     setChartData((prev) => [
@@ -515,6 +562,15 @@ export function RunDetailPage() {
                 {run.capacityShortfallPenalty}
               </p>
             </div>
+            <div
+              className={styles.statCard}
+              title="Sum of within-session slot gaps caused by break-spanning sessions (soft constraint). Zero when every session is contiguous."
+            >
+              <p className={styles.statLabel}>Fragmentation Penalty (cross-break gaps)</p>
+              <p className={`${styles.statValue} ${run.fragmentationPenalty === 0 ? styles.statGreen : styles.statRed}`}>
+                {run.fragmentationPenalty}
+              </p>
+            </div>
           </div>
 
           <div className={styles.progressSection}>
@@ -545,6 +601,22 @@ export function RunDetailPage() {
           )}
 
           <StatusBanner run={run} />
+
+          {/*
+            note (Phase 16 #15): the Fragmented Sessions panel is sibling-of-
+            PreGAFailurePanel surface area for non-failing runs. It is the
+            user-facing symptom display; the Timetable Management warning
+            banner (Phase 16 #14) is the actionable long-term fix. BOTH are
+            required to close the visibility loop for OQ-33/OQ-34 fragmentation
+            outcomes — surface the symptom here, point users at /timeslots to
+            change the underlying timetable.
+          */}
+          <FragmentedSessionsPanel
+            assignments={run.assignments}
+            degradedOfferings={run.degradedOfferings ?? []}
+            fragmentationRequired={run.fragmentationRequired ?? []}
+            onNavigate={navigate}
+          />
 
           {(isActive || showViewSchedule || canDelete) && (
             <div className={styles.actionBar}>
@@ -862,6 +934,203 @@ function PreGAFailurePanel({
             Fix Offerings
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Fragmented Sessions Panel (Phase 16 #15) ────────────────────────── */
+
+/**
+ * Phase 16 #15 — Surfaces sessions whose slot sequence is non-contiguous
+ * because the GA had to fall back to the per-slot adjacency / fragmentation-
+ * permitted seeder. The union of `degradedOfferings` (SSA bipartite fallback)
+ * and `fragmentationRequired` (Pre-GA `longestContiguousRun < sessionDuration`)
+ * is the panel's source of truth; both lists may overlap, and the panel
+ * de-duplicates by offering id.
+ *
+ * Click-through pattern: navigates to `/offerings?highlight={id}&edit=1`
+ * (matching the existing PreGA/SSA failure panel convention of pushing a
+ * `?highlight=` query). The `edit=1` flag is a forward-compatible signal —
+ * `CourseOfferingManagementPage` will need a small `useSearchParams` reader
+ * in a follow-up to auto-open its edit modal on that query. The click-
+ * through still routes correctly today; the modal auto-open is a wiring
+ * gap, not a missing surface here. Decision rationale: an inline modal would
+ * duplicate the full offering edit form (lecturers, room, fixed-slot policy)
+ * already living on /offerings — navigation keeps a single source of truth
+ * for that form and matches the SSA/PreGA panels' click-through pattern.
+ */
+function FragmentedSessionsPanel({
+  assignments,
+  degradedOfferings,
+  fragmentationRequired,
+  onNavigate,
+}: {
+  assignments: RunDetailAssignment[];
+  degradedOfferings: number[];
+  fragmentationRequired: number[];
+  onNavigate: (path: string) => void;
+}) {
+  // Union the two id lists; preserve first-seen ordering so the panel is
+  // deterministic across renders.
+  const fragmentedIds = (() => {
+    const seen = new Set<number>();
+    const out: number[] = [];
+    for (const id of degradedOfferings) {
+      if (!seen.has(id)) { seen.add(id); out.push(id); }
+    }
+    for (const id of fragmentationRequired) {
+      if (!seen.has(id)) { seen.add(id); out.push(id); }
+    }
+    return out;
+  })();
+
+  const assignmentByOfferingId = new Map<number, RunDetailAssignment>();
+  for (const a of assignments) assignmentByOfferingId.set(a.offeringId, a);
+
+  const isEmpty = fragmentedIds.length === 0;
+
+  return (
+    <div className={styles.fragPanel}>
+      <div className={styles.fragHeader}>
+        <Scissors size={20} className={styles.fragHeaderIcon} aria-hidden="true" />
+        <div className={styles.fragHeaderText}>
+          <h3 className={styles.fragHeaderTitle}>Fragmented Sessions</h3>
+          <p className={styles.fragHeaderSubtitle}>
+            Sessions whose assigned slots are not back-to-back. The GA fell back to a fragmented layout because the active timetable could not host them contiguously.
+          </p>
+        </div>
+      </div>
+
+      {isEmpty ? (
+        <div className={styles.fragEmpty} role="status">
+          <CheckCircle size={20} className={styles.fragEmptyIcon} aria-hidden="true" />
+          <p className={styles.fragEmptyMessage}>No fragmented sessions in this run.</p>
+        </div>
+      ) : (
+        <ul className={styles.fragList}>
+          {fragmentedIds.map((offeringId) => {
+            const assignment = assignmentByOfferingId.get(offeringId);
+            const courseLabel = assignment
+              ? `${assignment.offering.courseCode} — ${assignment.offering.courseName}`
+              : `Offering #${offeringId}`;
+            // Navigate-with-query, mirroring the SSA / PreGA panels' click-
+            // through. `edit=1` is a forward-compatible hint for #15 follow-up.
+            const offeringHref = `/offerings?highlight=${offeringId}&edit=1`;
+
+            return (
+              <li key={offeringId} className={styles.fragItem}>
+                <div className={styles.fragItemHeader}>
+                  <button
+                    type="button"
+                    className={styles.fragItemTitle}
+                    onClick={() => onNavigate(offeringHref)}
+                    title="Open this offering on the Course Offerings page"
+                  >
+                    {courseLabel}
+                  </button>
+                  <Link
+                    to="/timeslots"
+                    className={styles.fragFixLink}
+                    title="Open Timetable Management — the warning banner lists the courses that triggered this fragmentation."
+                  >
+                    <Wrench size={14} aria-hidden="true" />
+                    Fix Timetable
+                  </Link>
+                </div>
+
+                {assignment && assignment.sessions.length > 0 ? (
+                  <div className={styles.fragSessions}>
+                    {assignment.sessions.map((session) => (
+                      <FragmentedSessionRow
+                        key={session.assignmentId}
+                        session={session}
+                        showSessionLabel={assignment.sessions.length > 1}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className={styles.fragNoAssignment}>
+                    No assignment data available for offering #{offeringId}.
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Phase 16 #15 — Renders one session's slot sequence as
+ *   `{day} {startTime} → {day} {startTime} → [BREAK end-start] → ...`
+ * Per OQ-32 the contiguity test is strict string equality on endTime/startTime
+ * (no minute tolerance). Per OQ-33 cross-day spans are not expected, but the
+ * render is defensive: slots are sorted by `(day, startTime)` and a break
+ * marker is inserted between any two adjacent slots whose endTime !==
+ * startTime, including when the day changes mid-session.
+ */
+function FragmentedSessionRow({
+  session,
+  showSessionLabel,
+}: {
+  session: RunDetailSession;
+  showSessionLabel: boolean;
+}) {
+  const sorted = [...session.timeSlots].sort((a, b) => {
+    if (a.day !== b.day) return a.day.localeCompare(b.day);
+    return a.startTime.localeCompare(b.startTime);
+  });
+
+  // Build a typed sequence: alternating slot + break markers.
+  type Segment =
+    | { kind: 'slot'; key: string; day: string; startTime: string }
+    | { kind: 'break'; key: string; from: string; to: string };
+
+  const segments: Segment[] = [];
+  for (let i = 0; i < sorted.length; i++) {
+    const slot = sorted[i]!;
+    segments.push({
+      kind: 'slot',
+      key: `slot-${slot.id}-${i}`,
+      day: slot.day,
+      startTime: slot.startTime,
+    });
+    const next = sorted[i + 1];
+    if (next && slot.endTime !== next.startTime) {
+      segments.push({
+        kind: 'break',
+        key: `break-${slot.id}-${next.id}`,
+        from: slot.endTime,
+        to: next.startTime,
+      });
+    }
+  }
+
+  return (
+    <div className={styles.fragSessionRow}>
+      {showSessionLabel && (
+        <span className={styles.fragSessionLabel}>Session {session.sessionIndex + 1}</span>
+      )}
+      <div className={styles.fragSequence}>
+        {segments.map((seg, idx) => (
+          <span key={seg.key} className={styles.fragSegmentGroup}>
+            {seg.kind === 'slot' ? (
+              <span className={styles.fragSlotChip}>
+                {seg.day} {seg.startTime}
+              </span>
+            ) : (
+              <span className={styles.fragBreakChip}>
+                [BREAK {seg.from}-{seg.to}]
+              </span>
+            )}
+            {idx < segments.length - 1 && (
+              <span className={styles.fragArrow} aria-hidden="true">→</span>
+            )}
+          </span>
+        ))}
       </div>
     </div>
   );
