@@ -13,6 +13,7 @@
     "preworker": "npm run check:migrations",
     "worker": "tsx src/worker/index.ts",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:demo-user": "tsx prisma/seed-demo-user.ts",
     "check:migrations": "npx prisma migrate status",
     "db:migrate:demo": "dotenv -e .env.demo -- npx prisma migrate deploy",
     "db:seed:demo": "dotenv -e .env.demo -- tsx prisma/seed.ts",

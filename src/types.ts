@@ -283,45 +283,22 @@ export interface SSAResult {
 
 // ─── Layer 3: GA Types ───────────────────────────────────────────
 
-/**
- * One parallel session within a gene.
- *
- * Phase 15 #5 (OQ-25): `lecturerIds: number[]` lives on the session, not the
- * gene/candidate. Multi-sibling cohorts use this to distribute lecturers
- * across their parallel sessions (the chromosome seeder rotates through
- * `candidate.siblingLecturerGroups`). Team-teaching within a single session
- * is preserved — a sibling that team-teaches with multiple lecturers carries
- * the full list on every session it "owns". Single-sibling cohorts stamp
- * `candidate.lecturerIds` on every session (backward compatibility with
- * legacy team-taught offerings and pre-Phase-15 fixtures).
- *
- * For a 3-SKS course split into 2 parallel groups across siblings X and Y:
- *   sessions[0] = { roomId: 10, timeSlotIds: [5, 6, 7], lecturerIds: [X.id] }
- *   sessions[1] = { roomId: 11, timeSlotIds: [5, 6, 7], lecturerIds: [Y.id] }
- */
+
 export interface GeneSession {
   roomId: number;
-  timeSlotIds: number[]; // contiguous back-to-back slots, length === sessionDuration
-  lecturerIds: number[]; // OQ-25: per-session, length ≥ 1 (team-teach preserved)
+  timeSlotIds: number[]; 
+  lecturerIds: number[]; 
 }
 
 export interface FixedRoomGene {
   kind: 'FIXED';
   offeringId: number;
-  /**
-   * One entry per parallel group (length === parallelSessionCount).
-   * roomId on each session is immutable for FIXED genes.
-   */
   sessions: GeneSession[];
 }
 
 export interface FlexibleGene {
   kind: 'FLEXIBLE';
   offeringId: number;
-  /**
-   * One entry per parallel group (length === parallelSessionCount).
-   * roomId on each session is mutable for FLEXIBLE genes.
-   */
   sessions: GeneSession[];
 }
 

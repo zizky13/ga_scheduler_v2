@@ -1,0 +1,72 @@
+name: ga-scheduler-v2
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ga_scheduler_v2
+      POSTGRES_USER: ga_scheduler
+      POSTGRES_PASSWORD: ga_scheduler
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ga_scheduler -d ga_scheduler_v2"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: ga-scheduler-api:local
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    environment: &api_environment
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://ga_scheduler:ga_scheduler@postgres:5432/ga_scheduler_v2?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-ga-scheduler-demo-secret-change-before-production}
+      DEMO_ADMIN_EMAIL: ${DEMO_ADMIN_EMAIL:-admin@upj.ac.id}
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-Admin12345}
+      DEMO_ADMIN_NAME: ${DEMO_ADMIN_NAME:-Admin Demo}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: ga-scheduler-api:local
+    restart: unless-stopped
+    command: ["npm", "run", "worker"]
+    environment: *api_environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    image: ga-scheduler-frontend:local
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
